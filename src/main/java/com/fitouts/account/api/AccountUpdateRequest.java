@@ -4,18 +4,24 @@ import java.util.Set;
 
 import com.fitouts.auth.domain.Role;
 
-import lombok.Builder;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import lombok.Getter;
+import lombok.Setter;
 
 @Getter
-@Builder
-public class AccountResponse {
+@Setter
+public class AccountUpdateRequest {
 
-    private Long id;
+    @NotBlank
     private String fullName;
-    private String email;
+
     private String phone;
+
     private String companyName;
-    private Boolean active;
+
+    @NotEmpty
     private Set<Role> roles;
+
+    private Boolean active;
 }

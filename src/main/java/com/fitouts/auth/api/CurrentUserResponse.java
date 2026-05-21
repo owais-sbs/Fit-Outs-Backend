@@ -1,4 +1,4 @@
-package com.fitouts.account.api;
+package com.fitouts.auth.api;
 
 import java.util.Set;
 
@@ -9,13 +9,12 @@ import lombok.Getter;
 
 @Getter
 @Builder
-public class AccountResponse {
+public class CurrentUserResponse {
 
     private Long id;
     private String fullName;
     private String email;
     private String phone;
     private String companyName;
-    private Boolean active;
     private Set<Role> roles;
 }
