@@ -75,6 +75,9 @@ public class AuthController extends BaseController {
     @GetMapping("/me")
     public ResponseEntity<?> me(@AuthenticationPrincipal AuthPrincipal principal) {
         try {
+            if (principal == null) {
+                return successResponse(null);
+            }
             return successResponse(authService.me(principal));
         } catch (Exception exception) {
             return failureResponse("Unable to fetch current user", exception.getMessage());
@@ -87,6 +90,9 @@ public class AuthController extends BaseController {
             HttpServletRequest servletRequest) {
 
         try {
+            if (principal == null) {
+                return successResponse(List.of());
+            }
             List<AuthSessionResponse> sessions = authService.getSessions(principal, servletRequest);
             return successResponse(sessions);
         } catch (Exception exception) {
@@ -102,6 +108,9 @@ public class AuthController extends BaseController {
             HttpServletResponse servletResponse) {
 
         try {
+            if (principal == null) {
+                return failureResponse("Unable to revoke session", "Authentication required");
+            }
             authService.revokeSession(principal, sessionId, servletRequest, servletResponse);
             return successResponse(new MessageResponse("Session revoked successfully"));
         } catch (Exception exception) {

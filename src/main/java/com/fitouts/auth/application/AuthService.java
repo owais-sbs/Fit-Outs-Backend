@@ -65,15 +65,16 @@ public class AuthService {
         }
 
         RememberedDevice device = deviceService.resolveDevice(account, servletRequest, servletResponse);
-        if (requiresOtp(account)) {
-            OtpService.GeneratedOtp generatedOtp = otpService.createChallenge(account, device);
-            return new LoginResult(true, LoginResponse.builder()
-                    .status("OTP_REQUIRED")
-                    .message("OTP verification required")
-                    .challengeId(generatedOtp.challenge().getChallengeId())
-                    .otp(authProperties.getOtp().isDevExposeValue() ? generatedOtp.rawOtp() : null)
-                    .build());
-        }
+        // Role-based OTP check disabled
+        // if (requiresOtp(account)) {
+        //     OtpService.GeneratedOtp generatedOtp = otpService.createChallenge(account, device);
+        //     return new LoginResult(true, LoginResponse.builder()
+        //             .status("OTP_REQUIRED")
+        //             .message("OTP verification required")
+        //             .challengeId(generatedOtp.challenge().getChallengeId())
+        //             .otp(authProperties.getOtp().isDevExposeValue() ? generatedOtp.rawOtp() : null)
+        //             .build());
+        // }
 
         return new LoginResult(false, authenticate(account, device, servletRequest, servletResponse));
     }
@@ -180,9 +181,9 @@ public class AuthService {
                 .build();
     }
 
-    private boolean requiresOtp(Account account) {
-        return authProperties.getOtp().isSuperAdminEnabled() && account.getRoles().contains(Role.SUPER_ADMIN);
-    }
+    // private boolean requiresOtp(Account account) {
+    //     return authProperties.getOtp().isSuperAdminEnabled() && account.getRoles().contains(Role.SUPER_ADMIN);
+    // }
 
     private CurrentUserResponse toCurrentUser(Account account) {
         return CurrentUserResponse.builder()
