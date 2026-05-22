@@ -6,11 +6,13 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.fitouts.account.domain.AccountRepository;
 import com.fitouts.shared.error.ConflictException;
 import com.fitouts.shared.error.NotFoundException;
 import com.fitouts.subscription.application.SubscriptionPlanService;
 import com.fitouts.tenant.api.TenantCreateRequest;
 import com.fitouts.tenant.api.TenantResponse;
+import com.fitouts.tenant.api.TenantUpdateRequest;
 import com.fitouts.tenant.domain.Tenant;
 import com.fitouts.tenant.domain.TenantRepository;
 import com.fitouts.tenant.domain.TenantStatus;
@@ -23,6 +25,7 @@ public class TenantService {
 
     private final TenantRepository repository;
     private final SubscriptionPlanService subscriptionPlanService;
+    private final AccountRepository accountRepository;
 
     @Transactional
     public TenantResponse create(TenantCreateRequest request) {
@@ -53,6 +56,24 @@ public class TenantService {
     }
 
     @Transactional
+    public TenantResponse update(UUID uuid, TenantUpdateRequest request) {
+        Tenant tenant = getTenant(uuid);
+        String domainSlug = normalizeSlug(request.getDomainSlug());
+        repository.findByDomainSlugIgnoreCase(domainSlug)
+                .filter(existingTenant -> !existingTenant.getUuid().equals(uuid))
+                .ifPresent(existingTenant -> {
+                    throw new ConflictException("Tenant domain slug already exists");
+                });
+
+        tenant.setCompanyName(request.getCompanyName().trim());
+        tenant.setLogo(normalizeNullable(request.getLogo()));
+        tenant.setDomainSlug(domainSlug);
+        tenant.setSubscriptionPlan(subscriptionPlanService.getAssignablePlan(request.getSubscriptionPlanUuid()));
+        tenant.setStatus(request.getStatus());
+        return toResponse(repository.save(tenant));
+    }
+
+    @Transactional
     public TenantResponse suspend(UUID uuid) {
         Tenant tenant = getTenant(uuid);
         if (tenant.getStatus() == TenantStatus.TERMINATED) {
@@ -67,6 +88,14 @@ public class TenantService {
         Tenant tenant = getTenant(uuid);
         tenant.setStatus(TenantStatus.TERMINATED);
         return toResponse(repository.save(tenant));
+    }
+
+    @Transactional
+    public void delete(UUID uuid) {
+        if (!accountRepository.findAllByTenantUuid(uuid).isEmpty()) {
+            throw new ConflictException("Tenant with accounts cannot be deleted");
+        }
+        repository.delete(getTenant(uuid));
     }
 
     @Transactional(readOnly = true)
