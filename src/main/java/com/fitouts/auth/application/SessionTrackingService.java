@@ -27,6 +27,7 @@ public class SessionTrackingService {
         OffsetDateTime now = OffsetDateTime.now();
         record.setSessionId(sessionId);
         record.setAccount(account);
+        record.setTenant(account.getTenant());
         record.setDevice(device);
         if (record.getCreatedAt() == null) {
             record.setCreatedAt(now);

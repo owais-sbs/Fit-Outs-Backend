@@ -53,6 +53,7 @@ public class DeviceService {
             rawToken = UUID.randomUUID().toString().replace("-", "");
             device = new RememberedDevice();
             device.setAccount(account);
+            device.setTenant(account.getTenant());
             device.setTokenHash(sha256(rawToken));
             device.setFirstSeenAt(now);
         }

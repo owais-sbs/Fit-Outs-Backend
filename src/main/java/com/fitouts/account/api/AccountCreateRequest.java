@@ -1,6 +1,7 @@
 package com.fitouts.account.api;
 
 import java.util.Set;
+import java.util.UUID;
 
 import com.fitouts.auth.domain.Role;
 
@@ -27,6 +28,8 @@ public class AccountCreateRequest {
     private String phone;
 
     private String companyName;
+
+    private UUID tenantUuid;
 
     @NotEmpty
     private Set<Role> roles;

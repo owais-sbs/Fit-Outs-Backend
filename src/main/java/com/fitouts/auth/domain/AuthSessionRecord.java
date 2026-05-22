@@ -3,6 +3,7 @@ package com.fitouts.auth.domain;
 import java.time.OffsetDateTime;
 
 import com.fitouts.account.domain.Account;
+import com.fitouts.tenant.domain.Tenant;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -27,6 +28,10 @@ public class AuthSessionRecord {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "account_id")
     private Account account;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "tenant_id")
+    private Tenant tenant;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "device_id")

@@ -1,6 +1,7 @@
 package com.fitouts.account.api;
 
 import java.util.Set;
+import java.util.UUID;
 
 import com.fitouts.auth.domain.Role;
 
@@ -16,6 +17,7 @@ public class AccountResponse {
     private String email;
     private String phone;
     private String companyName;
+    private UUID tenantUuid;
     private Boolean active;
     private Set<Role> roles;
 }

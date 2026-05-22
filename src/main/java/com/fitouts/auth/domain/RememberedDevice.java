@@ -3,6 +3,7 @@ package com.fitouts.auth.domain;
 import java.time.OffsetDateTime;
 
 import com.fitouts.account.domain.Account;
+import com.fitouts.tenant.domain.Tenant;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -29,6 +30,10 @@ public class RememberedDevice {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "account_id")
     private Account account;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "tenant_id")
+    private Tenant tenant;
 
     @Column(nullable = false, unique = true, length = 128)
     private String tokenHash;

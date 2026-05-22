@@ -36,6 +36,7 @@ public class OtpService {
         OtpChallenge challenge = new OtpChallenge();
         challenge.setChallengeId(UUID.randomUUID().toString());
         challenge.setAccount(account);
+        challenge.setTenant(account.getTenant());
         challenge.setDevice(device);
         challenge.setOtpHash(passwordEncoder.encode(otp));
         challenge.setCreatedAt(OffsetDateTime.now());
