@@ -2,7 +2,6 @@ package com.fitouts.auth.api;
 
 import java.util.List;
 
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
@@ -16,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.fitouts.auth.application.AuthService;
 import com.fitouts.auth.security.AuthPrincipal;
+import com.fitouts.shared.api.BaseController;
 import com.fitouts.shared.api.MessageResponse;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -27,61 +27,85 @@ import lombok.RequiredArgsConstructor;
 @RequestMapping("/api/auth")
 @Validated
 @RequiredArgsConstructor
-public class AuthController {
+public class AuthController extends BaseController {
 
     private final AuthService authService;
 
     @PostMapping("/login")
-    public ResponseEntity<LoginResponse> login(
+    public ResponseEntity<?> login(
             @Valid @RequestBody LoginRequest request,
             HttpServletRequest servletRequest,
             HttpServletResponse servletResponse) {
 
-        AuthService.LoginResult result = authService.login(request, servletRequest, servletResponse);
-        return ResponseEntity.status(result.pendingOtp() ? HttpStatus.ACCEPTED : HttpStatus.OK)
-                .body(result.response());
+        try {
+            AuthService.LoginResult result = authService.login(request, servletRequest, servletResponse);
+            return successResponse(result.response());
+        } catch (Exception exception) {
+            return failureResponse("Unable to login", exception.getMessage());
+        }
     }
 
     @PostMapping("/verify-otp")
-    public LoginResponse verifyOtp(
+    public ResponseEntity<?> verifyOtp(
             @Valid @RequestBody VerifyOtpRequest request,
             HttpServletRequest servletRequest,
             HttpServletResponse servletResponse) {
 
-        return authService.verifyOtp(request, servletRequest, servletResponse);
+        try {
+            return successResponse(authService.verifyOtp(request, servletRequest, servletResponse));
+        } catch (Exception exception) {
+            return failureResponse("Unable to verify OTP", exception.getMessage());
+        }
     }
 
     @PostMapping("/logout")
-    public MessageResponse logout(
+    public ResponseEntity<?> logout(
             HttpServletRequest servletRequest,
             HttpServletResponse servletResponse,
             @AuthenticationPrincipal AuthPrincipal principal) {
 
-        authService.logout(servletRequest, servletResponse, principal);
-        return new MessageResponse("Logged out successfully");
+        try {
+            authService.logout(servletRequest, servletResponse, principal);
+            return successResponse(new MessageResponse("Logged out successfully"));
+        } catch (Exception exception) {
+            return failureResponse("Unable to logout", exception.getMessage());
+        }
     }
 
     @GetMapping("/me")
-    public CurrentUserResponse me(@AuthenticationPrincipal AuthPrincipal principal) {
-        return authService.me(principal);
+    public ResponseEntity<?> me(@AuthenticationPrincipal AuthPrincipal principal) {
+        try {
+            return successResponse(authService.me(principal));
+        } catch (Exception exception) {
+            return failureResponse("Unable to fetch current user", exception.getMessage());
+        }
     }
 
     @GetMapping("/sessions")
-    public List<AuthSessionResponse> sessions(
+    public ResponseEntity<?> sessions(
             @AuthenticationPrincipal AuthPrincipal principal,
             HttpServletRequest servletRequest) {
 
-        return authService.getSessions(principal, servletRequest);
+        try {
+            List<AuthSessionResponse> sessions = authService.getSessions(principal, servletRequest);
+            return successResponse(sessions);
+        } catch (Exception exception) {
+            return failureResponse("Unable to fetch sessions", exception.getMessage());
+        }
     }
 
     @DeleteMapping("/sessions/{sessionId}")
-    public MessageResponse revokeSession(
+    public ResponseEntity<?> revokeSession(
             @AuthenticationPrincipal AuthPrincipal principal,
             @PathVariable String sessionId,
             HttpServletRequest servletRequest,
             HttpServletResponse servletResponse) {
 
-        authService.revokeSession(principal, sessionId, servletRequest, servletResponse);
-        return new MessageResponse("Session revoked successfully");
+        try {
+            authService.revokeSession(principal, sessionId, servletRequest, servletResponse);
+            return successResponse(new MessageResponse("Session revoked successfully"));
+        } catch (Exception exception) {
+            return failureResponse("Unable to revoke session", exception.getMessage());
+        }
     }
 }

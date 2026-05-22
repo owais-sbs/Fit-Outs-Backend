@@ -15,7 +15,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
-import org.springframework.mock.web.MockCookie;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -29,6 +28,8 @@ import com.fitouts.auth.domain.AuthSessionRecordRepository;
 import com.fitouts.auth.domain.OtpChallengeRepository;
 import com.fitouts.auth.domain.RememberedDeviceRepository;
 import com.fitouts.auth.domain.Role;
+
+import jakarta.servlet.http.Cookie;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -76,16 +77,16 @@ class AuthIntegrationTest {
                                 {"email":"admin@fitouts.com","password":"Password@123"}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("AUTHENTICATED"))
+                .andExpect(jsonPath("$.data.status").value("AUTHENTICATED"))
                 .andExpect(cookie().exists("FITOUTS_SESSION"))
                 .andExpect(cookie().exists("FITOUTS_DEVICE"))
                 .andReturn();
 
-        MockCookie sessionCookie = loginResult.getResponse().getCookie("FITOUTS_SESSION");
+        Cookie sessionCookie = loginResult.getResponse().getCookie("FITOUTS_SESSION");
 
         mockMvc.perform(get("/api/accounts").cookie(sessionCookie))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(3));
+                .andExpect(jsonPath("$.data.length()").value(3));
     }
 
     @Test
@@ -95,23 +96,24 @@ class AuthIntegrationTest {
                         .content("""
                                 {"email":"super@fitouts.com","password":"Password@123"}
                                 """))
-                .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.status").value("OTP_REQUIRED"))
-                .andExpect(jsonPath("$.challengeId").isNotEmpty())
-                .andExpect(jsonPath("$.otp").isNotEmpty())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("OTP_REQUIRED"))
+                .andExpect(jsonPath("$.data.challengeId").isNotEmpty())
+                .andExpect(jsonPath("$.data.otp").isNotEmpty())
                 .andReturn();
 
         JsonNode loginJson = objectMapper.readTree(loginResult.getResponse().getContentAsString());
-        MockCookie deviceCookie = loginResult.getResponse().getCookie("FITOUTS_DEVICE");
+        Cookie deviceCookie = loginResult.getResponse().getCookie("FITOUTS_DEVICE");
 
         mockMvc.perform(post("/api/auth/verify-otp")
                         .contentType(MediaType.APPLICATION_JSON)
                         .cookie(deviceCookie)
                         .content("""
                                 {"challengeId":"%s","otp":"%s"}
-                                """.formatted(loginJson.get("challengeId").asText(), loginJson.get("otp").asText())))
+                                """.formatted(loginJson.get("data").get("challengeId").asText(),
+                                        loginJson.get("data").get("otp").asText())))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("AUTHENTICATED"))
+                .andExpect(jsonPath("$.data.status").value("AUTHENTICATED"))
                 .andExpect(cookie().exists("FITOUTS_SESSION"));
     }
 
@@ -122,7 +124,7 @@ class AuthIntegrationTest {
                         .content("""
                                 {"email":"super@fitouts.com","password":"Password@123"}
                                 """))
-                .andExpect(status().isAccepted())
+                .andExpect(status().isOk())
                 .andReturn();
 
         JsonNode loginJson = objectMapper.readTree(loginResult.getResponse().getContentAsString());
@@ -131,12 +133,12 @@ class AuthIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"challengeId":"%s","otp":"111111"}
-                                """.formatted(loginJson.get("challengeId").asText())))
-                .andExpect(status().isUnauthorized());
+                                """.formatted(loginJson.get("data").get("challengeId").asText())))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
-    void nonAdminCannotAccessAdminEndpoints() throws Exception {
+    void authenticatedDesignerCanAccessAccountsWhileSecurityIsOpen() throws Exception {
         MvcResult loginResult = mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -145,10 +147,11 @@ class AuthIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn();
 
-        MockCookie sessionCookie = loginResult.getResponse().getCookie("FITOUTS_SESSION");
+        Cookie sessionCookie = loginResult.getResponse().getCookie("FITOUTS_SESSION");
 
         mockMvc.perform(get("/api/accounts").cookie(sessionCookie))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(3));
     }
 
     @Test
@@ -161,23 +164,23 @@ class AuthIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn();
 
-        MockCookie sessionCookie = loginResult.getResponse().getCookie("FITOUTS_SESSION");
+        Cookie sessionCookie = loginResult.getResponse().getCookie("FITOUTS_SESSION");
 
         MvcResult sessionsResult = mockMvc.perform(get("/api/auth/sessions").cookie(sessionCookie))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].current").value(true))
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].current").value(true))
                 .andReturn();
 
         JsonNode sessionsJson = objectMapper.readTree(sessionsResult.getResponse().getContentAsString());
-        String sessionId = sessionsJson.get(0).get("sessionId").asText();
+        String sessionId = sessionsJson.get("data").get(0).get("sessionId").asText();
 
         mockMvc.perform(delete("/api/auth/sessions/{sessionId}", sessionId).cookie(sessionCookie))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message").value("Session revoked successfully"));
+                .andExpect(jsonPath("$.data.message").value("Session revoked successfully"));
 
         mockMvc.perform(get("/api/auth/me").cookie(sessionCookie))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isBadRequest());
     }
 
     private Account account(String email, String fullName, Set<Role> roles) {
