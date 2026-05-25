@@ -1,10 +1,15 @@
 package com.fitouts.account.api;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
+import java.util.Set;
+import java.util.UUID;
 
-@Data
-@AllArgsConstructor
+import com.fitouts.auth.domain.Role;
+
+import lombok.Builder;
+import lombok.Getter;
+
+@Getter
+@Builder
 public class AccountResponse {
 
     private Long id;
@@ -12,4 +17,7 @@ public class AccountResponse {
     private String email;
     private String phone;
     private String companyName;
+    private UUID tenantUuid;
+    private Boolean active;
+    private Set<Role> roles;
 }

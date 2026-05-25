@@ -1,61 +1,77 @@
 package com.fitouts.account.api;
 
-import org.springframework.web.bind.annotation.*;
+import java.util.List;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import com.fitouts.account.application.AccountService;
+import com.fitouts.shared.api.BaseController;
+import com.fitouts.shared.api.MessageResponse;
 
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/accounts")
+@Validated
 @RequiredArgsConstructor
-public class AccountController {
+public class AccountController extends BaseController {
 
     private final AccountService service;
 
-    // Register
-    @PostMapping("/register")
-    public Object register(@RequestBody AccountRequest request) {
-
-        return service.register(request);
+    @PostMapping
+    public ResponseEntity<?> create(@Valid @RequestBody AccountCreateRequest request) {
+        try {
+            return successResponse("Account created successfully", service.create(request));
+        } catch (Exception exception) {
+            return failureResponse("Unable to create account", exception.getMessage());
+        }
     }
 
-    // Login
-    @PostMapping("/login")
-    public Object login(@RequestBody LoginRequest request) {
-
-        return service.login(request);
-    }
-
-    // Get All
     @GetMapping
-    public Object getAll() {
-
-        return service.getAll();
+    public ResponseEntity<?> getAll() {
+        try {
+            List<AccountResponse> accounts = service.getAll();
+            return successResponse(accounts);
+        } catch (Exception exception) {
+            return failureResponse("Unable to fetch accounts", exception.getMessage());
+        }
     }
 
-    // Get By Id
     @GetMapping("/{id}")
-    public Object getById(@PathVariable Long id) {
-
-        return service.getById(id);
+    public ResponseEntity<?> getById(@PathVariable Long id) {
+        try {
+            return successResponse(service.getById(id));
+        } catch (Exception exception) {
+            return failureResponse("Unable to fetch account", exception.getMessage());
+        }
     }
 
-    // Update
     @PutMapping("/{id}")
-    public Object update(
-            @PathVariable Long id,
-            @RequestBody AccountRequest request) {
-
-        return service.update(id, request);
+    public ResponseEntity<?> update(@PathVariable Long id, @Valid @RequestBody AccountUpdateRequest request) {
+        try {
+            return successResponse("Account updated successfully", service.update(id, request));
+        } catch (Exception exception) {
+            return failureResponse("Unable to update account", exception.getMessage());
+        }
     }
 
-    // Delete
     @DeleteMapping("/{id}")
-    public String delete(@PathVariable Long id) {
-
-        service.delete(id);
-
-        return "Account deleted successfully";
+    public ResponseEntity<?> delete(@PathVariable Long id) {
+        try {
+            service.delete(id);
+            return successResponse(new MessageResponse("Account deactivated successfully"));
+        } catch (Exception exception) {
+            return failureResponse("Unable to deactivate account", exception.getMessage());
+        }
     }
 }
