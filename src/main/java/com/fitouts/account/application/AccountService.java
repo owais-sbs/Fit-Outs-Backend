@@ -1,13 +1,21 @@
 package com.fitouts.account.application;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import com.fitouts.account.api.AccountRequest;
-import com.fitouts.account.api.LoginRequest;
+import com.fitouts.account.api.AccountCreateRequest;
+import com.fitouts.account.api.AccountResponse;
+import com.fitouts.account.api.AccountUpdateRequest;
 import com.fitouts.account.domain.Account;
 import com.fitouts.account.domain.AccountRepository;
+import com.fitouts.shared.error.ConflictException;
+import com.fitouts.shared.error.NotFoundException;
+import com.fitouts.tenant.application.TenantService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -16,69 +24,89 @@ import lombok.RequiredArgsConstructor;
 public class AccountService {
 
     private final AccountRepository repository;
+    private final PasswordEncoder passwordEncoder;
+    private final TenantService tenantService;
 
-    // Register
-    public Account register(AccountRequest request) {
-
-        repository.findByEmail(request.getEmail())
-                .ifPresent(x -> {
-                    throw new RuntimeException("Email already exists");
+    @Transactional
+    public AccountResponse create(AccountCreateRequest request) {
+        repository.findByEmail(request.getEmail().trim().toLowerCase())
+                .ifPresent(account -> {
+                    throw new ConflictException("Email already exists");
                 });
 
         Account account = new Account();
-
-        account.setFullName(request.getFullName());
-        account.setEmail(request.getEmail());
-        account.setPassword(request.getPassword());
+        account.setFullName(request.getFullName().trim());
+        account.setEmail(request.getEmail().trim().toLowerCase());
+        account.setPassword(passwordEncoder.encode(request.getPassword()));
         account.setPhone(request.getPhone());
         account.setCompanyName(request.getCompanyName());
-
-        return repository.save(account);
-    }
-
-    // Login
-    public Account login(LoginRequest request) {
-
-        Account account = repository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new RuntimeException("Invalid email"));
-
-        if (!account.getPassword().equals(request.getPassword())) {
-            throw new RuntimeException("Invalid password");
+        if (request.getTenantUuid() != null) {
+            account.setTenant(tenantService.getTenant(request.getTenantUuid()));
         }
+        account.setIsActive(true);
+        account.setRoles(new HashSet<>(request.getRoles()));
 
-        return account;
+        return toResponse(repository.save(account));
     }
 
-    // Get All
-    public List<Account> getAll() {
-        return repository.findAll();
+    @Transactional(readOnly = true)
+    public List<AccountResponse> getAll() {
+        return repository.findAll().stream()
+                .map(this::toResponse)
+                .toList();
     }
 
-    // Get By Id
-    public Account getById(Long id) {
-        return repository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Account not found"));
+    @Transactional(readOnly = true)
+    public AccountResponse getById(Long id) {
+        return toResponse(getAccount(id));
     }
 
-    // Update
-    public Account update(Long id, AccountRequest request) {
-
-        Account account = getById(id);
-
-        account.setFullName(request.getFullName());
+    @Transactional
+    public AccountResponse update(Long id, AccountUpdateRequest request) {
+        Account account = getAccount(id);
+        account.setFullName(request.getFullName().trim());
         account.setPhone(request.getPhone());
         account.setCompanyName(request.getCompanyName());
-
-        return repository.save(account);
+        account.setRoles(new HashSet<>(request.getRoles()));
+        if (request.getActive() != null) {
+            account.setIsActive(request.getActive());
+        }
+        return toResponse(repository.save(account));
     }
 
-    // Delete
+    @Transactional
     public void delete(Long id) {
-
-        Account account = getById(id);
-
+        Account account = getAccount(id);
         account.setIsActive(false);
-
         repository.save(account);
+    }
+
+    @Transactional(readOnly = true)
+    public Account getAccountByEmail(String email) {
+        return repository.findByEmail(email.trim().toLowerCase())
+                .orElseThrow(() -> new NotFoundException("Account not found"));
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<Account> findOptionalByEmail(String email) {
+        return repository.findByEmail(email.trim().toLowerCase());
+    }
+
+    private Account getAccount(Long id) {
+        return repository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Account not found"));
+    }
+
+    public AccountResponse toResponse(Account account) {
+        return AccountResponse.builder()
+                .id(account.getId())
+                .fullName(account.getFullName())
+                .email(account.getEmail())
+                .phone(account.getPhone())
+                .companyName(account.getCompanyName())
+                .tenantUuid(account.getTenant() != null ? account.getTenant().getUuid() : null)
+                .active(account.getIsActive())
+                .roles(account.getRoles())
+                .build();
     }
 }
