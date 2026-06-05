@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDateTime;
+import java.time.LocalDate;
+import java.math.BigDecimal;
 
 @Entity
 @Table(name = "leads")
@@ -27,6 +29,17 @@ public class Lead {
 
     @Column(name = "project_type")
     private String projectType;
+
+    private String company;
+
+    private BigDecimal budget;
+
+    private String priority;
+
+    private String location;
+
+    @Column(name = "expected_start_date")
+    private LocalDate expectedStartDate;
 
     @Column(name = "source_id")
     private Long sourceId;

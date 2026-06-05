@@ -3,6 +3,7 @@ package com.fitouts.account.application;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.security.SecureRandom;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -13,6 +14,9 @@ import com.fitouts.account.api.AccountResponse;
 import com.fitouts.account.api.AccountUpdateRequest;
 import com.fitouts.account.domain.Account;
 import com.fitouts.account.domain.AccountRepository;
+import com.fitouts.auth.domain.Role;
+import com.fitouts.lead.domain.Lead;
+import com.fitouts.shared.error.BadRequestException;
 import com.fitouts.shared.error.ConflictException;
 import com.fitouts.shared.error.NotFoundException;
 import com.fitouts.tenant.application.TenantService;
@@ -22,6 +26,11 @@ import lombok.RequiredArgsConstructor;
 @Service
 @RequiredArgsConstructor
 public class AccountService {
+
+    private static final String TEMP_PASSWORD_CHARS =
+            "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789@#$%";
+    private static final int TEMP_PASSWORD_LENGTH = 14;
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final AccountRepository repository;
     private final PasswordEncoder passwordEncoder;
@@ -92,6 +101,39 @@ public class AccountService {
         return repository.findByEmail(email.trim().toLowerCase());
     }
 
+    @Transactional
+    public ClientAccountConversionResult createOrUpdateClientAccountForLead(Lead lead) {
+        if (lead.getEmail() == null || lead.getEmail().isBlank()) {
+            throw new BadRequestException("Lead email is required to create client account");
+        }
+
+        String email = lead.getEmail().trim().toLowerCase();
+        Optional<Account> existingAccount = repository.findByEmail(email);
+        if (existingAccount.isPresent()) {
+            Account account = existingAccount.get();
+            account.setIsActive(true);
+            account.getRoles().add(Role.CLIENT);
+            return new ClientAccountConversionResult(
+                    false,
+                    repository.save(account).getId(),
+                    account.getEmail(),
+                    null);
+        }
+
+        String temporaryPassword = generateTemporaryPassword();
+        Account account = new Account();
+        account.setFullName(requiredValue(lead.getClientName(), "Client"));
+        account.setEmail(email);
+        account.setPassword(passwordEncoder.encode(temporaryPassword));
+        account.setPhone(trimNullable(lead.getPhone()));
+        account.setCompanyName(trimNullable(lead.getCompany()));
+        account.setIsActive(true);
+        account.setRoles(new HashSet<>(List.of(Role.CLIENT)));
+
+        Account saved = repository.save(account);
+        return new ClientAccountConversionResult(true, saved.getId(), saved.getEmail(), temporaryPassword);
+    }
+
     private Account getAccount(Long id) {
         return repository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Account not found"));
@@ -108,5 +150,22 @@ public class AccountService {
                 .active(account.getIsActive())
                 .roles(account.getRoles())
                 .build();
+    }
+
+    private String generateTemporaryPassword() {
+        StringBuilder password = new StringBuilder(TEMP_PASSWORD_LENGTH);
+        for (int index = 0; index < TEMP_PASSWORD_LENGTH; index++) {
+            password.append(TEMP_PASSWORD_CHARS.charAt(SECURE_RANDOM.nextInt(TEMP_PASSWORD_CHARS.length())));
+        }
+        return password.toString();
+    }
+
+    private String requiredValue(String value, String fallback) {
+        String trimmed = trimNullable(value);
+        return trimmed == null ? fallback : trimmed;
+    }
+
+    private String trimNullable(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 }

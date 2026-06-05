@@ -20,6 +20,10 @@ public class SiteVisitReportResponse {
     private Long submittedBy;
     private OffsetDateTime submittedAt;
     private List<SiteVisitReportItemResponse> items;
+    private Boolean clientAccountCreated;
+    private Long clientAccountId;
+    private String clientEmail;
+    private String temporaryPassword;
 
     public void setUuid(UUID uuid) {
         this.uuid = uuid;
