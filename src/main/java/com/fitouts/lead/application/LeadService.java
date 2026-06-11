@@ -1,6 +1,8 @@
 package com.fitouts.lead.application;
 
+import com.fitouts.company.application.CompanyService;
 import com.fitouts.lead.domain.*;
+import com.fitouts.shared.context.CompanyContext;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 
@@ -14,11 +16,15 @@ public class LeadService {
 
     private final LeadStatusHistoryRepository historyRepository;
 
+    private final CompanyService companyService;
+
     public LeadService(LeadRepository leadRepository,
-                       LeadStatusHistoryRepository historyRepository) {
+                       LeadStatusHistoryRepository historyRepository,
+                       CompanyService companyService) {
 
         this.leadRepository = leadRepository;
         this.historyRepository = historyRepository;
+        this.companyService = companyService;
     }
 
     // CREATE LEAD
@@ -39,6 +45,12 @@ public class LeadService {
         request.setUpdatedAt(LocalDateTime.now());
 
         request.setLastActivityDate(LocalDateTime.now());
+
+        // Set company from context
+        UUID companyId = CompanyContext.get();
+        if (companyId != null) {
+            request.setCompanyEntity(companyService.getCompany(companyId));
+        }
 
         Lead saved = leadRepository.save(request);
 
@@ -104,7 +116,7 @@ public class LeadService {
         return updated;
     }
 
-    // FILTERED PAGINATION
+    // FILTERED PAGINATION — scoped to current company
     public Page<Lead> getAll(LeadFilterDTO filter,
                              int page,
                              int size) {
@@ -114,6 +126,12 @@ public class LeadService {
                 size,
                 Sort.by("createdAt").descending()
         );
+
+        if (filter == null) filter = new LeadFilterDTO();
+        UUID companyId = CompanyContext.get();
+        if (companyId != null) {
+            filter.setCompanyUuid(companyId);
+        }
 
         return leadRepository.findAll(
                 LeadSpecification.filterLeads(filter),
@@ -149,5 +167,4 @@ public class LeadService {
                 .substring(0, 8)
                 .toUpperCase();
     }
-
 }

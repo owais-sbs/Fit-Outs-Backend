@@ -12,5 +12,5 @@ public interface RememberedDeviceRepository extends JpaRepository<RememberedDevi
 
     List<RememberedDevice> findByAccountId(Long accountId);
 
-    List<RememberedDevice> findAllByTenantUuid(UUID tenantUuid);
+    List<RememberedDevice> findAllByCompanyUuid(UUID companyUuid);
 }

@@ -1,8 +1,8 @@
-package com.fitouts.tenant.api;
+package com.fitouts.company.api;
 
 import java.util.UUID;
 
-import com.fitouts.tenant.domain.TenantStatus;
+import com.fitouts.company.domain.CompanyStatus;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
@@ -14,7 +14,7 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class TenantCreateRequest {
+public class CompanyCreateRequest {
 
     @NotBlank
     private String companyName;
@@ -24,11 +24,11 @@ public class TenantCreateRequest {
     @NotBlank
     @Size(max = 100)
     @Pattern(regexp = "^[a-z0-9]+(?:-[a-z0-9]+)*$", message = "Domain slug must use lowercase letters, numbers, and hyphens")
-    @Schema(example = "string", description = "Lowercase tenant slug used in tenant URLs or domains")
+    @Schema(example = "my-company", description = "Lowercase company slug used in company URLs or domains")
     private String domainSlug;
 
     @NotNull
     private UUID subscriptionPlanUuid;
 
-    private TenantStatus status;
+    private CompanyStatus status;
 }

@@ -9,4 +9,5 @@ public interface LeadStatusHistoryRepository
 
     List<LeadStatusHistory> findByLeadIdOrderByCreatedAtDesc(Long leadId);
 
+    List<LeadStatusHistory> findByLeadIdAndCompanyIdOrderByCreatedAtDesc(Long leadId, Long companyId);
 }

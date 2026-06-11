@@ -3,7 +3,7 @@ package com.fitouts.auth.domain;
 import java.time.OffsetDateTime;
 
 import com.fitouts.account.domain.Account;
-import com.fitouts.tenant.domain.Tenant;
+import com.fitouts.company.domain.Company;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -35,8 +35,8 @@ public class OtpChallenge {
     private Account account;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "tenant_id")
-    private Tenant tenant;
+    @JoinColumn(name = "company_id")
+    private Company company;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "device_id")

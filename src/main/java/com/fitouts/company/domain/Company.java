@@ -1,5 +1,6 @@
-package com.fitouts.tenant.domain;
+package com.fitouts.company.domain;
 
+import java.io.Serializable;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -21,10 +22,10 @@ import lombok.Getter;
 import lombok.Setter;
 
 @Entity
-@Table(name = "tenants")
+@Table(name = "companies")
 @Getter
 @Setter
-public class Tenant {
+public class Company implements Serializable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -35,7 +36,7 @@ public class Tenant {
 
     private String logo;
 
-    @Column(nullable = false, unique = true, length = 100)
+    @Column(nullable = true, unique = true, length = 100)
     private String domainSlug;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -44,7 +45,7 @@ public class Tenant {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private TenantStatus status = TenantStatus.TRIAL;
+    private CompanyStatus status = CompanyStatus.TRIAL;
 
     @Column(nullable = false, updatable = false)
     private OffsetDateTime createdAt;
