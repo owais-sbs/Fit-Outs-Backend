@@ -29,7 +29,7 @@ public class AccountCreateRequest {
 
     private String companyName;
 
-    private UUID tenantUuid;
+    private UUID companyUuid;
 
     @NotEmpty
     private Set<Role> roles;

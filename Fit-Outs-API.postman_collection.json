@@ -1,0 +1,737 @@
+{
+  "info": {
+    "name": "Fit-Outs Backend API",
+    "_postman_id": "fitouts-backend-api-collection",
+    "description": "Complete API collection for the Fit-Outs Backend. Includes Auth, Subscription Plans, Companies, Accounts, Leads, Lead Sources, Lead Status History, Checklist Templates, and Site Visits.\n\n## Flow\n1. Start with Auth > Login → verify-otp → me → sessions\n2. Create Subscription Plan → Create Company (references plan UUID)\n3. Create Account (references company UUID)\n4. Create Lead Source → Create Leads → Update Lead Status\n5. Create Checklist Template → Create Site Visit → Add Location Details → Submit Report",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "sessionId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var res = pm.response.json();",
+                  "if (res.isSuccess && res.data && res.data.challengeId) {",
+                  "  pm.collectionVariables.set('challengeId', res.data.challengeId);",
+                  "  if (res.data.otp) pm.collectionVariables.set('otp', res.data.otp);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Verify OTP",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var res = pm.response.json();",
+                  "if (res.isSuccess) {",
+                  "  var cookies = pm.response.headers.filter(h => h.key.toLowerCase() === 'set-cookie');",
+                  "  cookies.forEach(c => {",
+                  "    if (c.value.startsWith('FITOUTS_SESSION')) {",
+                  "      pm.collectionVariables.set('sessionId', c.value.split('=')[1].split(';')[0]);",
+                  "    }",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"challengeId\": \"{{challengeId}}\",\n  \"otp\": \"{{otp}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/verify-otp",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "verify-otp"]
+            }
+          }
+        },
+        {
+          "name": "Get Current User (/me)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "me"]
+            }
+          }
+        },
+        {
+          "name": "Get Active Sessions",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/sessions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "sessions"]
+            }
+          }
+        },
+        {
+          "name": "Revoke Session",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/sessions/{{sessionId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "sessions", "{{sessionId}}"]
+            }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "logout"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Subscription Plans",
+      "item": [
+        {
+          "name": "Create Subscription Plan",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var res = pm.response.json();",
+                  "if (res.isSuccess && res.data) {",
+                  "  pm.collectionVariables.set('planUuid', res.data.uuid);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planName\": \"Starter Plan\",\n  \"maxUsers\": 5,\n  \"modulesIncluded\": [\"leads\", \"checklist\", \"site-visits\"],\n  \"priceMonthly\": 99.99,\n  \"priceAnnual\": 999.99,\n  \"active\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/subscription-plans",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subscription-plans"]
+            }
+          }
+        },
+        {
+          "name": "Get All Subscription Plans",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/subscription-plans",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subscription-plans"]
+            }
+          }
+        },
+        {
+          "name": "Get Subscription Plan by UUID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/subscription-plans/{{planUuid}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subscription-plans", "{{planUuid}}"]
+            }
+          }
+        },
+        {
+          "name": "Update Subscription Plan",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planName\": \"Starter Plan Updated\",\n  \"maxUsers\": 10,\n  \"modulesIncluded\": [\"leads\", \"checklist\", \"site-visits\", \"accounts\"],\n  \"priceMonthly\": 149.99,\n  \"priceAnnual\": 1499.99,\n  \"active\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/subscription-plans/{{planUuid}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subscription-plans", "{{planUuid}}"]
+            }
+          }
+        },
+        {
+          "name": "Deactivate Subscription Plan",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/subscription-plans/{{planUuid}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subscription-plans", "{{planUuid}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Companies",
+      "item": [
+        {
+          "name": "Create Company",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var res = pm.response.json();",
+                  "if (res.isSuccess && res.data) {",
+                  "  pm.collectionVariables.set('companyUuid', res.data.uuid);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"companyName\": \"Acme Interiors\",\n  \"logo\": \"https://example.com/logo.png\",\n  \"domainSlug\": \"acme-interiors\",\n  \"subscriptionPlanUuid\": \"{{planUuid}}\",\n  \"status\": \"ACTIVE\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/companies/AddCompany",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "companies", "AddCompany"]
+            }
+          }
+        },
+        {
+          "name": "Get All Companies",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/companies/GetAllCompanies",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "companies", "GetAllCompanies"]
+            }
+          }
+        },
+        {
+          "name": "Get Company by UUID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/companies/GetCompanyByUuid/{{companyUuid}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "companies", "GetCompanyByUuid", "{{companyUuid}}"]
+            }
+          }
+        },
+        {
+          "name": "Update Company",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"companyName\": \"Acme Interiors Pvt Ltd\",\n  \"logo\": \"https://example.com/logo-v2.png\",\n  \"domainSlug\": \"acme-interiors\",\n  \"subscriptionPlanUuid\": \"{{planUuid}}\",\n  \"status\": \"ACTIVE\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/companies/UpdateCompany/{{companyUuid}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "companies", "UpdateCompany", "{{companyUuid}}"]
+            }
+          }
+        },
+        {
+          "name": "Suspend Company",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/companies/SuspendCompany/{{companyUuid}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "companies", "SuspendCompany", "{{companyUuid}}"]
+            }
+          }
+        },
+        {
+          "name": "Terminate Company",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/companies/TerminateCompany/{{companyUuid}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "companies", "TerminateCompany", "{{companyUuid}}"]
+            }
+          }
+        },
+        {
+          "name": "Delete Company",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/companies/DeleteCompany/{{companyUuid}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "companies", "DeleteCompany", "{{companyUuid}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Accounts",
+      "item": [
+        {
+          "name": "Create Account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var res = pm.response.json();",
+                  "if (res.isSuccess && res.data) {",
+                  "  pm.collectionVariables.set('accountId', res.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"John Doe\",\n  \"email\": \"john.doe@example.com\",\n  \"password\": \"password123\",\n  \"phone\": \"+1234567890\",\n  \"companyName\": \"Acme Interiors\",\n  \"roles\": [\"ADMIN\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/accounts",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "accounts"]
+            }
+          }
+        },
+        {
+          "name": "Get All Accounts",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/accounts",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "accounts"]
+            }
+          }
+        },
+        {
+          "name": "Get Account by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/accounts/{{accountId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "accounts", "{{accountId}}"]
+            }
+          }
+        },
+        {
+          "name": "Update Account",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"John Doe Updated\",\n  \"phone\": \"+0987654321\",\n  \"companyName\": \"Acme Interiors\",\n  \"roles\": [\"ADMIN\", \"PROJECT_MANAGER\"],\n  \"active\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/accounts/{{accountId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "accounts", "{{accountId}}"]
+            }
+          }
+        },
+        {
+          "name": "Delete Account",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/accounts/{{accountId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "accounts", "{{accountId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Lead Sources",
+      "item": [
+        {
+          "name": "Create Lead Source",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var res = pm.response.json();",
+                  "if (res.isSuccess && res.data) {",
+                  "  pm.collectionVariables.set('leadSourceId', res.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceName\": \"Website Inquiry\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/lead-sources",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "lead-sources"]
+            }
+          }
+        },
+        {
+          "name": "Get All Lead Sources",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/lead-sources",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "lead-sources"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Leads",
+      "item": [
+        {
+          "name": "Create Lead",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var res = pm.response.json();",
+                  "if (res.isSuccess && res.data) {",
+                  "  pm.collectionVariables.set('leadId', res.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"referenceNo\": \"REF-001\",\n  \"clientName\": \"Jane Smith\",\n  \"phone\": \"+1234567890\",\n  \"email\": \"jane@example.com\",\n  \"projectType\": \"Office Fit-Out\",\n  \"company\": \"Acme Interiors\",\n  \"budget\": 50000.00,\n  \"priority\": \"HIGH\",\n  \"location\": \"Mumbai, India\",\n  \"expectedStartDate\": \"2026-07-01\",\n  \"sourceId\": {{leadSourceId}},\n  \"assignedTo\": 1,\n  \"notes\": \"Client interested in complete office renovation\",\n  \"status\": \"NEW\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/leads",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "leads"]
+            }
+          }
+        },
+        {
+          "name": "Filter Leads (with Pagination)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"NEW\",\n  \"sourceId\": {{leadSourceId}},\n  \"assignedTo\": 1,\n  \"startDate\": \"2026-01-01\",\n  \"endDate\": \"2026-12-31\",\n  \"search\": \"Jane\",\n  \"companyUuid\": \"{{companyUuid}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/leads/filter?page=0&size=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "leads", "filter"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "10" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Lead by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/leads/{{leadId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "leads", "{{leadId}}"]
+            }
+          }
+        },
+        {
+          "name": "Update Lead Status",
+          "request": {
+            "method": "PUT",
+            "url": {
+              "raw": "{{baseUrl}}/api/leads/{{leadId}}/status?status=CONTACTED&updatedBy=1&notes=Called+client&lostReason=",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "leads", "{{leadId}}", "status"],
+              "query": [
+                { "key": "status", "value": "CONTACTED" },
+                { "key": "updatedBy", "value": "1" },
+                { "key": "notes", "value": "Called client" },
+                { "key": "lostReason", "value": "", "description": "Required only when status is LOST" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Lead",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/leads/{{leadId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "leads", "{{leadId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Lead Status History",
+      "item": [
+        {
+          "name": "Get Status History by Lead ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/lead-status-history/{{leadId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "lead-status-history", "{{leadId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Checklist Templates",
+      "item": [
+        {
+          "name": "Create Checklist Template",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var res = pm.response.json();",
+                  "if (res.isSuccess && res.data) {",
+                  "  pm.collectionVariables.set('checklistUuid', res.data.uuid);",
+                  "  if (res.data.items && res.data.items.length > 0) {",
+                  "    pm.collectionVariables.set('templateItemUuid', res.data.items[0].uuid);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Office Fit-Out Checklist\",\n  \"description\": \"Standard checklist for office fit-out site visits\",\n  \"createdBy\": 1,\n  \"items\": [\n    {\n      \"sectionName\": \"Reception Area\",\n      \"question\": \"Is the reception area layout suitable?\",\n      \"type\": \"YES_NO\",\n      \"isRequired\": true,\n      \"displayOrder\": 0\n    },\n    {\n      \"sectionName\": \"Reception Area\",\n      \"question\": \"Describe the current ceiling condition\",\n      \"type\": \"TEXT\",\n      \"isRequired\": true,\n      \"displayOrder\": 1\n    },\n    {\n      \"sectionName\": \"Workstations\",\n      \"question\": \"Upload photos of work area\",\n      \"type\": \"PHOTO\",\n      \"isRequired\": false,\n      \"displayOrder\": 2\n    },\n    {\n      \"sectionName\": \"Workstations\",\n      \"question\": \"Select flooring type\",\n      \"type\": \"DROPDOWN\",\n      \"isRequired\": true,\n      \"displayOrder\": 3\n    },\n    {\n      \"sectionName\": \"Workstations\",\n      \"question\": \"Power outlets available\",\n      \"type\": \"CHECKBOX\",\n      \"isRequired\": true,\n      \"displayOrder\": 4\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/checklist-templates/CreateCheckList",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "checklist-templates", "CreateCheckList"]
+            }
+          }
+        },
+        {
+          "name": "Get All Checklist Templates",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/checklist-templates/GetAllCheckList",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "checklist-templates", "GetAllCheckList"]
+            }
+          }
+        },
+        {
+          "name": "Get Checklist Template by UUID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/checklist-templates/GetCheckListByUuid/{{checklistUuid}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "checklist-templates", "GetCheckListByUuid", "{{checklistUuid}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Site Visits",
+      "item": [
+        {
+          "name": "Create Site Visit",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var res = pm.response.json();",
+                  "if (res.isSuccess && res.data) {",
+                  "  pm.collectionVariables.set('siteVisitUuid', res.data.uuid);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"leadId\": {{leadId}},\n  \"assignedTo\": 1,\n  \"scheduledDate\": \"2026-07-15\",\n  \"scheduledTime\": \"10:30:00\",\n  \"latitude\": 19.0760,\n  \"longitude\": 72.8777,\n  \"checklistTemplateUuid\": \"{{checklistUuid}}\",\n  \"notes\": \"Initial site visit for office fit-out\",\n  \"createdBy\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/site-visits/CreateSite-Visits",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "site-visits", "CreateSite-Visits"]
+            }
+          }
+        },
+        {
+          "name": "Get All Site Visits",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/site-visits/GetAllSite-Visits",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "site-visits", "GetAllSite-Visits"]
+            }
+          }
+        },
+        {
+          "name": "Get Site Visit by UUID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/site-visits/GetSiteVisitByUuid/{{siteVisitUuid}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "site-visits", "GetSiteVisitByUuid", "{{siteVisitUuid}}"]
+            }
+          }
+        },
+        {
+          "name": "Add Location Details",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"addressLine1\": \"123 Business Park\",\n  \"addressLine2\": \"Tower B, 5th Floor\",\n  \"city\": \"Mumbai\",\n  \"state\": \"Maharashtra\",\n  \"country\": \"India\",\n  \"pincode\": \"400001\",\n  \"area\": \"Andheri East\",\n  \"buildingName\": \"Business Park Tower\",\n  \"floor\": \"5\",\n  \"unitNumber\": \"502\",\n  \"landmark\": \"Near Metro Station\",\n  \"accessNotes\": \"Use visitor entrance on east side\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/site-visits/Site/{{siteVisitUuid}}/location-details",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "site-visits", "Site", "{{siteVisitUuid}}", "location-details"]
+            }
+          }
+        },
+        {
+          "name": "Submit Site Visit Report",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"outcome\": \"Completed\",\n  \"notes\": \"Site visit went well. Client approved the initial layout.\",\n  \"submittedBy\": 1,\n  \"items\": [\n    {\n      \"templateItemUuid\": \"{{templateItemUuid}}\",\n      \"response\": \"Yes\",\n      \"remarks\": \"Reception area layout is suitable\",\n      \"photoUrls\": []\n    },\n    {\n      \"templateItemUuid\": \"{{templateItemUuid}}\",\n      \"response\": \"Ceiling needs minor repairs\",\n      \"remarks\": \"Two tiles cracked near the window\",\n      \"photoUrls\": [\"https://example.com/photo1.jpg\"]\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/site-visits/EmployeeSiteVisitByUuid/{{siteVisitUuid}}/report",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "site-visits", "EmployeeSiteVisitByUuid", "{{siteVisitUuid}}", "report"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

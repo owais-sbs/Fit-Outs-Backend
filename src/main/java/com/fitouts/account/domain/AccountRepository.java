@@ -10,9 +10,9 @@ public interface AccountRepository extends JpaRepository<Account, Long> {
 
     Optional<Account> findByEmail(String email);
 
-    Optional<Account> findByEmailAndTenantUuid(String email, UUID tenantUuid);
+    Optional<Account> findByEmailAndCompanyUuid(String email, UUID companyUuid);
 
-    Optional<Account> findByIdAndTenantUuid(Long id, UUID tenantUuid);
+    Optional<Account> findByIdAndCompanyUuid(Long id, UUID companyUuid);
 
-    List<Account> findAllByTenantUuid(UUID tenantUuid);
+    List<Account> findAllByCompanyUuid(UUID companyUuid);
 }

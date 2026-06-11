@@ -188,10 +188,11 @@ public class AuthService {
     private CurrentUserResponse toCurrentUser(Account account) {
         return CurrentUserResponse.builder()
                 .id(account.getId())
+                .companyId(account.getCompany() != null ? account.getCompany().getUuid() : null)
+                .companyName(account.getCompany() != null ? account.getCompany().getCompanyName() : null)
                 .fullName(account.getFullName())
                 .email(account.getEmail())
                 .phone(account.getPhone())
-                .companyName(account.getCompanyName())
                 .roles(account.getRoles())
                 .build();
     }

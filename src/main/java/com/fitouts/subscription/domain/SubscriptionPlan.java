@@ -1,5 +1,6 @@
 package com.fitouts.subscription.domain;
 
+import java.io.Serializable;
 import java.math.BigDecimal;
 import java.util.HashSet;
 import java.util.Set;
@@ -22,7 +23,7 @@ import lombok.Setter;
 @Table(name = "subscription_plans")
 @Getter
 @Setter
-public class SubscriptionPlan {
+public class SubscriptionPlan implements Serializable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
