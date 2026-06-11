@@ -17,7 +17,7 @@ public class AccountResponse {
     private String email;
     private String phone;
     private String companyName;
-    private UUID tenantUuid;
+    private UUID companyUuid;
     private Boolean active;
     private Set<Role> roles;
 }

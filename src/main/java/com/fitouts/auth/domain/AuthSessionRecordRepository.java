@@ -9,5 +9,5 @@ public interface AuthSessionRecordRepository extends JpaRepository<AuthSessionRe
 
     List<AuthSessionRecord> findByAccountId(Long accountId);
 
-    List<AuthSessionRecord> findAllByTenantUuid(UUID tenantUuid);
+    List<AuthSessionRecord> findAllByCompanyUuid(UUID companyUuid);
 }

@@ -1,10 +1,11 @@
 package com.fitouts.account.domain;
 
+import java.io.Serializable;
 import java.util.HashSet;
 import java.util.Set;
 
 import com.fitouts.auth.domain.Role;
-import com.fitouts.tenant.domain.Tenant;
+import com.fitouts.company.domain.Company;
 
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
@@ -26,7 +27,7 @@ import lombok.Setter;
 @Table(name = "accounts")
 @Getter
 @Setter
-public class Account {
+public class Account implements Serializable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -49,8 +50,8 @@ public class Account {
     private Boolean isActive = true;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "tenant_id")
-    private Tenant tenant;
+    @JoinColumn(name = "company_id")
+    private Company company;
 
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "account_roles", joinColumns = @JoinColumn(name = "account_id"))

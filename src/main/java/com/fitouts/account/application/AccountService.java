@@ -15,11 +15,11 @@ import com.fitouts.account.api.AccountUpdateRequest;
 import com.fitouts.account.domain.Account;
 import com.fitouts.account.domain.AccountRepository;
 import com.fitouts.auth.domain.Role;
+import com.fitouts.company.application.CompanyService;
 import com.fitouts.lead.domain.Lead;
 import com.fitouts.shared.error.BadRequestException;
 import com.fitouts.shared.error.ConflictException;
 import com.fitouts.shared.error.NotFoundException;
-import com.fitouts.tenant.application.TenantService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -34,7 +34,7 @@ public class AccountService {
 
     private final AccountRepository repository;
     private final PasswordEncoder passwordEncoder;
-    private final TenantService tenantService;
+    private final CompanyService companyService;
 
     @Transactional
     public AccountResponse create(AccountCreateRequest request) {
@@ -49,8 +49,8 @@ public class AccountService {
         account.setPassword(passwordEncoder.encode(request.getPassword()));
         account.setPhone(request.getPhone());
         account.setCompanyName(request.getCompanyName());
-        if (request.getTenantUuid() != null) {
-            account.setTenant(tenantService.getTenant(request.getTenantUuid()));
+        if (request.getCompanyUuid() != null) {
+            account.setCompany(companyService.getCompany(request.getCompanyUuid()));
         }
         account.setIsActive(true);
         account.setRoles(new HashSet<>(request.getRoles()));
@@ -146,7 +146,7 @@ public class AccountService {
                 .email(account.getEmail())
                 .phone(account.getPhone())
                 .companyName(account.getCompanyName())
-                .tenantUuid(account.getTenant() != null ? account.getTenant().getUuid() : null)
+                .companyUuid(account.getCompany() != null ? account.getCompany().getUuid() : null)
                 .active(account.getIsActive())
                 .roles(account.getRoles())
                 .build();

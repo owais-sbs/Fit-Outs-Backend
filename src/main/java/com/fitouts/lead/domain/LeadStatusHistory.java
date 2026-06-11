@@ -18,6 +18,9 @@ public class LeadStatusHistory {
 
     private Long leadId;
 
+    @Column(name = "company_id")
+    private Long companyId;
+
     @Enumerated(EnumType.STRING)
     private LeadStatus status;
 
@@ -29,5 +32,4 @@ public class LeadStatusHistory {
     private String lostReason;
 
     private LocalDateTime createdAt;
-
 }

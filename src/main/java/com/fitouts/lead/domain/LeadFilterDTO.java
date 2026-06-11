@@ -3,6 +3,7 @@ package com.fitouts.lead.domain;
 import lombok.Data;
 
 import java.time.LocalDate;
+import java.util.UUID;
 
 @Data
 public class LeadFilterDTO {
@@ -19,4 +20,5 @@ public class LeadFilterDTO {
 
     private String search;
 
+    private UUID companyUuid;
 }

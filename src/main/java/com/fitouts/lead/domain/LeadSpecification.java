@@ -13,6 +13,11 @@ public class LeadSpecification {
             predicate = cb.and(predicate,
                     cb.equal(root.get("isdeleted"), false));
 
+            if (filter.getCompanyUuid() != null) {
+                predicate = cb.and(predicate,
+                        cb.equal(root.get("companyEntity").get("uuid"), filter.getCompanyUuid()));
+            }
+
             if (filter.getStatus() != null) {
                 predicate = cb.and(predicate,
                         cb.equal(root.get("status"), filter.getStatus()));
