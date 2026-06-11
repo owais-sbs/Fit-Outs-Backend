@@ -3,6 +3,8 @@ package com.fitouts.lead.domain;
 import jakarta.persistence.*;
 import lombok.*;
 
+import com.fitouts.company.domain.Company;
+
 @Entity
 @Table(name = "lead_sources")
 @Data
@@ -20,4 +22,7 @@ public class LeadSource {
 
     private boolean isdeleted;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "company_id")
+    private Company company;
 }

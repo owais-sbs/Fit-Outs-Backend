@@ -9,5 +9,5 @@ public interface OtpChallengeRepository extends JpaRepository<OtpChallenge, Long
 
     Optional<OtpChallenge> findByChallengeId(String challengeId);
 
-    Optional<OtpChallenge> findByChallengeIdAndTenantUuid(String challengeId, UUID tenantUuid);
+    Optional<OtpChallenge> findByChallengeIdAndCompanyUuid(String challengeId, UUID companyUuid);
 }

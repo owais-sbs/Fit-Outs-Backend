@@ -1,9 +1,10 @@
 package com.fitouts.auth.domain;
 
+import java.io.Serializable;
 import java.time.OffsetDateTime;
 
 import com.fitouts.account.domain.Account;
-import com.fitouts.tenant.domain.Tenant;
+import com.fitouts.company.domain.Company;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -21,7 +22,7 @@ import lombok.Setter;
 @Table(name = "remembered_devices")
 @Getter
 @Setter
-public class RememberedDevice {
+public class RememberedDevice implements Serializable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -32,30 +33,30 @@ public class RememberedDevice {
     private Account account;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "tenant_id")
-    private Tenant tenant;
+    @JoinColumn(name = "company_id")
+    private Company company;
 
-    @Column(nullable = false, unique = true, length = 128)
+    @Column(nullable = true, unique = true, length = 128)
     private String tokenHash;
 
-    @Column(nullable = false, length = 255)
+    @Column(nullable = true, length = 255)
     private String label;
 
-    @Column(nullable = false, length = 1024)
+    @Column(nullable = true, length = 1024)
     private String userAgent;
 
     @Column(length = 128)
     private String ipHash;
 
-    @Column(nullable = false)
+    @Column(nullable = true)
     private OffsetDateTime firstSeenAt;
 
-    @Column(nullable = false)
+    @Column(nullable = true)
     private OffsetDateTime lastSeenAt;
 
-    @Column(nullable = false)
+    @Column(nullable = true)
     private OffsetDateTime trustedUntil;
 
-    @Column(nullable = false)
+    @Column(nullable = true)
     private Boolean revoked = false;
 }

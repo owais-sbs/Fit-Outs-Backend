@@ -3,6 +3,7 @@ package com.fitouts.auth.security;
 import java.io.Serializable;
 import java.util.Collection;
 import java.util.Set;
+import java.util.UUID;
 
 import org.springframework.security.core.AuthenticatedPrincipal;
 import org.springframework.security.core.GrantedAuthority;
@@ -19,6 +20,8 @@ import lombok.Getter;
 public class AuthPrincipal implements AuthenticatedPrincipal, Serializable {
 
     private Long accountId;
+    private UUID companyId;
+    private String companyName;
     private String email;
     private String fullName;
     private Set<Role> roles;
@@ -26,6 +29,8 @@ public class AuthPrincipal implements AuthenticatedPrincipal, Serializable {
     public static AuthPrincipal from(Account account) {
         return AuthPrincipal.builder()
                 .accountId(account.getId())
+                .companyId(account.getCompany() != null ? account.getCompany().getUuid() : null)
+                .companyName(account.getCompany() != null ? account.getCompany().getCompanyName() : null)
                 .email(account.getEmail())
                 .fullName(account.getFullName())
                 .roles(account.getRoles())

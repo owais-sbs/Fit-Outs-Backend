@@ -72,7 +72,7 @@ public class SubscriptionPlanService {
     public SubscriptionPlan getAssignablePlan(UUID uuid) {
         SubscriptionPlan plan = getPlan(uuid);
         if (!Boolean.TRUE.equals(plan.getIsActive())) {
-            throw new ConflictException("Inactive subscription plans cannot be assigned to new tenants");
+            throw new ConflictException("Inactive subscription plans cannot be assigned to new companies");
         }
         return plan;
     }

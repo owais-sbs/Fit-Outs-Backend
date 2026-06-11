@@ -1,6 +1,7 @@
 package com.fitouts.auth.api;
 
 import java.util.Set;
+import java.util.UUID;
 
 import com.fitouts.auth.domain.Role;
 
@@ -12,9 +13,10 @@ import lombok.Getter;
 public class CurrentUserResponse {
 
     private Long id;
+    private UUID companyId;
+    private String companyName;
     private String fullName;
     private String email;
     private String phone;
-    private String companyName;
     private Set<Role> roles;
 }

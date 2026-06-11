@@ -11,6 +11,8 @@ import com.fitouts.checklist.dto.ChecklistTemplateRequest;
 import com.fitouts.checklist.dto.ChecklistTemplateResponse;
 import com.fitouts.checklist.mapper.ChecklistTemplateMapper;
 import com.fitouts.checklist.repository.ChecklistTemplateRepository;
+import com.fitouts.company.application.CompanyService;
+import com.fitouts.shared.context.CompanyContext;
 import com.fitouts.shared.error.NotFoundException;
 
 import lombok.RequiredArgsConstructor;
@@ -21,14 +23,28 @@ public class ChecklistTemplateService {
 
     private final ChecklistTemplateRepository repository;
     private final ChecklistTemplateMapper mapper;
+    private final CompanyService companyService;
 
     @Transactional
     public ChecklistTemplateResponse create(ChecklistTemplateRequest request) {
-        return mapper.toResponse(repository.save(mapper.toEntity(request)));
+        ChecklistTemplate template = mapper.toEntity(request);
+
+        UUID companyId = CompanyContext.get();
+        if (companyId != null) {
+            template.setCompany(companyService.getCompany(companyId));
+        }
+
+        return mapper.toResponse(repository.save(template));
     }
 
     @Transactional(readOnly = true)
     public List<ChecklistTemplateResponse> getAll() {
+        UUID companyId = CompanyContext.get();
+        if (companyId != null) {
+            return repository.findByCompanyUuid(companyId).stream()
+                    .map(mapper::toResponse)
+                    .toList();
+        }
         return repository.findAll().stream()
                 .map(mapper::toResponse)
                 .toList();

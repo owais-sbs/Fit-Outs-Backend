@@ -7,6 +7,8 @@ import java.time.LocalDateTime;
 import java.time.LocalDate;
 import java.math.BigDecimal;
 
+import com.fitouts.company.domain.Company;
+
 @Entity
 @Table(name = "leads")
 @Data
@@ -64,4 +66,7 @@ public class Lead {
 
     private LocalDateTime updatedAt;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "company_id")
+    private Company companyEntity;
 }

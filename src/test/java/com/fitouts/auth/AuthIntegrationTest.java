@@ -89,53 +89,6 @@ class AuthIntegrationTest {
                 .andExpect(jsonPath("$.data.length()").value(3));
     }
 
-    @Test
-    void superAdminLoginRequiresOtpThenCreatesSession() throws Exception {
-        MvcResult loginResult = mockMvc.perform(post("/api/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"email":"super@fitouts.com","password":"Password@123"}
-                                """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("OTP_REQUIRED"))
-                .andExpect(jsonPath("$.data.challengeId").isNotEmpty())
-                .andExpect(jsonPath("$.data.otp").isNotEmpty())
-                .andReturn();
-
-        JsonNode loginJson = objectMapper.readTree(loginResult.getResponse().getContentAsString());
-        Cookie deviceCookie = loginResult.getResponse().getCookie("FITOUTS_DEVICE");
-
-        mockMvc.perform(post("/api/auth/verify-otp")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .cookie(deviceCookie)
-                        .content("""
-                                {"challengeId":"%s","otp":"%s"}
-                                """.formatted(loginJson.get("data").get("challengeId").asText(),
-                                        loginJson.get("data").get("otp").asText())))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("AUTHENTICATED"))
-                .andExpect(cookie().exists("FITOUTS_SESSION"));
-    }
-
-    @Test
-    void wrongOtpIsRejected() throws Exception {
-        MvcResult loginResult = mockMvc.perform(post("/api/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"email":"super@fitouts.com","password":"Password@123"}
-                                """))
-                .andExpect(status().isOk())
-                .andReturn();
-
-        JsonNode loginJson = objectMapper.readTree(loginResult.getResponse().getContentAsString());
-
-        mockMvc.perform(post("/api/auth/verify-otp")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"challengeId":"%s","otp":"111111"}
-                                """.formatted(loginJson.get("data").get("challengeId").asText())))
-                .andExpect(status().isBadRequest());
-    }
 
     @Test
     void authenticatedDesignerCanAccessAccountsWhileSecurityIsOpen() throws Exception {

@@ -15,6 +15,8 @@ import com.fitouts.checklist.dto.SiteVisitResponse;
 import com.fitouts.checklist.mapper.SiteVisitMapper;
 import com.fitouts.checklist.repository.SiteVisitLocationDetailsRepository;
 import com.fitouts.checklist.repository.SiteVisitRepository;
+import com.fitouts.company.application.CompanyService;
+import com.fitouts.shared.context.CompanyContext;
 import com.fitouts.shared.error.ConflictException;
 import com.fitouts.shared.error.NotFoundException;
 
@@ -28,15 +30,29 @@ public class SiteVisitService {
     private final SiteVisitLocationDetailsRepository locationDetailsRepository;
     private final ChecklistTemplateService checklistTemplateService;
     private final SiteVisitMapper mapper;
+    private final CompanyService companyService;
 
     @Transactional
     public SiteVisitResponse create(SiteVisitCreateRequest request) {
         ChecklistTemplate template = checklistTemplateService.getTemplate(request.getChecklistTemplateUuid());
-        return mapper.toResponse(repository.save(mapper.toEntity(request, template)));
+        SiteVisit siteVisit = mapper.toEntity(request, template);
+
+        UUID companyId = CompanyContext.get();
+        if (companyId != null) {
+            siteVisit.setCompany(companyService.getCompany(companyId));
+        }
+
+        return mapper.toResponse(repository.save(siteVisit));
     }
 
     @Transactional(readOnly = true)
     public List<SiteVisitResponse> getAll() {
+        UUID companyId = CompanyContext.get();
+        if (companyId != null) {
+            return repository.findByCompanyUuid(companyId).stream()
+                    .map(mapper::toResponse)
+                    .toList();
+        }
         return repository.findAll().stream()
                 .map(mapper::toResponse)
                 .toList();
