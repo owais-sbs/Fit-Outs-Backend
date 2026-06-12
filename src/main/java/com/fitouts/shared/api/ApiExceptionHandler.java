@@ -43,7 +43,8 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiErrorResponse> handleUnexpected(Exception exception, HttpServletRequest request) {
-        return build(HttpStatus.INTERNAL_SERVER_ERROR, "Unexpected server error", request.getRequestURI());
+        exception.printStackTrace();
+        return build(HttpStatus.INTERNAL_SERVER_ERROR, exception.getMessage() != null ? exception.getMessage() : "Unexpected server error", request.getRequestURI());
     }
 
     private ResponseEntity<ApiErrorResponse> build(HttpStatus status, String message, String path) {

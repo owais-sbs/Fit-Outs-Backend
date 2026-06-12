@@ -10,5 +10,6 @@ public enum Role {
     FINANCE,
     SUBCONTRACTOR,
     CLIENT,
-    SALES
+    SALES,
+    EMPLOYEE
 }

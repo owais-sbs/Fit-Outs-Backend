@@ -4,7 +4,6 @@ import java.util.List;
 
 import org.springframework.stereotype.Component;
 
-import com.fitouts.checklist.domain.ChecklistTemplateItem;
 import com.fitouts.checklist.domain.SiteVisit;
 import com.fitouts.checklist.domain.SiteVisitReport;
 import com.fitouts.checklist.domain.SiteVisitReportItem;
@@ -25,13 +24,8 @@ public class SiteVisitReportMapper {
         return report;
     }
 
-    public SiteVisitReportItem toItemEntity(
-            SiteVisitReportItemRequest request,
-            ChecklistTemplateItem templateItem,
-            List<String> photoUrls) {
-
+    public SiteVisitReportItem toItemEntity(SiteVisitReportItemRequest request, List<String> photoUrls) {
         SiteVisitReportItem item = new SiteVisitReportItem();
-        item.setTemplateItem(templateItem);
         item.setResponse(trimNullable(request.getResponse()));
         item.setRemarks(trimNullable(request.getRemarks()));
         item.setPhotoUrls(photoUrls);
@@ -60,7 +54,6 @@ public class SiteVisitReportMapper {
                 .photoUrls(item.getPhotoUrls())
                 .build();
         response.setUuid(item.getUuid());
-        response.setTemplateItemUuid(item.getTemplateItem().getUuid());
         return response;
     }
 

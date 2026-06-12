@@ -23,14 +23,14 @@ public class LeadSpecification {
                         cb.equal(root.get("status"), filter.getStatus()));
             }
 
-            if (filter.getSourceId() != null) {
+            if (filter.getSource() != null) {
                 predicate = cb.and(predicate,
-                        cb.equal(root.get("sourceId"), filter.getSourceId()));
+                        cb.equal(root.get("source"), filter.getSource()));
             }
 
             if (filter.getAssignedTo() != null) {
                 predicate = cb.and(predicate,
-                        cb.equal(root.get("assignedTo"), filter.getAssignedTo()));
+                        cb.equal(root.get("assignedTo").get("id"), filter.getAssignedTo()));
             }
 
             if (filter.getSearch() != null &&

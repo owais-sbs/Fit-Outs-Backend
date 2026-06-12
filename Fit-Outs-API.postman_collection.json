@@ -2,7 +2,7 @@
   "info": {
     "name": "Fit-Outs Backend API",
     "_postman_id": "fitouts-backend-api-collection",
-    "description": "Complete API collection for the Fit-Outs Backend. Includes Auth, Subscription Plans, Companies, Accounts, Leads, Lead Sources, Lead Status History, Checklist Templates, and Site Visits.\n\n## Flow\n1. Start with Auth > Login → verify-otp → me → sessions\n2. Create Subscription Plan → Create Company (references plan UUID)\n3. Create Account (references company UUID)\n4. Create Lead Source → Create Leads → Update Lead Status\n5. Create Checklist Template → Create Site Visit → Add Location Details → Submit Report",
+    "description": "Complete API collection for the Fit-Outs Backend. Includes Auth, Subscription Plans, Companies, Accounts, Leads, Lead Status History, Checklist Templates, and Site Visits.\n\n## Flow\n1. Start with Auth > Login → verify-otp → me → sessions\n2. Create Subscription Plan → Create Company (references plan UUID)\n3. Create Account (references company UUID)\n4. Create Leads → Update Lead Status\n5. Create Checklist Template → Create Site Visit → Add Location Details → Submit Report",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -419,54 +419,7 @@
       ]
     },
     {
-      "name": "5. Lead Sources",
-      "item": [
-        {
-          "name": "Create Lead Source",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "var res = pm.response.json();",
-                  "if (res.isSuccess && res.data) {",
-                  "  pm.collectionVariables.set('leadSourceId', res.data.id);",
-                  "}"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"sourceName\": \"Website Inquiry\"\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/lead-sources",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "lead-sources"]
-            }
-          }
-        },
-        {
-          "name": "Get All Lead Sources",
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{baseUrl}}/api/lead-sources",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "lead-sources"]
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "6. Leads",
+      "name": "5. Leads",
       "item": [
         {
           "name": "Create Lead",
@@ -490,7 +443,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"referenceNo\": \"REF-001\",\n  \"clientName\": \"Jane Smith\",\n  \"phone\": \"+1234567890\",\n  \"email\": \"jane@example.com\",\n  \"projectType\": \"Office Fit-Out\",\n  \"company\": \"Acme Interiors\",\n  \"budget\": 50000.00,\n  \"priority\": \"HIGH\",\n  \"location\": \"Mumbai, India\",\n  \"expectedStartDate\": \"2026-07-01\",\n  \"sourceId\": {{leadSourceId}},\n  \"assignedTo\": 1,\n  \"notes\": \"Client interested in complete office renovation\",\n  \"status\": \"NEW\"\n}"
+              "raw": "{\n  \"referenceNo\": \"REF-001\",\n  \"clientName\": \"Jane Smith\",\n  \"phone\": \"+1234567890\",\n  \"email\": \"jane@example.com\",\n  \"projectType\": \"Office Fit-Out\",\n  \"company\": \"Acme Interiors\",\n  \"budget\": 50000.00,\n  \"priority\": \"HIGH\",\n  \"location\": \"Mumbai, India\",\n  \"expectedStartDate\": \"2026-07-01\",\n  \"assignedTo\": 1,\n  \"notes\": \"Client interested in complete office renovation\",\n  \"status\": \"NEW\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/leads",
@@ -508,7 +461,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"status\": \"NEW\",\n  \"sourceId\": {{leadSourceId}},\n  \"assignedTo\": 1,\n  \"startDate\": \"2026-01-01\",\n  \"endDate\": \"2026-12-31\",\n  \"search\": \"Jane\",\n  \"companyUuid\": \"{{companyUuid}}\"\n}"
+              "raw": "{\n  \"status\": \"NEW\",\n  \"assignedTo\": 1,\n  \"startDate\": \"2026-01-01\",\n  \"endDate\": \"2026-12-31\",\n  \"search\": \"Jane\",\n  \"companyUuid\": \"{{companyUuid}}\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/leads/filter?page=0&size=10",
@@ -563,7 +516,7 @@
       ]
     },
     {
-      "name": "7. Lead Status History",
+      "name": "6. Lead Status History",
       "item": [
         {
           "name": "Get Status History by Lead ID",
@@ -579,7 +532,7 @@
       ]
     },
     {
-      "name": "8. Checklist Templates",
+      "name": "7. Checklist Templates",
       "item": [
         {
           "name": "Create Checklist Template",
@@ -640,7 +593,7 @@
       ]
     },
     {
-      "name": "9. Site Visits",
+      "name": "8. Site Visits",
       "item": [
         {
           "name": "Create Site Visit",

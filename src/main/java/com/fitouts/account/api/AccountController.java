@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.fitouts.account.application.AccountService;
+import com.fitouts.auth.domain.Role;
 import com.fitouts.shared.api.BaseController;
 import com.fitouts.shared.api.MessageResponse;
 
@@ -41,6 +42,16 @@ public class AccountController extends BaseController {
     public ResponseEntity<?> getAll() {
         try {
             List<AccountResponse> accounts = service.getAll();
+            return successResponse(accounts);
+        } catch (Exception exception) {
+            return failureResponse("Unable to fetch accounts", exception.getMessage());
+        }
+    }
+
+    @GetMapping("/role/{role}")
+    public ResponseEntity<?> getAllByRole(@PathVariable Role role) {
+        try {
+            List<AccountResponse> accounts = service.getAllByRole(role);
             return successResponse(accounts);
         } catch (Exception exception) {
             return failureResponse("Unable to fetch accounts", exception.getMessage());

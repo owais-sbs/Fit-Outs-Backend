@@ -24,7 +24,6 @@ public class SiteVisitResponse {
     private LocalTime scheduledTime;
     private BigDecimal latitude;
     private BigDecimal longitude;
-    private UUID checklistTemplateUuid;
     private SiteVisitStatus status;
     private String notes;
     private Long createdBy;
@@ -34,9 +33,5 @@ public class SiteVisitResponse {
 
     public void setUuid(UUID uuid) {
         this.uuid = uuid;
-    }
-
-    public void setChecklistTemplateUuid(UUID checklistTemplateUuid) {
-        this.checklistTemplateUuid = checklistTemplateUuid;
     }
 }
