@@ -10,7 +10,7 @@ public class LeadFilterDTO {
 
     private LeadStatus status;
 
-    private Long sourceId;
+    private LeadSource source;
 
     private Long assignedTo;
 

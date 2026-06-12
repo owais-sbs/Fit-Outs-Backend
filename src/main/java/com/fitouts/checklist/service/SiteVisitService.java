@@ -6,7 +6,6 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.fitouts.checklist.domain.ChecklistTemplate;
 import com.fitouts.checklist.domain.SiteVisit;
 import com.fitouts.checklist.domain.SiteVisitLocationDetails;
 import com.fitouts.checklist.dto.SiteVisitCreateRequest;
@@ -28,14 +27,12 @@ public class SiteVisitService {
 
     private final SiteVisitRepository repository;
     private final SiteVisitLocationDetailsRepository locationDetailsRepository;
-    private final ChecklistTemplateService checklistTemplateService;
     private final SiteVisitMapper mapper;
     private final CompanyService companyService;
 
     @Transactional
     public SiteVisitResponse create(SiteVisitCreateRequest request) {
-        ChecklistTemplate template = checklistTemplateService.getTemplate(request.getChecklistTemplateUuid());
-        SiteVisit siteVisit = mapper.toEntity(request, template);
+        SiteVisit siteVisit = mapper.toEntity(request);
 
         UUID companyId = CompanyContext.get();
         if (companyId != null) {

@@ -7,6 +7,7 @@ import java.time.LocalDateTime;
 import java.time.LocalDate;
 import java.math.BigDecimal;
 
+import com.fitouts.account.domain.Account;
 import com.fitouts.company.domain.Company;
 
 @Entity
@@ -32,22 +33,15 @@ public class Lead {
     @Column(name = "project_type")
     private String projectType;
 
-    private String company;
+    @Enumerated(EnumType.STRING)
+    private LeadSource source;
 
-    private BigDecimal budget;
+    @Column(name = "other_source")
+    private String otherSource;
 
-    private String priority;
-
-    private String location;
-
-    @Column(name = "expected_start_date")
-    private LocalDate expectedStartDate;
-
-    @Column(name = "source_id")
-    private Long sourceId;
-
-    @Column(name = "assigned_to")
-    private Long assignedTo;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigned_to")
+    private Account assignedTo;
 
     @Column(columnDefinition = "TEXT")
     private String notes;
