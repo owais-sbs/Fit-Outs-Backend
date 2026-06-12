@@ -37,13 +37,6 @@ public class SiteVisitCreateRequest {
     @DecimalMax("180.00000000")
     private BigDecimal longitude;
 
-    @NotNull
-    private UUID checklistTemplateUuid;
-
     private String notes;
     private Long createdBy;
-
-    public UUID getChecklistTemplateUuid() {
-        return checklistTemplateUuid;
-    }
 }

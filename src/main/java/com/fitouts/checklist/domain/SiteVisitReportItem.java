@@ -35,10 +35,6 @@ public class SiteVisitReportItem {
     @JoinColumn(name = "report_uuid", nullable = false)
     private SiteVisitReport report;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "template_item_uuid", nullable = false)
-    private ChecklistTemplateItem templateItem;
-
     @Column(length = 4096)
     private String response;
 

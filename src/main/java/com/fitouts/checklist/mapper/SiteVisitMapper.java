@@ -2,7 +2,6 @@ package com.fitouts.checklist.mapper;
 
 import org.springframework.stereotype.Component;
 
-import com.fitouts.checklist.domain.ChecklistTemplate;
 import com.fitouts.checklist.domain.SiteVisit;
 import com.fitouts.checklist.domain.SiteVisitLocationDetails;
 import com.fitouts.checklist.domain.SiteVisitStatus;
@@ -14,15 +13,13 @@ import com.fitouts.checklist.dto.SiteVisitResponse;
 @Component
 public class SiteVisitMapper {
 
-    public SiteVisit toEntity(SiteVisitCreateRequest request, ChecklistTemplate template) {
+    public SiteVisit toEntity(SiteVisitCreateRequest request) {
         SiteVisit siteVisit = new SiteVisit();
         siteVisit.setLeadId(request.getLeadId());
-        siteVisit.setAssignedTo(request.getAssignedTo());
         siteVisit.setScheduledDate(request.getScheduledDate());
         siteVisit.setScheduledTime(request.getScheduledTime());
         siteVisit.setLatitude(request.getLatitude());
         siteVisit.setLongitude(request.getLongitude());
-        siteVisit.setChecklistTemplate(template);
         siteVisit.setNotes(trimNullable(request.getNotes()));
         siteVisit.setCreatedBy(request.getCreatedBy());
         siteVisit.setStatus(SiteVisitStatus.SCHEDULED);
@@ -49,7 +46,7 @@ public class SiteVisitMapper {
     public SiteVisitResponse toResponse(SiteVisit siteVisit) {
         SiteVisitResponse response = SiteVisitResponse.builder()
                 .leadId(siteVisit.getLeadId())
-                .assignedTo(siteVisit.getAssignedTo())
+                .assignedTo(siteVisit.getAssignedTo() != null ? siteVisit.getAssignedTo().getId() : null)
                 .scheduledDate(siteVisit.getScheduledDate())
                 .scheduledTime(siteVisit.getScheduledTime())
                 .latitude(siteVisit.getLatitude())
@@ -62,7 +59,6 @@ public class SiteVisitMapper {
                 .locationDetails(toLocationResponse(siteVisit.getLocationDetails()))
                 .build();
         response.setUuid(siteVisit.getUuid());
-        response.setChecklistTemplateUuid(siteVisit.getChecklistTemplate().getUuid());
         return response;
     }
 

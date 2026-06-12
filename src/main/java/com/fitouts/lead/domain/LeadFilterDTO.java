@@ -10,6 +10,8 @@ public class LeadFilterDTO {
 
     private LeadStatus status;
 
+    private LeadSource source;
+
     private Long assignedTo;
 
     private LocalDate startDate;

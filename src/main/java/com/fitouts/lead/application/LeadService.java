@@ -3,13 +3,16 @@ package com.fitouts.lead.application;
 import com.fitouts.company.application.CompanyService;
 import com.fitouts.lead.domain.*;
 import com.fitouts.shared.context.CompanyContext;
+import org.hibernate.Hibernate;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Service
+@Transactional
 public class LeadService {
 
     private final LeadRepository leadRepository;
@@ -70,6 +73,12 @@ public class LeadService {
         // TODO:
         // Notify assignee
 
+        Hibernate.initialize(saved.getCompanyEntity());
+        if (saved.getCompanyEntity() != null) {
+            Hibernate.initialize(saved.getCompanyEntity().getSubscriptionPlan());
+        }
+        Hibernate.initialize(saved.getAssignedTo());
+
         return saved;
     }
 
@@ -113,10 +122,17 @@ public class LeadService {
 
         historyRepository.save(history);
 
+        Hibernate.initialize(updated.getCompanyEntity());
+        if (updated.getCompanyEntity() != null) {
+            Hibernate.initialize(updated.getCompanyEntity().getSubscriptionPlan());
+        }
+        Hibernate.initialize(updated.getAssignedTo());
+
         return updated;
     }
 
     // FILTERED PAGINATION — scoped to current company
+    @Transactional(readOnly = true)
     public Page<Lead> getAll(LeadFilterDTO filter,
                              int page,
                              int size) {
@@ -133,17 +149,36 @@ public class LeadService {
             filter.setCompanyUuid(companyId);
         }
 
-        return leadRepository.findAll(
+        Page<Lead> leads = leadRepository.findAll(
                 LeadSpecification.filterLeads(filter),
                 pageable
         );
+
+        for (Lead lead : leads) {
+            Hibernate.initialize(lead.getCompanyEntity());
+            if (lead.getCompanyEntity() != null) {
+                Hibernate.initialize(lead.getCompanyEntity().getSubscriptionPlan());
+            }
+            Hibernate.initialize(lead.getAssignedTo());
+        }
+
+        return leads;
     }
 
     // GET BY ID
+    @Transactional(readOnly = true)
     public Lead getById(Long id) {
 
-        return leadRepository.findById(id)
+        Lead lead = leadRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Lead not found"));
+
+        Hibernate.initialize(lead.getCompanyEntity());
+        if (lead.getCompanyEntity() != null) {
+            Hibernate.initialize(lead.getCompanyEntity().getSubscriptionPlan());
+        }
+        Hibernate.initialize(lead.getAssignedTo());
+
+        return lead;
     }
 
     // DELETE
@@ -155,7 +190,15 @@ public class LeadService {
 
         lead.setIsactive(false);
 
-        return leadRepository.save(lead);
+        Lead deleted = leadRepository.save(lead);
+
+        Hibernate.initialize(deleted.getCompanyEntity());
+        if (deleted.getCompanyEntity() != null) {
+            Hibernate.initialize(deleted.getCompanyEntity().getSubscriptionPlan());
+        }
+        Hibernate.initialize(deleted.getAssignedTo());
+
+        return deleted;
     }
 
     // GENERATE REFERENCE
