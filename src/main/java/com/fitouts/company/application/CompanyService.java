@@ -110,7 +110,7 @@ public class CompanyService {
                 .companyName(company.getCompanyName())
                 .logo(company.getLogo())
                 .domainSlug(company.getDomainSlug())
-                .subscriptionPlanUuid(company.getSubscriptionPlan().getUuid())
+                .subscriptionPlanUuid(company.getSubscriptionPlan() != null ? company.getSubscriptionPlan().getUuid() : null)
                 .status(company.getStatus())
                 .createdAt(company.getCreatedAt())
                 .build();
