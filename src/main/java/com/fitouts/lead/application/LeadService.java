@@ -3,6 +3,7 @@ package com.fitouts.lead.application;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import org.hibernate.Hibernate;
@@ -20,6 +21,9 @@ import com.fitouts.shared.context.CompanyContext;
 import com.fitouts.shared.error.BadRequestException;
 import com.fitouts.shared.error.ConflictException;
 import com.fitouts.shared.error.NotFoundException;
+import com.fitouts.account.api.AccountCreateRequest;
+import com.fitouts.account.api.AccountResponse;
+import com.fitouts.account.application.AccountService;
 
 @Service
 @Transactional
@@ -30,6 +34,7 @@ public class LeadService {
     private final CompanyService companyService;
     private final AccountRepository accountRepository;
     private final PasswordEncoder passwordEncoder;
+    private final AccountService accountService;
 
     private static final String CLIENT_PASSWORD = "123456";
 
@@ -37,13 +42,15 @@ public class LeadService {
                        LeadStatusHistoryRepository historyRepository,
                        CompanyService companyService,
                        AccountRepository accountRepository,
-                       PasswordEncoder passwordEncoder) {
+                       PasswordEncoder passwordEncoder,
+                       AccountService accountService) {
 
         this.leadRepository = leadRepository;
         this.historyRepository = historyRepository;
         this.companyService = companyService;
         this.accountRepository = accountRepository;
         this.passwordEncoder = passwordEncoder;
+        this.accountService = accountService;
     }
 
     // CREATE LEAD
@@ -108,13 +115,48 @@ public class LeadService {
         Lead lead = leadRepository.findById(leadId)
                 .orElseThrow(() -> new RuntimeException("Lead not found"));
 
-        if (status == LeadStatus.LOST &&
-                (lostReason == null || lostReason.isEmpty())) {
-
-            throw new RuntimeException("Lost reason is required");
-        }
+//        if (status == LeadStatus.LOST &&
+//                (lostReason == null || lostReason.isEmpty())) {
+//
+//            throw new RuntimeException("Lost reason is required");
+//        }
+        
+//        if (status == LeadStatus.CLIENT) {
+//
+//            AccountCreateRequest request = new AccountCreateRequest();
+//
+//            request.setFullName(
+//                    lead.getClientName() != null
+//                            ? lead.getClientName()
+//                            : "Client"
+//            );
+//
+//            request.setEmail(lead.getEmail());
+//
+//            request.setPassword("123456");
+//
+//            request.setPhone(lead.getPhone());
+//
+//            request.setCompanyName(
+//                    lead.getCompanyEntity() != null
+//                            ? lead.getCompanyEntity().getCompanyName()
+//                            : null
+//            );
+//
+//            request.setCompanyUuid(
+//                    lead.getCompanyEntity() != null
+//                            ? lead.getCompanyEntity().getUuid()
+//                            : null
+//            );
+//
+//            request.setRoles(Set.of(Role.CLIENT));
+//
+//                accountService.create(request);
+//        }
 
         lead.setStatus(status);
+        
+        
 
         lead.setUpdatedAt(LocalDateTime.now());
 
@@ -228,6 +270,109 @@ public class LeadService {
     }
 
     // CONVERT LEAD TO CLIENT
+//    public Lead convertToClient(Long leadId) {
+//
+//        Lead lead = leadRepository.findById(leadId)
+//                .orElseThrow(() -> new NotFoundException("Lead not found"));
+//
+//        if (lead.getEmail() == null || lead.getEmail().isBlank()) {
+//            throw new BadRequestException("Lead email is required to convert to client");
+//        }
+//
+//        String email = lead.getEmail().trim().toLowerCase();
+//
+//        Account account = accountRepository.findByEmail(email).orElseGet(() -> {
+//            Account newAccount = new Account();
+//            newAccount.setFullName(lead.getClientName() != null ? lead.getClientName().trim() : "Client");
+//            newAccount.setEmail(email);
+//            newAccount.setPassword(passwordEncoder.encode("123456"));
+//            newAccount.setPhone(lead.getPhone() != null ? lead.getPhone().trim() : null);
+//            newAccount.setCompanyName(
+//                    lead.getCompanyEntity() != null ? lead.getCompanyEntity().getCompanyName() : null);
+//            
+//            newAccount.setIsActive(true);
+//            newAccount.setRoles(new HashSet<>(List.of(Role.CLIENT)));
+//            return accountRepository.save(newAccount);
+//        });
+//
+//        if (!account.getRoles().contains(Role.CLIENT)) {
+//            account.getRoles().add(Role.CLIENT);
+//            account.setIsActive(true);
+//            accountRepository.save(account);
+//        }
+//
+//        lead.setStatus(LeadStatus.CLIENT);
+//        lead.setUpdatedAt(LocalDateTime.now());
+//        lead.setLastActivityDate(LocalDateTime.now());
+//
+//        Lead updated = leadRepository.save(lead);
+//
+//        LeadStatusHistory history = new LeadStatusHistory();
+//        history.setLeadId(leadId);
+//        history.setStatus(LeadStatus.CLIENT);
+//        history.setNotes("Converted to client");
+//        history.setCreatedAt(LocalDateTime.now());
+//        historyRepository.save(history);
+//
+//        Hibernate.initialize(updated.getCompanyEntity());
+//        if (updated.getCompanyEntity() != null) {
+//            Hibernate.initialize(updated.getCompanyEntity().getSubscriptionPlan());
+//        }
+//        Hibernate.initialize(updated.getAssignedTo());
+//
+//        return updated;
+//    }
+    
+//    public AccountResponse createAccount(Long leadId) {
+//
+//        Lead lead = leadRepository.findById(leadId)
+//                .orElseThrow(() -> new NotFoundException("Lead not found"));
+//
+//        if (lead.getEmail() == null || lead.getEmail().isBlank()) {
+//            throw new BadRequestException("Lead email is required");
+//        }
+//
+//        String email = lead.getEmail().trim().toLowerCase();
+//
+//        if (accountRepository.findByEmail(email).isPresent()) {
+//            throw new ConflictException("Account already exists with email: " + email);
+//        }
+//
+//        AccountCreateRequest request = new AccountCreateRequest();
+//
+//        request.setFullName(
+//                lead.getClientName() != null
+//                        ? lead.getClientName()
+//                        : "Client"
+//        );
+//
+//        request.setEmail(email);
+//
+//        request.setPassword("123456");
+//
+//        request.setPhone(lead.getPhone());
+//
+//        request.setCompanyName(
+//                lead.getCompanyEntity() != null
+//                        ? lead.getCompanyEntity().getCompanyName()
+//                        : null
+//        );
+//
+//        request.setCompanyUuid(
+//                lead.getCompanyEntity() != null
+//                        ? lead.getCompanyEntity().getUuid()
+//                        : null
+//        );
+//
+//        request.setRoles(Set.of(Role.CLIENT));
+//
+//        AccountResponse account = accountService.create(request);
+//        
+//        lead.setAccountCreated(true);
+//
+//        return account;
+//    }
+    
     public Lead convertToClient(Long leadId) {
 
         Lead lead = leadRepository.findById(leadId)
@@ -239,26 +384,53 @@ public class LeadService {
 
         String email = lead.getEmail().trim().toLowerCase();
 
-        Account account = accountRepository.findByEmail(email).orElseGet(() -> {
-            Account newAccount = new Account();
-            newAccount.setFullName(lead.getClientName() != null ? lead.getClientName().trim() : "Client");
-            newAccount.setEmail(email);
-            newAccount.setPassword(passwordEncoder.encode(CLIENT_PASSWORD));
-            newAccount.setPhone(lead.getPhone() != null ? lead.getPhone().trim() : null);
-            newAccount.setCompanyName(
-                    lead.getCompanyEntity() != null ? lead.getCompanyEntity().getCompanyName() : null);
-            newAccount.setIsActive(true);
-            newAccount.setRoles(new HashSet<>(List.of(Role.CLIENT)));
-            return accountRepository.save(newAccount);
-        });
+        if (accountRepository.findByEmail(email).isEmpty()) {
 
-        if (!account.getRoles().contains(Role.CLIENT)) {
-            account.getRoles().add(Role.CLIENT);
+            AccountCreateRequest request = new AccountCreateRequest();
+
+            request.setFullName(
+                    lead.getClientName() != null
+                            ? lead.getClientName()
+                            : "Client"
+            );
+
+            request.setEmail(email);
+
+            request.setPassword("123456");
+
+            request.setPhone(lead.getPhone());
+
+            request.setCompanyName(
+                    lead.getCompanyEntity() != null
+                            ? lead.getCompanyEntity().getCompanyName()
+                            : null
+            );
+
+            request.setCompanyUuid(
+                    lead.getCompanyEntity() != null
+                            ? lead.getCompanyEntity().getUuid()
+                            : null
+            );
+
+            request.setRoles(Set.of(Role.CLIENT));
+
+            accountService.create(request);
+
+        } else {
+
+            Account account = accountRepository.findByEmail(email).get();
+
+            if (!account.getRoles().contains(Role.CLIENT)) {
+                account.getRoles().add(Role.CLIENT);
+            }
+
             account.setIsActive(true);
+
             accountRepository.save(account);
         }
 
         lead.setStatus(LeadStatus.CLIENT);
+        lead.setAccountCreated(true);
         lead.setUpdatedAt(LocalDateTime.now());
         lead.setLastActivityDate(LocalDateTime.now());
 
@@ -269,14 +441,72 @@ public class LeadService {
         history.setStatus(LeadStatus.CLIENT);
         history.setNotes("Converted to client");
         history.setCreatedAt(LocalDateTime.now());
+
         historyRepository.save(history);
 
         Hibernate.initialize(updated.getCompanyEntity());
+
         if (updated.getCompanyEntity() != null) {
             Hibernate.initialize(updated.getCompanyEntity().getSubscriptionPlan());
         }
+
         Hibernate.initialize(updated.getAssignedTo());
 
         return updated;
+    }
+    
+    public AccountResponse createAccount(Long leadId) {
+
+        Lead lead = leadRepository.findById(leadId)
+                .orElseThrow(() -> new NotFoundException("Lead not found"));
+
+        if (lead.getEmail() == null || lead.getEmail().isBlank()) {
+            throw new BadRequestException("Lead email is required");
+        }
+
+        String email = lead.getEmail().trim().toLowerCase();
+
+        if (accountRepository.findByEmail(email).isPresent()) {
+            throw new ConflictException(
+                    "Account already exists with email: " + email
+            );
+        }
+
+        AccountCreateRequest request = new AccountCreateRequest();
+
+        request.setFullName(
+                lead.getClientName() != null
+                        ? lead.getClientName()
+                        : "Client"
+        );
+
+        request.setEmail(email);
+
+        request.setPassword("123456");
+
+        request.setPhone(lead.getPhone());
+
+        request.setCompanyName(
+                lead.getCompanyEntity() != null
+                        ? lead.getCompanyEntity().getCompanyName()
+                        : null
+        );
+
+        request.setCompanyUuid(
+                lead.getCompanyEntity() != null
+                        ? lead.getCompanyEntity().getUuid()
+                        : null
+        );
+
+        request.setRoles(Set.of(Role.CLIENT));
+
+        AccountResponse account = accountService.create(request);
+
+        lead.setAccountCreated(true);
+        lead.setUpdatedAt(LocalDateTime.now());
+
+        leadRepository.save(lead);
+
+        return account;
     }
 }

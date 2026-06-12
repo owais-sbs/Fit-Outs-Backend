@@ -59,6 +59,8 @@ public class Lead {
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
+    @Column(name = "account_created")
+    private Boolean accountCreated = false;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "company_id")

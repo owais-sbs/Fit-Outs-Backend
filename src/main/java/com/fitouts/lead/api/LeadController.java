@@ -141,4 +141,22 @@ public class LeadController extends BaseController {
             );
         }
     }
+    
+    @PostMapping("/{id}/create-account")
+    public Object createAccount(@PathVariable Long id) {
+
+        try {
+
+            return successResponse(
+                    leadService.createAccount(id)
+            );
+
+        } catch (Exception e) {
+
+            return failureResponse(
+                    "Failed to create account",
+                    e.getMessage()
+            );
+        }
+    }
 }
