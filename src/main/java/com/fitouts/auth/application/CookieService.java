@@ -33,7 +33,7 @@ public class CookieService {
         return ResponseCookie.from(name, value)
                 .httpOnly(true)
                 .secure(authProperties.isCookieSecure())
-                .sameSite("None")
+                .sameSite(authProperties.isCookieSecure() ? "None" : "Lax")
                 .path("/");
     }
 }

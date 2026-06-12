@@ -44,10 +44,10 @@ public class Company implements Serializable {
     private SubscriptionPlan subscriptionPlan;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = true)
     private CompanyStatus status = CompanyStatus.TRIAL;
 
-    @Column(nullable = false, updatable = false)
+    @Column(nullable = true, updatable = false)
     private OffsetDateTime createdAt;
 
     @PrePersist

@@ -300,7 +300,6 @@ class SiteVisitModuleIntegrationTest {
         lead.setClientName(clientName);
         lead.setEmail(email);
         lead.setPhone("9999999999");
-        lead.setCompany("Moss Interiors");
         lead.setStatus(LeadStatus.QUALIFIED);
         lead.setIsactive(true);
         lead.setIsdeleted(false);
@@ -310,12 +309,11 @@ class SiteVisitModuleIntegrationTest {
     private SiteVisit siteVisit(ChecklistTemplate template, Long leadId) {
         SiteVisit siteVisit = new SiteVisit();
         siteVisit.setLeadId(leadId);
-        siteVisit.setAssignedTo(5L);
+        siteVisit.setAssignedTo(null);
         siteVisit.setScheduledDate(LocalDate.of(2026, 5, 25));
         siteVisit.setScheduledTime(LocalTime.of(11, 0));
         siteVisit.setLatitude(new BigDecimal("16.50617452"));
         siteVisit.setLongitude(new BigDecimal("80.64801532"));
-        siteVisit.setChecklistTemplate(template);
         siteVisit.setStatus(SiteVisitStatus.SCHEDULED);
         return siteVisit;
     }

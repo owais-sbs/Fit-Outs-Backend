@@ -17,6 +17,7 @@ import com.fitouts.account.domain.AccountRepository;
 import com.fitouts.auth.domain.Role;
 import com.fitouts.company.application.CompanyService;
 import com.fitouts.lead.domain.Lead;
+import com.fitouts.shared.context.CompanyContext;
 import com.fitouts.shared.error.BadRequestException;
 import com.fitouts.shared.error.ConflictException;
 import com.fitouts.shared.error.NotFoundException;
@@ -61,6 +62,20 @@ public class AccountService {
     @Transactional(readOnly = true)
     public List<AccountResponse> getAll() {
         return repository.findAll().stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<AccountResponse> getAllByRole(Role role) {
+        java.util.UUID companyId = CompanyContext.get();
+        if (companyId != null) {
+            return repository.findAllByCompanyUuidAndRole(companyId, role).stream()
+                    .map(this::toResponse)
+                    .toList();
+        }
+        return repository.findAll().stream()
+                .filter(a -> a.getRoles().contains(role))
                 .map(this::toResponse)
                 .toList();
     }
@@ -126,7 +141,7 @@ public class AccountService {
         account.setEmail(email);
         account.setPassword(passwordEncoder.encode(temporaryPassword));
         account.setPhone(trimNullable(lead.getPhone()));
-        account.setCompanyName(trimNullable(lead.getCompany()));
+        account.setCompanyName(lead.getCompanyEntity() != null ? lead.getCompanyEntity().getCompanyName() : null);
         account.setIsActive(true);
         account.setRoles(new HashSet<>(List.of(Role.CLIENT)));
 

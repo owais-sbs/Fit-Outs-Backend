@@ -6,6 +6,7 @@ import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
+import com.fitouts.account.domain.Account;
 import com.fitouts.company.domain.Company;
 
 import jakarta.persistence.CascadeType;
@@ -39,8 +40,9 @@ public class SiteVisit {
     @Column(nullable = false)
     private Long leadId;
 
-    @Column(nullable = false)
-    private Long assignedTo;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigned_to")
+    private Account assignedTo;
 
     @Column(nullable = false)
     private LocalDate scheduledDate;
@@ -53,10 +55,6 @@ public class SiteVisit {
 
     @Column(nullable = false, precision = 11, scale = 8)
     private BigDecimal longitude;
-
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "checklist_template_uuid", nullable = false)
-    private ChecklistTemplate checklistTemplate;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -78,9 +76,6 @@ public class SiteVisit {
 
     @OneToOne(mappedBy = "siteVisit", cascade = CascadeType.ALL, orphanRemoval = true)
     private SiteVisitLocationDetails locationDetails;
-
-    @OneToOne(mappedBy = "siteVisit", cascade = CascadeType.ALL, orphanRemoval = true)
-    private SiteVisitReport report;
 
     public void setLocationDetails(SiteVisitLocationDetails locationDetails) {
         this.locationDetails = locationDetails;

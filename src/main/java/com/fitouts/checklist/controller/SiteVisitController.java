@@ -14,9 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.fitouts.checklist.dto.SiteVisitCreateRequest;
 import com.fitouts.checklist.dto.SiteVisitLocationDetailsRequest;
-import com.fitouts.checklist.dto.SiteVisitReportRequest;
 import com.fitouts.checklist.dto.SiteVisitResponse;
-import com.fitouts.checklist.service.SiteVisitReportService;
 import com.fitouts.checklist.service.SiteVisitService;
 import com.fitouts.shared.api.BaseController;
 
@@ -30,7 +28,6 @@ import lombok.RequiredArgsConstructor;
 public class SiteVisitController extends BaseController {
 
     private final SiteVisitService siteVisitService;
-    private final SiteVisitReportService reportService;
 
     @PostMapping("/CreateSite-Visits")
     public ResponseEntity<?> create(@Valid @RequestBody SiteVisitCreateRequest request) {
@@ -69,15 +66,6 @@ public class SiteVisitController extends BaseController {
                     siteVisitService.addLocationDetails(uuid, request));
         } catch (Exception exception) {
             return failureResponse("Unable to add site visit location details", exception.getMessage());
-        }
-    }
-
-    @PostMapping("/EmployeeSiteVisitByUuid/{uuid}/report")
-    public ResponseEntity<?> submitReport(@PathVariable UUID uuid, @Valid @RequestBody SiteVisitReportRequest request) {
-        try {
-            return successResponse("Site visit report submitted successfully", reportService.submit(uuid, request));
-        } catch (Exception exception) {
-            return failureResponse("Unable to submit site visit report", exception.getMessage());
         }
     }
 }
