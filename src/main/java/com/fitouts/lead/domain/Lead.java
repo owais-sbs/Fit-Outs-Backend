@@ -43,9 +43,6 @@ public class Lead {
     @Column(name = "expected_start_date")
     private LocalDate expectedStartDate;
 
-    @Column(name = "source_id")
-    private Long sourceId;
-
     @Column(name = "assigned_to")
     private Long assignedTo;
 
