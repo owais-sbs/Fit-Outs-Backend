@@ -122,4 +122,23 @@ public class LeadController extends BaseController {
             );
         }
     }
+
+    // CONVERT TO CLIENT
+    @PostMapping("/{id}/convert-to-client")
+    public Object convertToClient(@PathVariable Long id) {
+
+        try {
+
+            return successResponse(
+                    leadService.convertToClient(id)
+            );
+
+        } catch (Exception e) {
+
+            return failureResponse(
+                    "Failed to convert lead to client",
+                    e.getMessage()
+            );
+        }
+    }
 }

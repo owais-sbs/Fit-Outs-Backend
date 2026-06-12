@@ -50,9 +50,15 @@ public class AccountService {
         account.setPassword(passwordEncoder.encode(request.getPassword()));
         account.setPhone(request.getPhone());
         account.setCompanyName(request.getCompanyName());
-        if (request.getCompanyUuid() != null) {
-            account.setCompany(companyService.getCompany(request.getCompanyUuid()));
+
+        java.util.UUID companyUuid = request.getCompanyUuid();
+        if (companyUuid == null) {
+            companyUuid = CompanyContext.get();
         }
+        if (companyUuid != null) {
+            account.setCompany(companyService.getCompany(companyUuid));
+        }
+
         account.setIsActive(true);
         account.setRoles(new HashSet<>(request.getRoles()));
 
