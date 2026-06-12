@@ -1,33 +1,49 @@
 package com.fitouts.lead.application;
 
-import com.fitouts.company.application.CompanyService;
-import com.fitouts.lead.domain.*;
-import com.fitouts.shared.context.CompanyContext;
+import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.List;
+import java.util.UUID;
+
 import org.hibernate.Hibernate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
-import java.util.UUID;
+import com.fitouts.account.domain.Account;
+import com.fitouts.account.domain.AccountRepository;
+import com.fitouts.auth.domain.Role;
+import com.fitouts.company.application.CompanyService;
+import com.fitouts.lead.domain.*;
+import com.fitouts.shared.context.CompanyContext;
+import com.fitouts.shared.error.BadRequestException;
+import com.fitouts.shared.error.ConflictException;
+import com.fitouts.shared.error.NotFoundException;
 
 @Service
 @Transactional
 public class LeadService {
 
     private final LeadRepository leadRepository;
-
     private final LeadStatusHistoryRepository historyRepository;
-
     private final CompanyService companyService;
+    private final AccountRepository accountRepository;
+    private final PasswordEncoder passwordEncoder;
+
+    private static final String CLIENT_PASSWORD = "123456";
 
     public LeadService(LeadRepository leadRepository,
                        LeadStatusHistoryRepository historyRepository,
-                       CompanyService companyService) {
+                       CompanyService companyService,
+                       AccountRepository accountRepository,
+                       PasswordEncoder passwordEncoder) {
 
         this.leadRepository = leadRepository;
         this.historyRepository = historyRepository;
         this.companyService = companyService;
+        this.accountRepository = accountRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     // CREATE LEAD
@@ -209,5 +225,58 @@ public class LeadService {
                 .toString()
                 .substring(0, 8)
                 .toUpperCase();
+    }
+
+    // CONVERT LEAD TO CLIENT
+    public Lead convertToClient(Long leadId) {
+
+        Lead lead = leadRepository.findById(leadId)
+                .orElseThrow(() -> new NotFoundException("Lead not found"));
+
+        if (lead.getEmail() == null || lead.getEmail().isBlank()) {
+            throw new BadRequestException("Lead email is required to convert to client");
+        }
+
+        String email = lead.getEmail().trim().toLowerCase();
+
+        Account account = accountRepository.findByEmail(email).orElseGet(() -> {
+            Account newAccount = new Account();
+            newAccount.setFullName(lead.getClientName() != null ? lead.getClientName().trim() : "Client");
+            newAccount.setEmail(email);
+            newAccount.setPassword(passwordEncoder.encode(CLIENT_PASSWORD));
+            newAccount.setPhone(lead.getPhone() != null ? lead.getPhone().trim() : null);
+            newAccount.setCompanyName(
+                    lead.getCompanyEntity() != null ? lead.getCompanyEntity().getCompanyName() : null);
+            newAccount.setIsActive(true);
+            newAccount.setRoles(new HashSet<>(List.of(Role.CLIENT)));
+            return accountRepository.save(newAccount);
+        });
+
+        if (!account.getRoles().contains(Role.CLIENT)) {
+            account.getRoles().add(Role.CLIENT);
+            account.setIsActive(true);
+            accountRepository.save(account);
+        }
+
+        lead.setStatus(LeadStatus.CLIENT);
+        lead.setUpdatedAt(LocalDateTime.now());
+        lead.setLastActivityDate(LocalDateTime.now());
+
+        Lead updated = leadRepository.save(lead);
+
+        LeadStatusHistory history = new LeadStatusHistory();
+        history.setLeadId(leadId);
+        history.setStatus(LeadStatus.CLIENT);
+        history.setNotes("Converted to client");
+        history.setCreatedAt(LocalDateTime.now());
+        historyRepository.save(history);
+
+        Hibernate.initialize(updated.getCompanyEntity());
+        if (updated.getCompanyEntity() != null) {
+            Hibernate.initialize(updated.getCompanyEntity().getSubscriptionPlan());
+        }
+        Hibernate.initialize(updated.getAssignedTo());
+
+        return updated;
     }
 }
