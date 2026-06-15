@@ -1,0 +1,62 @@
+package com.fitouts.roomconfiguration.domain;
+
+import java.util.UUID;
+
+import org.springframework.data.jpa.domain.Specification;
+
+import com.fitouts.roomconfiguration.api.RoomTypeFilterRequest;
+
+public class RoomTypeSpecification {
+
+    public static Specification<RoomType> filter(RoomTypeFilterRequest filter, UUID companyId) {
+
+        return (root, query, cb) -> {
+
+            var predicate = cb.conjunction();
+
+            predicate = cb.and(predicate, cb.equal(root.get("deleted"), false));
+
+            if (companyId != null) {
+                predicate = cb.and(predicate,
+                        cb.equal(root.get("company").get("uuid"), companyId));
+            }
+
+            if (filter.getCategory() != null) {
+                predicate = cb.and(predicate,
+                        cb.equal(root.get("category"), filter.getCategory()));
+            }
+
+            if (filter.getActive() != null) {
+                predicate = cb.and(predicate,
+                        cb.equal(root.get("active"), filter.getActive()));
+            }
+
+            if (filter.getCeilingMeasurementRequired() != null) {
+                predicate = cb.and(predicate,
+                        cb.equal(root.get("ceilingMeasurementRequired"), filter.getCeilingMeasurementRequired()));
+            }
+
+            if (filter.getWallMeasurementRequired() != null) {
+                predicate = cb.and(predicate,
+                        cb.equal(root.get("wallMeasurementRequired"), filter.getWallMeasurementRequired()));
+            }
+
+            if (filter.getFloorMeasurementRequired() != null) {
+                predicate = cb.and(predicate,
+                        cb.equal(root.get("floorMeasurementRequired"), filter.getFloorMeasurementRequired()));
+            }
+
+            if (filter.getSearch() != null && !filter.getSearch().isBlank()) {
+                String pattern = "%" + filter.getSearch().toLowerCase() + "%";
+                predicate = cb.and(predicate,
+                        cb.or(
+                                cb.like(cb.lower(root.get("roomTypeName")), pattern),
+                                cb.like(cb.lower(root.get("roomCode")), pattern),
+                                cb.like(cb.lower(root.get("description")), pattern)
+                        ));
+            }
+
+            return predicate;
+        };
+    }
+}
