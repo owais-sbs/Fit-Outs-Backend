@@ -26,6 +26,11 @@ public class WorkItemSpecification {
                         cb.equal(root.get("category"), filter.getCategory()));
             }
 
+            if (filter.getWorkItemMasterId() != null) {
+                predicate = cb.and(predicate,
+                        cb.equal(root.get("workItemMaster").get("id"), filter.getWorkItemMasterId()));
+            }
+
             if (filter.getActive() != null) {
                 predicate = cb.and(predicate,
                         cb.equal(root.get("active"), filter.getActive()));

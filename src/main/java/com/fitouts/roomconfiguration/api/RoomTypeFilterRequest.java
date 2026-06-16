@@ -1,5 +1,6 @@
 package com.fitouts.roomconfiguration.api;
 
+import java.util.UUID;
 import com.fitouts.shared.enums.RoomCategory;
 
 import lombok.*;
@@ -13,6 +14,7 @@ public class RoomTypeFilterRequest {
 
     private String search;
     private RoomCategory category;
+    private UUID roomMasterId;
     private Boolean active;
     private Boolean ceilingMeasurementRequired;
     private Boolean wallMeasurementRequired;
