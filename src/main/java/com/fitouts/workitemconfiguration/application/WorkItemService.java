@@ -206,8 +206,6 @@ public class WorkItemService {
     }
 
     private WorkItemResponse mapToResponse(WorkItem workItem) {
-        long roomTypeCount = workItemRepository.countRoomTypesByWorkItemId(workItem.getId());
-
         return WorkItemResponse.builder()
                 .id(workItem.getId())
                 .companyId(workItem.getCompany() != null ? workItem.getCompany().getUuid() : null)
@@ -228,7 +226,6 @@ public class WorkItemService {
                 .icon(workItem.getIcon())
                 .colorTag(workItem.getColorTag())
                 .active(workItem.getActive())
-                .roomTypeCount((int) roomTypeCount)
                 .createdAt(workItem.getCreatedAt())
                 .updatedAt(workItem.getUpdatedAt())
                 .createdBy(workItem.getCreatedBy())

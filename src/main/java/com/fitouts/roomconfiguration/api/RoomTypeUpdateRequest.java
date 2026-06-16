@@ -1,6 +1,5 @@
 package com.fitouts.roomconfiguration.api;
 
-import java.util.Set;
 import java.util.UUID;
 
 import com.fitouts.shared.enums.RoomCategory;
@@ -28,12 +27,4 @@ public class RoomTypeUpdateRequest {
 
     // @Size(max = 2000, message = "Description must not exceed 2000 characters")
     private String description;
-
-    private Boolean ceilingMeasurementRequired;
-
-    private Boolean wallMeasurementRequired;
-
-    private Boolean floorMeasurementRequired;
-
-    private Set<UUID> workItemIds;
 }

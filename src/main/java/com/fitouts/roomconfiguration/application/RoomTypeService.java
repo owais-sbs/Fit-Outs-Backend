@@ -1,8 +1,5 @@
 package com.fitouts.roomconfiguration.application;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -20,8 +17,6 @@ import com.fitouts.shared.context.CompanyContext;
 // import com.fitouts.shared.error.BadRequestException;
 // import com.fitouts.shared.error.ConflictException;
 import com.fitouts.shared.error.NotFoundException;
-import com.fitouts.workitemconfiguration.domain.WorkItem;
-import com.fitouts.workitemconfiguration.domain.WorkItemRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -31,19 +26,11 @@ import lombok.RequiredArgsConstructor;
 public class RoomTypeService {
 
     private final RoomTypeRepository roomTypeRepository;
-    private final WorkItemRepository workItemRepository;
     private final CompanyService companyService;
     private final RoomMasterRepository roomMasterRepository;
 
     public RoomTypeResponse create(RoomTypeCreateRequest request) {
         UUID companyId = CompanyContext.get();
-        // if (companyId == null) {
-        //     throw new BadRequestException("Company context is required");
-        // }
-
-        // if (roomTypeRepository.existsByCompanyUuidAndRoomCodeAndDeletedFalse(companyId, request.getRoomCode())) {
-        //     throw new ConflictException("Room type with code '" + request.getRoomCode() + "' already exists");
-        // }
 
         RoomMaster roomMaster = null;
         if (request.getRoomMasterId() != null) {
@@ -58,16 +45,7 @@ public class RoomTypeService {
                 .category(request.getCategory())
                 .roomMaster(roomMaster)
                 .description(request.getDescription())
-                .ceilingMeasurementRequired(request.getCeilingMeasurementRequired())
-                .wallMeasurementRequired(request.getWallMeasurementRequired())
-                .floorMeasurementRequired(request.getFloorMeasurementRequired())
-                .workItems(new HashSet<>())
                 .build();
-
-        if (request.getWorkItemIds() != null && !request.getWorkItemIds().isEmpty()) {
-            Set<WorkItem> workItems = new HashSet<>(workItemRepository.findAllById(request.getWorkItemIds()));
-            roomType.setWorkItems(workItems);
-        }
 
         RoomType saved = roomTypeRepository.save(roomType);
         return mapToResponse(saved);
@@ -75,22 +53,9 @@ public class RoomTypeService {
 
     public RoomTypeResponse update(UUID id, RoomTypeUpdateRequest request) {
         UUID companyId = CompanyContext.get();
-        // if (companyId == null) {
-        //     throw new BadRequestException("Company context is required");
-        // }
 
         RoomType roomType = roomTypeRepository.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new NotFoundException("Room type not found"));
-
-        // if (!roomType.getCompany().getUuid().equals(companyId)) {
-        //     throw new BadRequestException("Room type does not belong to current company");
-        // }
-
-        // if (request.getRoomCode() != null
-        //         && roomTypeRepository.existsByCompanyUuidAndRoomCodeAndIdNotAndDeletedFalse(
-        //                 companyId, request.getRoomCode(), id)) {
-        //     throw new ConflictException("Room type with code '" + request.getRoomCode() + "' already exists");
-        // }
 
         if (request.getRoomTypeName() != null) roomType.setRoomTypeName(request.getRoomTypeName());
         if (request.getRoomCode() != null) roomType.setRoomCode(request.getRoomCode());
@@ -101,14 +66,6 @@ public class RoomTypeService {
             roomType.setRoomMaster(roomMaster);
         }
         if (request.getDescription() != null) roomType.setDescription(request.getDescription());
-        if (request.getCeilingMeasurementRequired() != null) roomType.setCeilingMeasurementRequired(request.getCeilingMeasurementRequired());
-        if (request.getWallMeasurementRequired() != null) roomType.setWallMeasurementRequired(request.getWallMeasurementRequired());
-        if (request.getFloorMeasurementRequired() != null) roomType.setFloorMeasurementRequired(request.getFloorMeasurementRequired());
-
-        if (request.getWorkItemIds() != null) {
-            Set<WorkItem> workItems = new HashSet<>(workItemRepository.findAllById(request.getWorkItemIds()));
-            roomType.setWorkItems(workItems);
-        }
 
         RoomType updated = roomTypeRepository.save(roomType);
         return mapToResponse(updated);
@@ -155,20 +112,6 @@ public class RoomTypeService {
     }
 
     private RoomTypeResponse mapToResponse(RoomType roomType) {
-        Set<RoomTypeResponse.WorkItemSummaryResponse> workItemSummaries = new HashSet<>();
-        if (roomType.getWorkItems() != null) {
-            workItemSummaries = roomType.getWorkItems().stream()
-                    .filter(wi -> !wi.getDeleted())
-                    .map(wi -> RoomTypeResponse.WorkItemSummaryResponse.builder()
-                            .id(wi.getId())
-                            .workItemName(wi.getWorkItemName())
-                            .workItemCode(wi.getWorkItemCode())
-                            .icon(wi.getIcon())
-                            .colorTag(wi.getColorTag())
-                            .build())
-                    .collect(HashSet::new, HashSet::add, HashSet::addAll);
-        }
-
         return RoomTypeResponse.builder()
                 .id(roomType.getId())
                 .companyId(roomType.getCompany() != null ? roomType.getCompany().getUuid() : null)
@@ -178,11 +121,7 @@ public class RoomTypeService {
                 .roomMasterId(roomType.getRoomMaster() != null ? roomType.getRoomMaster().getId() : null)
                 .roomMasterName(roomType.getRoomMaster() != null ? roomType.getRoomMaster().getName() : null)
                 .description(roomType.getDescription())
-                .ceilingMeasurementRequired(roomType.getCeilingMeasurementRequired())
-                .wallMeasurementRequired(roomType.getWallMeasurementRequired())
-                .floorMeasurementRequired(roomType.getFloorMeasurementRequired())
                 .active(roomType.getActive())
-                .workItems(workItemSummaries)
                 .createdAt(roomType.getCreatedAt())
                 .updatedAt(roomType.getUpdatedAt())
                 .createdBy(roomType.getCreatedBy())
