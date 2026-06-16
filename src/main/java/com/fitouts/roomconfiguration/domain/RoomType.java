@@ -1,13 +1,10 @@
 package com.fitouts.roomconfiguration.domain;
 
 import java.time.LocalDateTime;
-import java.util.HashSet;
-import java.util.Set;
 import java.util.UUID;
 
 import com.fitouts.company.domain.Company;
 import com.fitouts.shared.enums.RoomCategory;
-import com.fitouts.workitemconfiguration.domain.WorkItem;
 
 import jakarta.persistence.*;
 import lombok.*;
@@ -48,18 +45,6 @@ public class RoomType {
     @Column(columnDefinition = "TEXT")
     private String description;
 
-    @Column(name = "ceiling_measurement_required", nullable = false)
-    @Builder.Default
-    private Boolean ceilingMeasurementRequired = false;
-
-    @Column(name = "wall_measurement_required", nullable = false)
-    @Builder.Default
-    private Boolean wallMeasurementRequired = false;
-
-    @Column(name = "floor_measurement_required", nullable = false)
-    @Builder.Default
-    private Boolean floorMeasurementRequired = false;
-
     @Column(nullable = false)
     @Builder.Default
     private Boolean active = true;
@@ -67,15 +52,6 @@ public class RoomType {
     @Column(nullable = false)
     @Builder.Default
     private Boolean deleted = false;
-
-    @ManyToMany(fetch = FetchType.LAZY)
-    @JoinTable(
-        name = "room_type_work_items",
-        joinColumns = @JoinColumn(name = "room_type_id"),
-        inverseJoinColumns = @JoinColumn(name = "work_item_id")
-    )
-    @Builder.Default
-    private Set<WorkItem> workItems = new HashSet<>();
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

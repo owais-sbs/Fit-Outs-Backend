@@ -36,21 +36,6 @@ public class RoomTypeSpecification {
                         cb.equal(root.get("active"), filter.getActive()));
             }
 
-            if (filter.getCeilingMeasurementRequired() != null) {
-                predicate = cb.and(predicate,
-                        cb.equal(root.get("ceilingMeasurementRequired"), filter.getCeilingMeasurementRequired()));
-            }
-
-            if (filter.getWallMeasurementRequired() != null) {
-                predicate = cb.and(predicate,
-                        cb.equal(root.get("wallMeasurementRequired"), filter.getWallMeasurementRequired()));
-            }
-
-            if (filter.getFloorMeasurementRequired() != null) {
-                predicate = cb.and(predicate,
-                        cb.equal(root.get("floorMeasurementRequired"), filter.getFloorMeasurementRequired()));
-            }
-
             if (filter.getSearch() != null && !filter.getSearch().isBlank()) {
                 String pattern = "%" + filter.getSearch().toLowerCase() + "%";
                 predicate = cb.and(predicate,

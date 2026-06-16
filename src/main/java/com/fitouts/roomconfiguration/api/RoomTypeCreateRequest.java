@@ -1,6 +1,5 @@
 package com.fitouts.roomconfiguration.api;
 
-import java.util.Set;
 import java.util.UUID;
 
 import com.fitouts.shared.enums.RoomCategory;
@@ -31,15 +30,4 @@ public class RoomTypeCreateRequest {
 
     // @Size(max = 2000, message = "Description must not exceed 2000 characters")
     private String description;
-
-    @Builder.Default
-    private Boolean ceilingMeasurementRequired = false;
-
-    @Builder.Default
-    private Boolean wallMeasurementRequired = false;
-
-    @Builder.Default
-    private Boolean floorMeasurementRequired = false;
-
-    private Set<UUID> workItemIds;
 }

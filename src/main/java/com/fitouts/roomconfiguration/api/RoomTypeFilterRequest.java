@@ -16,7 +16,4 @@ public class RoomTypeFilterRequest {
     private RoomCategory category;
     private UUID roomMasterId;
     private Boolean active;
-    private Boolean ceilingMeasurementRequired;
-    private Boolean wallMeasurementRequired;
-    private Boolean floorMeasurementRequired;
 }
