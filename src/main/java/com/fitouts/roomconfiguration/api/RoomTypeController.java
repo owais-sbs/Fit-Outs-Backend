@@ -4,25 +4,25 @@ import java.util.UUID;
 
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
-import org.springframework.validation.annotation.Validated;
+// import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import com.fitouts.roomconfiguration.application.RoomTypeService;
 import com.fitouts.shared.api.BaseController;
 
-import jakarta.validation.Valid;
+// import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/room-types")
-@Validated
+// @Validated
 @RequiredArgsConstructor
 public class RoomTypeController extends BaseController {
 
     private final RoomTypeService roomTypeService;
 
     @PostMapping
-    public ResponseEntity<?> create(@Valid @RequestBody RoomTypeCreateRequest request) {
+    public ResponseEntity<?> create(@RequestBody RoomTypeCreateRequest request) {
         try {
             return successResponse("Room type created successfully", roomTypeService.create(request));
         } catch (Exception e) {
@@ -32,7 +32,7 @@ public class RoomTypeController extends BaseController {
 
     @PutMapping("/{id}")
     public ResponseEntity<?> update(@PathVariable UUID id,
-                                    @Valid @RequestBody RoomTypeUpdateRequest request) {
+                                    @RequestBody RoomTypeUpdateRequest request) {
         try {
             return successResponse("Room type updated successfully", roomTypeService.update(id, request));
         } catch (Exception e) {

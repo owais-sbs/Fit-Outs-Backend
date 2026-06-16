@@ -22,6 +22,8 @@ public class WorkItemResponse {
     private String workItemName;
     private String workItemCode;
     private WorkItemCategory category;
+    private UUID workItemMasterId;
+    private String workItemMasterName;
     private String description;
     private Boolean ceilingApplicable;
     private Boolean wallApplicable;

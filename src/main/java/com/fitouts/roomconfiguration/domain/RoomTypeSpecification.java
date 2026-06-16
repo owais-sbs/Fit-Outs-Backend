@@ -26,6 +26,11 @@ public class RoomTypeSpecification {
                         cb.equal(root.get("category"), filter.getCategory()));
             }
 
+            if (filter.getRoomMasterId() != null) {
+                predicate = cb.and(predicate,
+                        cb.equal(root.get("roomMaster").get("id"), filter.getRoomMasterId()));
+            }
+
             if (filter.getActive() != null) {
                 predicate = cb.and(predicate,
                         cb.equal(root.get("active"), filter.getActive()));

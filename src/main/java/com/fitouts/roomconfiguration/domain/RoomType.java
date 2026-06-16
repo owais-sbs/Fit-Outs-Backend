@@ -38,8 +38,12 @@ public class RoomType {
     private String roomCode;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 50)
+    @Column(nullable = true, length = 50)
     private RoomCategory category;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "room_master_id")
+    private RoomMaster roomMaster;
 
     @Column(columnDefinition = "TEXT")
     private String description;

@@ -20,6 +20,8 @@ public class RoomTypeResponse {
     private String roomTypeName;
     private String roomCode;
     private RoomCategory category;
+    private UUID roomMasterId;
+    private String roomMasterName;
     private String description;
     private Boolean ceilingMeasurementRequired;
     private Boolean wallMeasurementRequired;
