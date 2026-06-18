@@ -13,6 +13,10 @@ public interface EmployeeRepository extends JpaRepository<Employee, Long>, JpaSp
     Optional<Employee> findByEmailAndIsDeletedFalse(String email);
 
     List<Employee> findByCompanyAndIsDeletedFalse(Company company);
-
+    
     boolean existsByEmailAndIsDeletedFalse(String email);
+
+    Optional<Employee> findByAccountId(Long accountId);
+
+    List<Employee> findByAccountIdIn(List<Long> accountIds);
 }
