@@ -22,6 +22,8 @@ public class WorkItemResponse {
     private String workItemName;
     private String workItemCode;
     private WorkItemCategory category;
+    private UUID workItemMasterId;
+    private String workItemMasterName;
     private String description;
     private Boolean ceilingApplicable;
     private Boolean wallApplicable;
@@ -34,7 +36,6 @@ public class WorkItemResponse {
     private String icon;
     private String colorTag;
     private Boolean active;
-    private Integer roomTypeCount;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private UUID createdBy;

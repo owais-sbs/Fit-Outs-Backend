@@ -4,25 +4,25 @@ import java.util.UUID;
 
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
-import org.springframework.validation.annotation.Validated;
+// import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import com.fitouts.shared.api.BaseController;
 import com.fitouts.workitemconfiguration.application.WorkItemService;
 
-import jakarta.validation.Valid;
+// import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/work-items")
-@Validated
+// @Validated
 @RequiredArgsConstructor
 public class WorkItemController extends BaseController {
 
     private final WorkItemService workItemService;
 
     @PostMapping
-    public ResponseEntity<?> create(@Valid @RequestBody WorkItemCreateRequest request) {
+    public ResponseEntity<?> create(@RequestBody WorkItemCreateRequest request) {
         try {
             return successResponse("Work item created successfully", workItemService.create(request));
         } catch (Exception e) {
@@ -32,7 +32,7 @@ public class WorkItemController extends BaseController {
 
     @PutMapping("/{id}")
     public ResponseEntity<?> update(@PathVariable UUID id,
-                                    @Valid @RequestBody WorkItemUpdateRequest request) {
+                                    @RequestBody WorkItemUpdateRequest request) {
         try {
             return successResponse("Work item updated successfully", workItemService.update(id, request));
         } catch (Exception e) {
