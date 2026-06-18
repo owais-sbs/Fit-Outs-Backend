@@ -7,6 +7,7 @@ public enum LeadStatus {
     QUALIFIED,
     SITE_VISIT_SCHEDULED,
     LOST,
-    CLIENT
+    CLIENT,
+    FOLLOWUP
 
 }

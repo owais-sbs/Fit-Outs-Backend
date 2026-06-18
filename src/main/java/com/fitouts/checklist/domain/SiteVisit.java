@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import com.fitouts.account.domain.Account;
@@ -20,6 +21,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
@@ -76,6 +78,8 @@ public class SiteVisit {
 
     @OneToOne(mappedBy = "siteVisit", cascade = CascadeType.ALL, orphanRemoval = true)
     private SiteVisitLocationDetails locationDetails;
+    @OneToMany(mappedBy = "siteVisit")
+    private List<SiteVisitAssignment> assignments;
 
     public void setLocationDetails(SiteVisitLocationDetails locationDetails) {
         this.locationDetails = locationDetails;
