@@ -10,4 +10,5 @@ import com.fitouts.checklist.domain.SiteVisit;
 public interface SiteVisitRepository extends JpaRepository<SiteVisit, UUID> {
 
     List<SiteVisit> findByCompanyUuid(UUID companyUuid);
+    List<SiteVisit> findByAssignedToId(Long employeeId);
 }
