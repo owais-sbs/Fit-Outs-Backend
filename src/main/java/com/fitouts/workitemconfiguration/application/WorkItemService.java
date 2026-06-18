@@ -13,8 +13,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.fitouts.company.application.CompanyService;
 import com.fitouts.shared.context.CompanyContext;
-import com.fitouts.shared.error.BadRequestException;
-import com.fitouts.shared.error.ConflictException;
+// import com.fitouts.shared.error.BadRequestException;
+// import com.fitouts.shared.error.ConflictException;
 import com.fitouts.shared.error.NotFoundException;
 import com.fitouts.workitemconfiguration.api.*;
 import com.fitouts.workitemconfiguration.domain.*;
@@ -28,15 +28,22 @@ public class WorkItemService {
 
     private final WorkItemRepository workItemRepository;
     private final CompanyService companyService;
+    private final WorkItemMasterRepository workItemMasterRepository;
 
     public WorkItemResponse create(WorkItemCreateRequest request) {
         UUID companyId = CompanyContext.get();
-        if (companyId == null) {
-            throw new BadRequestException("Company context is required");
-        }
+        // if (companyId == null) {
+        //     throw new BadRequestException("Company context is required");
+        // }
 
-        if (workItemRepository.existsByCompanyUuidAndWorkItemCodeAndDeletedFalse(companyId, request.getWorkItemCode())) {
-            throw new ConflictException("Work item with code '" + request.getWorkItemCode() + "' already exists");
+        // if (workItemRepository.existsByCompanyUuidAndWorkItemCodeAndDeletedFalse(companyId, request.getWorkItemCode())) {
+        //     throw new ConflictException("Work item with code '" + request.getWorkItemCode() + "' already exists");
+        // }
+
+        WorkItemMaster workItemMaster = null;
+        if (request.getWorkItemMasterId() != null) {
+            workItemMaster = workItemMasterRepository.findByIdAndDeletedFalse(request.getWorkItemMasterId())
+                    .orElseThrow(() -> new NotFoundException("Work item master not found"));
         }
 
         WorkItem workItem = WorkItem.builder()
@@ -44,6 +51,7 @@ public class WorkItemService {
                 .workItemName(request.getWorkItemName())
                 .workItemCode(request.getWorkItemCode())
                 .category(request.getCategory())
+                .workItemMaster(workItemMaster)
                 .description(request.getDescription())
                 .ceilingApplicable(request.getCeilingApplicable())
                 .wallApplicable(request.getWallApplicable())
@@ -63,26 +71,31 @@ public class WorkItemService {
 
     public WorkItemResponse update(UUID id, WorkItemUpdateRequest request) {
         UUID companyId = CompanyContext.get();
-        if (companyId == null) {
-            throw new BadRequestException("Company context is required");
-        }
+        // if (companyId == null) {
+        //     throw new BadRequestException("Company context is required");
+        // }
 
         WorkItem workItem = workItemRepository.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new NotFoundException("Work item not found"));
 
-        if (!workItem.getCompany().getUuid().equals(companyId)) {
-            throw new BadRequestException("Work item does not belong to current company");
-        }
+        // if (!workItem.getCompany().getUuid().equals(companyId)) {
+        //     throw new BadRequestException("Work item does not belong to current company");
+        // }
 
-        if (request.getWorkItemCode() != null
-                && workItemRepository.existsByCompanyUuidAndWorkItemCodeAndIdNotAndDeletedFalse(
-                        companyId, request.getWorkItemCode(), id)) {
-            throw new ConflictException("Work item with code '" + request.getWorkItemCode() + "' already exists");
-        }
+        // if (request.getWorkItemCode() != null
+        //         && workItemRepository.existsByCompanyUuidAndWorkItemCodeAndIdNotAndDeletedFalse(
+        //                 companyId, request.getWorkItemCode(), id)) {
+        //     throw new ConflictException("Work item with code '" + request.getWorkItemCode() + "' already exists");
+        // }
 
         if (request.getWorkItemName() != null) workItem.setWorkItemName(request.getWorkItemName());
         if (request.getWorkItemCode() != null) workItem.setWorkItemCode(request.getWorkItemCode());
         if (request.getCategory() != null) workItem.setCategory(request.getCategory());
+        if (request.getWorkItemMasterId() != null) {
+            WorkItemMaster workItemMaster = workItemMasterRepository.findByIdAndDeletedFalse(request.getWorkItemMasterId())
+                    .orElseThrow(() -> new NotFoundException("Work item master not found"));
+            workItem.setWorkItemMaster(workItemMaster);
+        }
         if (request.getDescription() != null) workItem.setDescription(request.getDescription());
         if (request.getCeilingApplicable() != null) workItem.setCeilingApplicable(request.getCeilingApplicable());
         if (request.getWallApplicable() != null) workItem.setWallApplicable(request.getWallApplicable());
@@ -101,16 +114,16 @@ public class WorkItemService {
 
     public WorkItemResponse clone(UUID id) {
         UUID companyId = CompanyContext.get();
-        if (companyId == null) {
-            throw new BadRequestException("Company context is required");
-        }
+        // if (companyId == null) {
+        //     throw new BadRequestException("Company context is required");
+        // }
 
         WorkItem original = workItemRepository.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new NotFoundException("Work item not found"));
 
-        if (!original.getCompany().getUuid().equals(companyId)) {
-            throw new BadRequestException("Work item does not belong to current company");
-        }
+        // if (!original.getCompany().getUuid().equals(companyId)) {
+        //     throw new BadRequestException("Work item does not belong to current company");
+        // }
 
         String clonedCode = original.getWorkItemCode() + "-CLONE";
         int suffix = 1;
@@ -124,6 +137,7 @@ public class WorkItemService {
                 .workItemName(original.getWorkItemName() + " (Copy)")
                 .workItemCode(clonedCode)
                 .category(original.getCategory())
+                .workItemMaster(original.getWorkItemMaster())
                 .description(original.getDescription())
                 .ceilingApplicable(original.getCeilingApplicable())
                 .wallApplicable(original.getWallApplicable())
@@ -192,14 +206,14 @@ public class WorkItemService {
     }
 
     private WorkItemResponse mapToResponse(WorkItem workItem) {
-        long roomTypeCount = workItemRepository.countRoomTypesByWorkItemId(workItem.getId());
-
         return WorkItemResponse.builder()
                 .id(workItem.getId())
                 .companyId(workItem.getCompany() != null ? workItem.getCompany().getUuid() : null)
                 .workItemName(workItem.getWorkItemName())
                 .workItemCode(workItem.getWorkItemCode())
                 .category(workItem.getCategory())
+                .workItemMasterId(workItem.getWorkItemMaster() != null ? workItem.getWorkItemMaster().getId() : null)
+                .workItemMasterName(workItem.getWorkItemMaster() != null ? workItem.getWorkItemMaster().getName() : null)
                 .description(workItem.getDescription())
                 .ceilingApplicable(workItem.getCeilingApplicable())
                 .wallApplicable(workItem.getWallApplicable())
@@ -212,7 +226,6 @@ public class WorkItemService {
                 .icon(workItem.getIcon())
                 .colorTag(workItem.getColorTag())
                 .active(workItem.getActive())
-                .roomTypeCount((int) roomTypeCount)
                 .createdAt(workItem.getCreatedAt())
                 .updatedAt(workItem.getUpdatedAt())
                 .createdBy(workItem.getCreatedBy())

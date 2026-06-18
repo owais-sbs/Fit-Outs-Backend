@@ -1,24 +1,23 @@
-package com.fitouts.roomconfiguration.domain;
+package com.fitouts.workitemconfiguration.domain;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
 
 import com.fitouts.company.domain.Company;
-import com.fitouts.shared.enums.RoomCategory;
 
 import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "room_types", uniqueConstraints = {
-    @UniqueConstraint(columnNames = {"company_id", "room_code"})
+@Table(name = "work_item_masters", uniqueConstraints = {
+    @UniqueConstraint(columnNames = {"company_id", "code"})
 })
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class RoomType {
+public class WorkItemMaster {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -28,28 +27,17 @@ public class RoomType {
     @JoinColumn(name = "company_id", nullable = false)
     private Company company;
 
-    @Column(name = "room_type_name", nullable = false, length = 200)
-    private String roomTypeName;
+    @Column(nullable = false, length = 200)
+    private String name;
 
-    @Column(name = "room_code", nullable = false, length = 50)
-    private String roomCode;
-
-    @Enumerated(EnumType.STRING)
     @Column(nullable = true, length = 50)
-    private RoomCategory category;
+    private String code;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "room_master_id")
-    private RoomMaster roomMaster;
-
-    @Column(columnDefinition = "TEXT")
-    private String description;
-
-    @Column(nullable = false)
+    @Column(nullable = true)
     @Builder.Default
     private Boolean active = true;
 
-    @Column(nullable = false)
+    @Column(nullable = true)
     @Builder.Default
     private Boolean deleted = false;
 

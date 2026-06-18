@@ -31,15 +31,19 @@ public class WorkItem {
     @JoinColumn(name = "company_id", nullable = false)
     private Company company;
 
-    @Column(name = "work_item_name", nullable = false, length = 200)
+    @Column(name = "work_item_name", nullable = true, length = 200)
     private String workItemName;
 
-    @Column(name = "work_item_code", nullable = false, length = 50)
+    @Column(name = "work_item_code", nullable = true, length = 50)
     private String workItemCode;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 50)
+    @Column(nullable = true, length = 50)
     private WorkItemCategory category;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "work_item_master_id")
+    private WorkItemMaster workItemMaster;
 
     @Column(columnDefinition = "TEXT")
     private String description;
@@ -80,11 +84,11 @@ public class WorkItem {
     @Column(name = "color_tag", length = 20)
     private String colorTag;
 
-    @Column(nullable = false)
+    @Column(nullable = true)
     @Builder.Default
     private Boolean active = true;
 
-    @Column(nullable = false)
+    @Column(nullable = true)
     @Builder.Default
     private Boolean deleted = false;
 

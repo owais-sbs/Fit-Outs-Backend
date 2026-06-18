@@ -1,5 +1,7 @@
 package com.fitouts.workitemconfiguration.api;
 
+import java.util.UUID;
+
 import com.fitouts.shared.enums.UnitType;
 import com.fitouts.shared.enums.WorkItemCategory;
 
@@ -14,6 +16,7 @@ public class WorkItemFilterRequest {
 
     private String search;
     private WorkItemCategory category;
+    private UUID workItemMasterId;
     private Boolean active;
     private Boolean ceilingApplicable;
     private Boolean wallApplicable;

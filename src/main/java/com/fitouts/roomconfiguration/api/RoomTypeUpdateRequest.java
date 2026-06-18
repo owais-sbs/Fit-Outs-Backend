@@ -1,12 +1,11 @@
 package com.fitouts.roomconfiguration.api;
 
-import java.util.Set;
 import java.util.UUID;
 
 import com.fitouts.shared.enums.RoomCategory;
 
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Size;
+// import jakarta.validation.constraints.NotNull;
+// import jakarta.validation.constraints.Size;
 import lombok.*;
 
 @Getter
@@ -16,22 +15,16 @@ import lombok.*;
 @Builder
 public class RoomTypeUpdateRequest {
 
-    @Size(max = 200, message = "Room type name must not exceed 200 characters")
+    // @Size(max = 200, message = "Room type name must not exceed 200 characters")
     private String roomTypeName;
 
-    @Size(max = 50, message = "Room code must not exceed 50 characters")
+    // @Size(max = 50, message = "Room code must not exceed 50 characters")
     private String roomCode;
 
     private RoomCategory category;
 
-    @Size(max = 2000, message = "Description must not exceed 2000 characters")
+    private UUID roomMasterId;
+
+    // @Size(max = 2000, message = "Description must not exceed 2000 characters")
     private String description;
-
-    private Boolean ceilingMeasurementRequired;
-
-    private Boolean wallMeasurementRequired;
-
-    private Boolean floorMeasurementRequired;
-
-    private Set<UUID> workItemIds;
 }
