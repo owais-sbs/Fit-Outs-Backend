@@ -1,5 +1,7 @@
 package com.fitouts.checklist.mapper;
 
+import java.util.List;
+
 import org.springframework.stereotype.Component;
 
 import com.fitouts.checklist.domain.SiteVisit;
@@ -9,9 +11,15 @@ import com.fitouts.checklist.dto.SiteVisitCreateRequest;
 import com.fitouts.checklist.dto.SiteVisitLocationDetailsRequest;
 import com.fitouts.checklist.dto.SiteVisitLocationDetailsResponse;
 import com.fitouts.checklist.dto.SiteVisitResponse;
+import com.fitouts.employee.domain.Employee;
+import com.fitouts.employee.domain.EmployeeRepository;
+import lombok.RequiredArgsConstructor;
 
 @Component
+@RequiredArgsConstructor
 public class SiteVisitMapper {
+
+    private final EmployeeRepository employeeRepository;
 
     public SiteVisit toEntity(SiteVisitCreateRequest request) {
         SiteVisit siteVisit = new SiteVisit();
@@ -44,9 +52,29 @@ public class SiteVisitMapper {
     }
 
     public SiteVisitResponse toResponse(SiteVisit siteVisit) {
+        List<Long> accountIds = siteVisit.getAssignments() == null
+                ? List.of()
+                : siteVisit.getAssignments()
+                    .stream()
+                    .map(a -> a.getEmployee().getId())
+                    .toList();
+
+        List<Long> employeeIds = List.of();
+        List<String> employeeNames = List.of();
+        if (!accountIds.isEmpty()) {
+            List<Employee> employees = employeeRepository.findByAccountIdIn(accountIds);
+            employeeIds = employees.stream()
+                    .map(Employee::getId)
+                    .toList();
+            employeeNames = employees.stream()
+                    .map(Employee::getEmployeeName)
+                    .toList();
+        }
+
         SiteVisitResponse response = SiteVisitResponse.builder()
                 .leadId(siteVisit.getLeadId())
-                .assignedTo(siteVisit.getAssignedTo() != null ? siteVisit.getAssignedTo().getId() : null)
+                .employeeIds(employeeIds)
+                .employeeNames(employeeNames)
                 .scheduledDate(siteVisit.getScheduledDate())
                 .scheduledTime(siteVisit.getScheduledTime())
                 .latitude(siteVisit.getLatitude())

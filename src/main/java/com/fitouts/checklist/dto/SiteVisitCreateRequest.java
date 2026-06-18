@@ -3,6 +3,7 @@ package com.fitouts.checklist.dto;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.List;
 import java.util.UUID;
 
 import jakarta.validation.constraints.DecimalMax;
@@ -19,7 +20,8 @@ public class SiteVisitCreateRequest {
     private Long leadId;
 
     @NotNull
-    private Long assignedTo;
+   
+    private List<Long> employeeIds;
 
     @NotNull
     private LocalDate scheduledDate;

@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import com.fitouts.checklist.domain.SiteVisitStatus;
@@ -19,7 +20,8 @@ public class SiteVisitResponse {
 
     private UUID uuid;
     private Long leadId;
-    private Long assignedTo;
+    private List<Long> employeeIds;
+    private List<String> employeeNames;
     private LocalDate scheduledDate;
     private LocalTime scheduledTime;
     private BigDecimal latitude;

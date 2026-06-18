@@ -68,4 +68,12 @@ public class SiteVisitController extends BaseController {
             return failureResponse("Unable to add site visit location details", exception.getMessage());
         }
     }
+    @GetMapping("/employee/{employeeId}")
+    public ResponseEntity<?> getEmployeeSiteVisits(@PathVariable Long employeeId) {
+        try {
+            return successResponse(siteVisitService.getEmployeeSiteVisits(employeeId));
+        } catch (Exception exception) {
+            return failureResponse("Unable to fetch site visits", exception.getMessage());
+        }
+    }
 }
