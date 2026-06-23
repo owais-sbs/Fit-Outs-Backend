@@ -1,6 +1,11 @@
 package com.fitouts.roomconfiguration.application;
 
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -14,9 +19,9 @@ import com.fitouts.company.application.CompanyService;
 import com.fitouts.roomconfiguration.api.*;
 import com.fitouts.roomconfiguration.domain.*;
 import com.fitouts.shared.context.CompanyContext;
-// import com.fitouts.shared.error.BadRequestException;
-// import com.fitouts.shared.error.ConflictException;
 import com.fitouts.shared.error.NotFoundException;
+import com.fitouts.workitemconfiguration.domain.WorkItem;
+import com.fitouts.workitemconfiguration.domain.WorkItemRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -28,6 +33,7 @@ public class RoomTypeService {
     private final RoomTypeRepository roomTypeRepository;
     private final CompanyService companyService;
     private final RoomMasterRepository roomMasterRepository;
+    private final WorkItemRepository workItemRepository;
 
     public RoomTypeResponse create(RoomTypeCreateRequest request) {
         UUID companyId = CompanyContext.get();
@@ -47,13 +53,15 @@ public class RoomTypeService {
                 .description(request.getDescription())
                 .build();
 
+        if (request.getWorkItemIds() != null) {
+            roomType.setWorkItems(resolveWorkItems(request.getWorkItemIds()));
+        }
+
         RoomType saved = roomTypeRepository.save(roomType);
         return mapToResponse(saved);
     }
 
     public RoomTypeResponse update(UUID id, RoomTypeUpdateRequest request) {
-        UUID companyId = CompanyContext.get();
-
         RoomType roomType = roomTypeRepository.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new NotFoundException("Room type not found"));
 
@@ -66,6 +74,9 @@ public class RoomTypeService {
             roomType.setRoomMaster(roomMaster);
         }
         if (request.getDescription() != null) roomType.setDescription(request.getDescription());
+        if (request.getWorkItemIds() != null) {
+            roomType.setWorkItems(resolveWorkItems(request.getWorkItemIds()));
+        }
 
         RoomType updated = roomTypeRepository.save(roomType);
         return mapToResponse(updated);
@@ -111,7 +122,28 @@ public class RoomTypeService {
         roomTypeRepository.save(roomType);
     }
 
+    private Set<WorkItem> resolveWorkItems(List<UUID> workItemIds) {
+        if (workItemIds == null || workItemIds.isEmpty()) {
+            return new HashSet<>();
+        }
+        List<WorkItem> items = new ArrayList<>();
+        for (UUID workItemId : workItemIds) {
+            WorkItem item = workItemRepository.findByIdAndDeletedFalse(workItemId)
+                    .orElseThrow(() -> new NotFoundException("Work item not found: " + workItemId));
+            items.add(item);
+        }
+        return new HashSet<>(items);
+    }
+
     private RoomTypeResponse mapToResponse(RoomType roomType) {
+        List<RoomTypeWorkItemSummary> workItemSummaries = roomType.getWorkItems().stream()
+                .map(this::mapWorkItemSummary)
+                .collect(Collectors.toList());
+
+        List<UUID> workItemIds = workItemSummaries.stream()
+                .map(RoomTypeWorkItemSummary::getId)
+                .collect(Collectors.toList());
+
         return RoomTypeResponse.builder()
                 .id(roomType.getId())
                 .companyId(roomType.getCompany() != null ? roomType.getCompany().getUuid() : null)
@@ -126,6 +158,25 @@ public class RoomTypeService {
                 .updatedAt(roomType.getUpdatedAt())
                 .createdBy(roomType.getCreatedBy())
                 .updatedBy(roomType.getUpdatedBy())
+                .workItemIds(workItemIds)
+                .workItems(workItemSummaries)
+                .build();
+    }
+
+    private RoomTypeWorkItemSummary mapWorkItemSummary(WorkItem item) {
+        return RoomTypeWorkItemSummary.builder()
+                .id(item.getId())
+                .workItemName(item.getWorkItemName())
+                .workItemCode(item.getWorkItemCode())
+                .workItemMasterId(item.getWorkItemMaster() != null ? item.getWorkItemMaster().getId() : null)
+                .workItemMasterName(item.getWorkItemMaster() != null ? item.getWorkItemMaster().getName() : null)
+                .unitType(item.getUnitType())
+                .defaultRate(item.getDefaultRate())
+                .subcontractorRate(item.getSubcontractorRate())
+                .quantityFormulaType(item.getQuantityFormulaType())
+                .ceilingApplicable(item.getCeilingApplicable())
+                .wallApplicable(item.getWallApplicable())
+                .floorApplicable(item.getFloorApplicable())
                 .build();
     }
 }
