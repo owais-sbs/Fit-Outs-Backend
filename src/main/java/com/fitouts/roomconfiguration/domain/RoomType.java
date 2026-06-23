@@ -1,10 +1,13 @@
 package com.fitouts.roomconfiguration.domain;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 import com.fitouts.company.domain.Company;
 import com.fitouts.shared.enums.RoomCategory;
+import com.fitouts.workitemconfiguration.domain.WorkItem;
 
 import jakarta.persistence.*;
 import lombok.*;
@@ -44,6 +47,14 @@ public class RoomType {
 
     @Column(columnDefinition = "TEXT")
     private String description;
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "room_type_work_items",
+            joinColumns = @JoinColumn(name = "room_type_id"),
+            inverseJoinColumns = @JoinColumn(name = "work_item_id"))
+    @Builder.Default
+    private Set<WorkItem> workItems = new HashSet<>();
 
     @Column(nullable = false)
     @Builder.Default

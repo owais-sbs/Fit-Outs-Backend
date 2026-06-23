@@ -1,6 +1,7 @@
 package com.fitouts.roomconfiguration.api;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import com.fitouts.shared.enums.RoomCategory;
@@ -27,4 +28,6 @@ public class RoomTypeResponse {
     private LocalDateTime updatedAt;
     private UUID createdBy;
     private UUID updatedBy;
+    private List<UUID> workItemIds;
+    private List<RoomTypeWorkItemSummary> workItems;
 }
