@@ -2,6 +2,7 @@ package com.fitouts.workitemconfiguration.api;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import com.fitouts.shared.enums.QuantityFormulaType;
@@ -32,6 +33,10 @@ public class WorkItemResponse {
     private BigDecimal defaultRate;
     private BigDecimal subcontractorRate;
     private BigDecimal markupPercentage;
+    private BigDecimal costPrice;
+    private Boolean sellingPriceOverride;
+    private Boolean costPriceOverride;
+    private List<WorkItemMaterialLineResponse> materialLines;
     private QuantityFormulaType quantityFormulaType;
     private String icon;
     private String colorTag;

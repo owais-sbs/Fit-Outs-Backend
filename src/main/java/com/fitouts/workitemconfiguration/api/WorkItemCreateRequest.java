@@ -2,6 +2,7 @@ package com.fitouts.workitemconfiguration.api;
 
 import java.math.BigDecimal;
 
+import java.util.List;
 import java.util.UUID;
 
 import com.fitouts.shared.enums.QuantityFormulaType;
@@ -52,6 +53,16 @@ public class WorkItemCreateRequest {
     private BigDecimal subcontractorRate;
 
     private BigDecimal markupPercentage;
+
+    private BigDecimal costPrice;
+
+    @Builder.Default
+    private Boolean sellingPriceOverride = false;
+
+    @Builder.Default
+    private Boolean costPriceOverride = false;
+
+    private List<WorkItemMaterialLineRequest> materialLines;
 
     @Builder.Default
     private QuantityFormulaType quantityFormulaType = QuantityFormulaType.MANUAL;
