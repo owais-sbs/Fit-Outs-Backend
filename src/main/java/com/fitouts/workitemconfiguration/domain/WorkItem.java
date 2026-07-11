@@ -73,6 +73,17 @@ public class WorkItem {
     @Column(name = "markup_percentage", precision = 5, scale = 2)
     private BigDecimal markupPercentage;
 
+    @Column(name = "cost_price", precision = 12, scale = 2)
+    private BigDecimal costPrice;
+
+    @Column(name = "selling_price_override", nullable = false)
+    @Builder.Default
+    private Boolean sellingPriceOverride = false;
+
+    @Column(name = "cost_price_override", nullable = false)
+    @Builder.Default
+    private Boolean costPriceOverride = false;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "quantity_formula_type", nullable = false, length = 30)
     @Builder.Default
