@@ -1,11 +1,20 @@
 package com.fitouts.project.domain;
 
-import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.Setter;
-
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
 @Table(name = "projects")
@@ -25,6 +34,30 @@ public class Project {
 
     @Column(name = "client_id")
     private Long clientId;
+
+    @Column(length = 30)
+    private String status = "Planning";
+
+    private Integer progress = 0;
+
+    private BigDecimal budget;
+
+    private String location;
+
+    @Column(columnDefinition = "TEXT")
+    private String description;
+
+    @Column(name = "project_type", length = 100)
+    private String projectType;
+
+    @Column(name = "assigned_manager", length = 200)
+    private String assignedManager;
+
+    @Column(name = "start_date")
+    private LocalDate startDate;
+
+    @Column(name = "expected_completion_date")
+    private LocalDate expectedCompletionDate;
 
     private boolean isActive = true;
     private boolean isDeleted = false;
