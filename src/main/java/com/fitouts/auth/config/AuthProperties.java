@@ -16,9 +16,17 @@ public class AuthProperties {
     private List<String> allowedOrigins = new ArrayList<>();
     private String sessionCookieName = "FITOUTS_SESSION";
     private boolean cookieSecure;
+    private String cookieSameSite;
     private String deviceCookieName = "FITOUTS_DEVICE";
     private int deviceCookieMaxAgeDays = 30;
     private Otp otp = new Otp();
+
+    public String getCookieSameSite() {
+        if (cookieSameSite != null && !cookieSameSite.isBlank()) {
+            return cookieSameSite;
+        }
+        return cookieSecure ? "None" : "Lax";
+    }
 
     @Getter
     @Setter

@@ -1,6 +1,9 @@
 package com.fitouts.auth.config;
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -62,14 +65,27 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource(AuthProperties properties) {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of("http://localhost:3001", "https://fitouts.onepathsolutions.com"));
-        configuration.setAllowedMethods(java.util.List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedOrigins(resolveAllowedOrigins(properties));
+        configuration.setAllowedMethods(java.util.List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         configuration.setAllowedHeaders(java.util.List.of("*"));
         configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
+    }
+
+    private List<String> resolveAllowedOrigins(AuthProperties properties) {
+        Set<String> origins = new LinkedHashSet<>();
+        if (properties.getAllowedOrigins() != null) {
+            origins.addAll(properties.getAllowedOrigins());
+        }
+        origins.add("http://localhost:3000");
+        origins.add("http://localhost:3001");
+        origins.add("http://localhost:3002");
+        origins.add("http://localhost:3003");
+        origins.add("https://fitouts.onepathsolutions.com");
+        return new ArrayList<>(origins);
     }
 
     @Bean
