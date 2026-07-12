@@ -3,6 +3,7 @@ package com.fitouts.roomconfiguration.application;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -16,11 +17,16 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.fitouts.company.application.CompanyService;
+import com.fitouts.procurement.domain.Material;
 import com.fitouts.roomconfiguration.api.*;
 import com.fitouts.roomconfiguration.domain.*;
 import com.fitouts.shared.context.CompanyContext;
 import com.fitouts.shared.error.NotFoundException;
+import com.fitouts.workitemconfiguration.api.WorkItemMaterialLineResponse;
+import com.fitouts.workitemconfiguration.application.WorkItemPricingHelper;
 import com.fitouts.workitemconfiguration.domain.WorkItem;
+import com.fitouts.workitemconfiguration.domain.WorkItemMaterial;
+import com.fitouts.workitemconfiguration.domain.WorkItemMaterialRepository;
 import com.fitouts.workitemconfiguration.domain.WorkItemRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -34,6 +40,7 @@ public class RoomTypeService {
     private final CompanyService companyService;
     private final RoomMasterRepository roomMasterRepository;
     private final WorkItemRepository workItemRepository;
+    private final WorkItemMaterialRepository workItemMaterialRepository;
 
     public RoomTypeResponse create(RoomTypeCreateRequest request) {
         UUID companyId = CompanyContext.get();
@@ -136,9 +143,7 @@ public class RoomTypeService {
     }
 
     private RoomTypeResponse mapToResponse(RoomType roomType) {
-        List<RoomTypeWorkItemSummary> workItemSummaries = roomType.getWorkItems().stream()
-                .map(this::mapWorkItemSummary)
-                .collect(Collectors.toList());
+        List<RoomTypeWorkItemSummary> workItemSummaries = mapWorkItemSummaries(roomType.getWorkItems());
 
         List<UUID> workItemIds = workItemSummaries.stream()
                 .map(RoomTypeWorkItemSummary::getId)
@@ -163,7 +168,25 @@ public class RoomTypeService {
                 .build();
     }
 
-    private RoomTypeWorkItemSummary mapWorkItemSummary(WorkItem item) {
+    private List<RoomTypeWorkItemSummary> mapWorkItemSummaries(Set<WorkItem> workItems) {
+        if (workItems == null || workItems.isEmpty()) {
+            return List.of();
+        }
+        List<UUID> workItemIds = workItems.stream().map(WorkItem::getId).toList();
+        Map<UUID, List<WorkItemMaterial>> materialsByWorkItem = workItemMaterialRepository.findByWorkItemIdIn(workItemIds)
+                .stream()
+                .collect(Collectors.groupingBy(line -> line.getWorkItem().getId()));
+
+        return workItems.stream()
+                .map(item -> mapWorkItemSummary(item, materialsByWorkItem.getOrDefault(item.getId(), List.of())))
+                .collect(Collectors.toList());
+    }
+
+    private RoomTypeWorkItemSummary mapWorkItemSummary(WorkItem item, List<WorkItemMaterial> materialLines) {
+        List<WorkItemMaterialLineResponse> lineResponses = materialLines.stream()
+                .map(this::mapMaterialLine)
+                .collect(Collectors.toList());
+
         return RoomTypeWorkItemSummary.builder()
                 .id(item.getId())
                 .workItemName(item.getWorkItemName())
@@ -177,6 +200,24 @@ public class RoomTypeService {
                 .ceilingApplicable(item.getCeilingApplicable())
                 .wallApplicable(item.getWallApplicable())
                 .floorApplicable(item.getFloorApplicable())
+                .costPrice(item.getCostPrice())
+                .markupPercentage(item.getMarkupPercentage())
+                .materialLines(lineResponses)
+                .build();
+    }
+
+    private WorkItemMaterialLineResponse mapMaterialLine(WorkItemMaterial line) {
+        Material material = line.getMaterial();
+        return WorkItemMaterialLineResponse.builder()
+                .materialId(material.getId())
+                .materialName(material.getMaterialName())
+                .materialCode(material.getMaterialCode())
+                .materialCategoryName(material.getMaterialCategory() != null ? material.getMaterialCategory().getName() : null)
+                .unitType(material.getUnitType())
+                .costPrice(material.getCostPrice())
+                .quantityPerUnit(line.getQuantityPerUnit())
+                .wastagePercent(line.getWastagePercent())
+                .lineCost(WorkItemPricingHelper.lineCost(line))
                 .build();
     }
 }

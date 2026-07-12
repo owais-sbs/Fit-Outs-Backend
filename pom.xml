@@ -27,8 +27,6 @@
     </properties>
 
     <dependencies>
-
-        <!-- Spring Boot Web -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
@@ -126,7 +124,31 @@
             <scope>test</scope>
         </dependency>
 
+        <dependency>
+            <groupId>org.kabeja</groupId>
+            <artifactId>kabeja</artifactId>
+            <version>0.4</version>
+        </dependency>
+        <dependency>
+            <groupId>org.kabeja</groupId>
+            <artifactId>kabeja-svg</artifactId>
+            <version>0.4</version>
+        </dependency>
+
     </dependencies>
+
+    <repositories>
+        <repository>
+            <id>logicaldoc</id>
+            <url>https://logicaldoc.sourceforge.net/maven/</url>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
 
     <build>
         <plugins>

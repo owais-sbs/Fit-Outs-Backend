@@ -92,6 +92,7 @@ public class AuthService {
         return authenticate(challenge.getAccount(), challenge.getDevice(), servletRequest, servletResponse);
     }
 
+    @Transactional(readOnly = true)
     public CurrentUserResponse me(AuthPrincipal principal) {
         Account account = accountService.getAccountByEmail(principal.getEmail());
         return toCurrentUser(account);

@@ -1,8 +1,10 @@
 package com.fitouts.roomconfiguration.api;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
+import com.fitouts.workitemconfiguration.api.WorkItemMaterialLineResponse;
 import com.fitouts.shared.enums.QuantityFormulaType;
 import com.fitouts.shared.enums.UnitType;
 
@@ -27,4 +29,7 @@ public class RoomTypeWorkItemSummary {
     private Boolean ceilingApplicable;
     private Boolean wallApplicable;
     private Boolean floorApplicable;
+    private BigDecimal costPrice;
+    private BigDecimal markupPercentage;
+    private List<WorkItemMaterialLineResponse> materialLines;
 }

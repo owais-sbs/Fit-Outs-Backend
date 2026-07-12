@@ -7,6 +7,8 @@ public enum Role {
     PROJECT_MANAGER,
     DESIGNER,
     QAS,
+    QS,
+    SENIOR_QS,
     FINANCE,
     SUBCONTRACTOR,
     CLIENT,
