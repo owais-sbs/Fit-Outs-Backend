@@ -15,6 +15,8 @@ public class ChecklistTemplateItemRequest {
     @NotBlank
     private String sectionName;
 
+    private String roomName;
+
     @NotBlank
     private String question;
 

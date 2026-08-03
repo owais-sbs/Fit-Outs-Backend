@@ -4,14 +4,17 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
 import com.fitouts.account.domain.Account;
 import com.fitouts.company.domain.Company;
+import com.fitouts.shared.persistence.StringListJsonConverter;
 
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -66,6 +69,17 @@ public class SiteVisit {
 
     private Long createdBy;
 
+    @Column(name = "checklist_template_uuid")
+    private UUID checklistTemplateUuid;
+
+    @Convert(converter = StringListJsonConverter.class)
+    @Column(columnDefinition = "TEXT")
+    private List<String> categories = new ArrayList<>();
+
+    @Convert(converter = StringListJsonConverter.class)
+    @Column(columnDefinition = "TEXT")
+    private List<String> rooms = new ArrayList<>();
+
     @Column(nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -78,6 +92,7 @@ public class SiteVisit {
 
     @OneToOne(mappedBy = "siteVisit", cascade = CascadeType.ALL, orphanRemoval = true)
     private SiteVisitLocationDetails locationDetails;
+
     @OneToMany(mappedBy = "siteVisit")
     private List<SiteVisitAssignment> assignments;
 

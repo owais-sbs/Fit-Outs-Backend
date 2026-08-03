@@ -2,6 +2,7 @@ package com.fitouts.employee.api;
 
 import java.util.Set;
 
+import com.fitouts.auth.domain.Role;
 import com.fitouts.employee.domain.Feature;
 
 import jakarta.validation.constraints.NotBlank;
@@ -17,6 +18,8 @@ public class EmployeeUpdateRequest {
 
     @NotBlank(message = "Designation is required")
     private String designation;
+
+    private Role role;
 
     private Set<Feature> features;
 

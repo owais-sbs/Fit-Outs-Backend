@@ -1,5 +1,6 @@
 package com.fitouts.checklist.mapper;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.stereotype.Component;
@@ -31,6 +32,9 @@ public class SiteVisitMapper {
         siteVisit.setNotes(trimNullable(request.getNotes()));
         siteVisit.setCreatedBy(request.getCreatedBy());
         siteVisit.setStatus(SiteVisitStatus.SCHEDULED);
+        siteVisit.setChecklistTemplateUuid(request.getChecklistTemplateUuid());
+        siteVisit.setCategories(cleanList(request.getCategories()));
+        siteVisit.setRooms(cleanList(request.getRooms()));
         return siteVisit;
     }
 
@@ -82,6 +86,9 @@ public class SiteVisitMapper {
                 .status(siteVisit.getStatus())
                 .notes(siteVisit.getNotes())
                 .createdBy(siteVisit.getCreatedBy())
+                .checklistTemplateUuid(siteVisit.getChecklistTemplateUuid())
+                .categories(siteVisit.getCategories() != null ? new ArrayList<>(siteVisit.getCategories()) : new ArrayList<>())
+                .rooms(siteVisit.getRooms() != null ? new ArrayList<>(siteVisit.getRooms()) : new ArrayList<>())
                 .createdAt(siteVisit.getCreatedAt())
                 .updatedAt(siteVisit.getUpdatedAt())
                 .locationDetails(toLocationResponse(siteVisit.getLocationDetails()))
@@ -112,6 +119,17 @@ public class SiteVisitMapper {
                 .build();
         response.setUuid(details.getUuid());
         return response;
+    }
+
+    private List<String> cleanList(List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return new ArrayList<>();
+        }
+        return values.stream()
+                .filter(v -> v != null && !v.isBlank())
+                .map(String::trim)
+                .distinct()
+                .toList();
     }
 
     private String trimNullable(String value) {

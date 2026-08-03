@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.fitouts.account.domain.Account;
 import com.fitouts.account.domain.AccountRepository;
+import com.fitouts.checklist.domain.ChecklistTemplate;
 import com.fitouts.checklist.domain.SiteVisit;
 import com.fitouts.checklist.domain.SiteVisitAssignment;
 import com.fitouts.checklist.domain.SiteVisitLocationDetails;
@@ -16,6 +17,7 @@ import com.fitouts.checklist.dto.SiteVisitCreateRequest;
 import com.fitouts.checklist.dto.SiteVisitLocationDetailsRequest;
 import com.fitouts.checklist.dto.SiteVisitResponse;
 import com.fitouts.checklist.mapper.SiteVisitMapper;
+import com.fitouts.checklist.repository.ChecklistTemplateRepository;
 import com.fitouts.checklist.repository.SiteVisitAssignmentRepository;
 import com.fitouts.checklist.repository.SiteVisitLocationDetailsRepository;
 import com.fitouts.checklist.repository.SiteVisitRepository;
@@ -39,6 +41,9 @@ public class SiteVisitService {
     private final SiteVisitAssignmentRepository assignmentRepository;
     private final AccountRepository accountRepository;
     private final EmployeeRepository employeeRepository;
+    private final ChecklistTemplateRepository checklistTemplateRepository;
+
+    private static final String DEFAULT_CHECKLIST_NAME = "JCT Renovation Checklist";
     
     @Transactional
     public SiteVisitResponse create(SiteVisitCreateRequest request) {
@@ -47,6 +52,12 @@ public class SiteVisitService {
     	UUID companyId = CompanyContext.get();
     	if (companyId != null) {
     	    siteVisit.setCompany(companyService.getCompany(companyId));
+    	    if (siteVisit.getChecklistTemplateUuid() == null) {
+    	        checklistTemplateRepository
+    	                .findFirstByCompanyUuidAndNameIgnoreCase(companyId, DEFAULT_CHECKLIST_NAME)
+    	                .map(ChecklistTemplate::getUuid)
+    	                .ifPresent(siteVisit::setChecklistTemplateUuid);
+    	    }
     	}
 
     	SiteVisit savedSiteVisit = repository.save(siteVisit);

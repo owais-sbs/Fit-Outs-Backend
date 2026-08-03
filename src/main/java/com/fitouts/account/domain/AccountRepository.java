@@ -14,6 +14,9 @@ public interface AccountRepository extends JpaRepository<Account, Long> {
 
     Optional<Account> findByEmail(String email);
 
+    @Query("SELECT a FROM Account a LEFT JOIN FETCH a.company WHERE LOWER(a.email) = LOWER(:email)")
+    Optional<Account> findByEmailWithCompany(@Param("email") String email);
+
     Optional<Account> findByEmailAndCompanyUuid(String email, UUID companyUuid);
 
     Optional<Account> findByIdAndCompanyUuid(Long id, UUID companyUuid);

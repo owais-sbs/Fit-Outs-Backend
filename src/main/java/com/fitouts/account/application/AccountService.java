@@ -113,13 +113,13 @@ public class AccountService {
 
     @Transactional(readOnly = true)
     public Account getAccountByEmail(String email) {
-        return repository.findByEmail(email.trim().toLowerCase())
+        return repository.findByEmailWithCompany(email.trim().toLowerCase())
                 .orElseThrow(() -> new NotFoundException("Account not found"));
     }
 
     @Transactional(readOnly = true)
     public Optional<Account> findOptionalByEmail(String email) {
-        return repository.findByEmail(email.trim().toLowerCase());
+        return repository.findByEmailWithCompany(email.trim().toLowerCase());
     }
 
     @Transactional
