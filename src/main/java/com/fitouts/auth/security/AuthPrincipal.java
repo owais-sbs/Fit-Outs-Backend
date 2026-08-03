@@ -27,10 +27,13 @@ public class AuthPrincipal implements AuthenticatedPrincipal, Serializable {
     private Set<Role> roles;
 
     public static AuthPrincipal from(Account account) {
+        String companyName = account.getCompany() != null && account.getCompany().getCompanyName() != null
+                ? account.getCompany().getCompanyName()
+                : account.getCompanyName();
         return AuthPrincipal.builder()
                 .accountId(account.getId())
                 .companyId(account.getCompany() != null ? account.getCompany().getUuid() : null)
-                .companyName(account.getCompany() != null ? account.getCompany().getCompanyName() : null)
+                .companyName(companyName)
                 .email(account.getEmail())
                 .fullName(account.getFullName())
                 .roles(account.getRoles())

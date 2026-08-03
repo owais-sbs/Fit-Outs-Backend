@@ -45,6 +45,7 @@ public class ChecklistTemplateMapper {
     private ChecklistTemplateItem toItem(ChecklistTemplateItemRequest request) {
         ChecklistTemplateItem item = new ChecklistTemplateItem();
         item.setSectionName(request.getSectionName().trim());
+        item.setRoomName(trimNullable(request.getRoomName()));
         item.setQuestion(request.getQuestion().trim());
         item.setType(request.getType());
         item.setIsRequired(request.getIsRequired());
@@ -55,6 +56,7 @@ public class ChecklistTemplateMapper {
     private ChecklistTemplateItemResponse toItemResponse(ChecklistTemplateItem item) {
         ChecklistTemplateItemResponse response = ChecklistTemplateItemResponse.builder()
                 .sectionName(item.getSectionName())
+                .roomName(item.getRoomName())
                 .question(item.getQuestion())
                 .type(item.getType())
                 .isRequired(item.getIsRequired())

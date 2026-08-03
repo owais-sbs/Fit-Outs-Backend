@@ -36,6 +36,9 @@ public class ChecklistTemplateItem {
     @Column(nullable = false)
     private String sectionName;
 
+    @Column(name = "room_name", length = 120)
+    private String roomName;
+
     @Column(nullable = false)
     private String question;
 

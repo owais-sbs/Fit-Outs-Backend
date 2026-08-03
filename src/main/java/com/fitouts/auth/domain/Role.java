@@ -13,5 +13,6 @@ public enum Role {
     SUBCONTRACTOR,
     CLIENT,
     SALES,
-    EMPLOYEE
+    EMPLOYEE,
+    SITE_ENGINEER
 }

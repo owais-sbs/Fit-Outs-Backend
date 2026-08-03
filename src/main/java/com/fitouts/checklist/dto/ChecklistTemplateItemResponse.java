@@ -14,6 +14,7 @@ public class ChecklistTemplateItemResponse {
 
     private UUID uuid;
     private String sectionName;
+    private String roomName;
     private String question;
     private ChecklistItemType type;
     private Boolean isRequired;

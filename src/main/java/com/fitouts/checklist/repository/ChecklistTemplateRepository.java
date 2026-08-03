@@ -10,4 +10,6 @@ import com.fitouts.checklist.domain.ChecklistTemplate;
 public interface ChecklistTemplateRepository extends JpaRepository<ChecklistTemplate, UUID> {
 
     List<ChecklistTemplate> findByCompanyUuid(UUID companyUuid);
+
+    java.util.Optional<ChecklistTemplate> findFirstByCompanyUuidAndNameIgnoreCase(UUID companyUuid, String name);
 }

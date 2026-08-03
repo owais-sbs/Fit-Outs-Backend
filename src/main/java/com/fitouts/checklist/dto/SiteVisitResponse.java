@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -29,6 +30,11 @@ public class SiteVisitResponse {
     private SiteVisitStatus status;
     private String notes;
     private Long createdBy;
+    private UUID checklistTemplateUuid;
+    @Builder.Default
+    private List<String> categories = new ArrayList<>();
+    @Builder.Default
+    private List<String> rooms = new ArrayList<>();
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
     private SiteVisitLocationDetailsResponse locationDetails;

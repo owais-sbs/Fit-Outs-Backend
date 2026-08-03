@@ -21,6 +21,7 @@ import com.fitouts.qto.application.QtoService;
 import com.fitouts.qto.domain.QtoLine;
 import com.fitouts.qto.domain.QtoLineRepository;
 import com.fitouts.qto.domain.QtoSession;
+import com.fitouts.roomcollab.application.RoomCollabService;
 import com.fitouts.shared.context.CompanyContext;
 import com.fitouts.shared.enums.BoqDocumentStatus;
 import com.fitouts.shared.error.BadRequestException;
@@ -40,6 +41,7 @@ public class BoqService {
     private final QtoService qtoService;
     private final QtoLineRepository qtoLineRepository;
     private final ProjectService projectService;
+    private final RoomCollabService roomCollabService;
 
     public BoqDocumentResponse generateFromQto(UUID sessionId) {
         QtoSession session = qtoService.findSession(sessionId);
@@ -91,6 +93,7 @@ public class BoqService {
         BoqDocument saved = boqDocumentRepository.save(doc);
         List<BoqLine> lines = saveLines(saved, request.getLines());
         recalcTotals(saved, lines);
+        roomCollabService.syncRoomsFromBoqLines(project.getId(), companyId, lines);
         return mapDocument(saved, lines);
     }
 
@@ -103,6 +106,7 @@ public class BoqService {
         boqLineRepository.deleteByBoqId(id);
         List<BoqLine> lines = saveLines(doc, request.getLines());
         recalcTotals(doc, lines);
+        roomCollabService.syncRoomsFromBoqLines(doc.getProject().getId(), doc.getCompanyId(), lines);
         return mapDocument(boqDocumentRepository.save(doc), lines);
     }
 

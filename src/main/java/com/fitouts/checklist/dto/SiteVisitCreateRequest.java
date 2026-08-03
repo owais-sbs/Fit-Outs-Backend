@@ -3,6 +3,7 @@ package com.fitouts.checklist.dto;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -20,7 +21,6 @@ public class SiteVisitCreateRequest {
     private Long leadId;
 
     @NotNull
-   
     private List<Long> employeeIds;
 
     @NotNull
@@ -41,4 +41,10 @@ public class SiteVisitCreateRequest {
 
     private String notes;
     private Long createdBy;
+
+    private UUID checklistTemplateUuid;
+
+    private List<String> categories = new ArrayList<>();
+
+    private List<String> rooms = new ArrayList<>();
 }

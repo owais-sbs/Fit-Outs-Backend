@@ -3,6 +3,7 @@ package com.fitouts.auth.application;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContext;
@@ -95,7 +96,7 @@ public class AuthService {
     @Transactional(readOnly = true)
     public CurrentUserResponse me(AuthPrincipal principal) {
         Account account = accountService.getAccountByEmail(principal.getEmail());
-        return toCurrentUser(account);
+        return toCurrentUser(account, principal);
     }
 
     public List<AuthSessionResponse> getSessions(AuthPrincipal principal, HttpServletRequest request) {
@@ -178,7 +179,7 @@ public class AuthService {
         return LoginResponse.builder()
                 .status("AUTHENTICATED")
                 .message("Login successful")
-                .user(toCurrentUser(account))
+                .user(toCurrentUser(account, null))
                 .build();
     }
 
@@ -186,11 +187,19 @@ public class AuthService {
     //     return authProperties.getOtp().isSuperAdminEnabled() && account.getRoles().contains(Role.SUPER_ADMIN);
     // }
 
-    private CurrentUserResponse toCurrentUser(Account account) {
+    private CurrentUserResponse toCurrentUser(Account account, AuthPrincipal principal) {
+        UUID companyId = principal != null && principal.getCompanyId() != null
+                ? principal.getCompanyId()
+                : (account.getCompany() != null ? account.getCompany().getUuid() : null);
+        String companyName = principal != null && principal.getCompanyName() != null
+                ? principal.getCompanyName()
+                : (account.getCompany() != null && account.getCompany().getCompanyName() != null
+                        ? account.getCompany().getCompanyName()
+                        : account.getCompanyName());
         return CurrentUserResponse.builder()
                 .id(account.getId())
-                .companyId(account.getCompany() != null ? account.getCompany().getUuid() : null)
-                .companyName(account.getCompany() != null ? account.getCompany().getCompanyName() : null)
+                .companyId(companyId)
+                .companyName(companyName)
                 .fullName(account.getFullName())
                 .email(account.getEmail())
                 .phone(account.getPhone())

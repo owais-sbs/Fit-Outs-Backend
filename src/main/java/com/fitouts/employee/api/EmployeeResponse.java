@@ -3,6 +3,7 @@ package com.fitouts.employee.api;
 import java.time.LocalDateTime;
 import java.util.Set;
 
+import com.fitouts.auth.domain.Role;
 import com.fitouts.employee.domain.Feature;
 
 import lombok.Builder;
@@ -17,6 +18,7 @@ public class EmployeeResponse {
     private String email;
     private String phone;
     private String designation;
+    private Role role;
     private Set<Feature> features;
     private Boolean active;
     private Long accountId;
