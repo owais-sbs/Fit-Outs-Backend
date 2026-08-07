@@ -1,13 +1,10 @@
 package com.fitouts.checklist.domain;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.UUID;
 
-import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
-import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
@@ -22,40 +19,51 @@ import lombok.Getter;
 import lombok.Setter;
 
 @Entity
-@Table(name = "site_visit_report_items")
+@Table(name = "site_visit_estimate_lines")
 @Getter
 @Setter
-public class SiteVisitReportItem {
+public class SiteVisitEstimateLine {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID uuid;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "report_uuid", nullable = false)
-    private SiteVisitReport report;
+    @JoinColumn(name = "estimate_uuid", nullable = false)
+    private SiteVisitEstimate estimate;
 
-    @Column(length = 4096)
-    private String response;
+    @Column(name = "work_item_id")
+    private UUID workItemId;
 
-    @Column(length = 4096)
-    private String remarks;
+    @Column(name = "room_type_id")
+    private UUID roomTypeId;
+
+    @Column(name = "floor_name", length = 120)
+    private String floorName;
 
     @Column(name = "room_name", length = 120)
     private String roomName;
 
-    @Column(name = "section_name", length = 200)
-    private String sectionName;
+    @Column(length = 200)
+    private String category;
 
-    @Column(length = 500)
-    private String question;
+    @Column(nullable = false, length = 500)
+    private String description;
 
-    @ElementCollection
-    @CollectionTable(
-            name = "site_visit_report_item_photos",
-            joinColumns = @JoinColumn(name = "report_item_uuid"))
-    @Column(name = "photo_url")
-    private List<String> photoUrls = new ArrayList<>();
+    @Column(nullable = false, precision = 14, scale = 2)
+    private BigDecimal qty = BigDecimal.ONE;
+
+    @Column(nullable = false, length = 32)
+    private String unit = "LS";
+
+    @Column(nullable = false, precision = 14, scale = 2)
+    private BigDecimal rate = BigDecimal.ZERO;
+
+    @Column(nullable = false, precision = 14, scale = 2)
+    private BigDecimal amount = BigDecimal.ZERO;
+
+    @Column(name = "display_order", nullable = false)
+    private Integer displayOrder = 0;
 
     @Column(nullable = false, updatable = false)
     private OffsetDateTime createdAt;

@@ -28,6 +28,9 @@ public class SiteVisitReportMapper {
         SiteVisitReportItem item = new SiteVisitReportItem();
         item.setResponse(trimNullable(request.getResponse()));
         item.setRemarks(trimNullable(request.getRemarks()));
+        item.setRoomName(trimNullable(request.getRoomName()));
+        item.setSectionName(trimNullable(request.getSectionName()));
+        item.setQuestion(trimNullable(request.getQuestion()));
         item.setPhotoUrls(photoUrls);
         return item;
     }
@@ -51,6 +54,9 @@ public class SiteVisitReportMapper {
         SiteVisitReportItemResponse response = SiteVisitReportItemResponse.builder()
                 .response(item.getResponse())
                 .remarks(item.getRemarks())
+                .roomName(item.getRoomName())
+                .sectionName(item.getSectionName())
+                .question(item.getQuestion())
                 .photoUrls(item.getPhotoUrls())
                 .build();
         response.setUuid(item.getUuid());

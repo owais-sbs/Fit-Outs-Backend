@@ -235,45 +235,7 @@ public class RoomCollabService {
             Long projectId, UUID taskId, MultipartFile file, String changeNotes) {
         AuthPrincipal principal = requirePrincipal();
         RoomTask task = requireTask(projectId, taskId);
-        boolean client = isClient(principal);
-        if (client) {
-            if (task.getStatus() != RoomTaskStatus.AWAITING_CLIENT) {
-                throw new ForbiddenException("Client can only upload when awaiting review");
-            }
-        } else {
-            requireStaff();
-            if (task.getStatus() == RoomTaskStatus.APPROVED || task.getStatus() == RoomTaskStatus.CLOSED) {
-                throw new BadRequestException("Task is closed");
-            }
-        }
-
-        int next = versionRepository.findFirstByTaskIdOrderByVersionNoDesc(taskId)
-                .map(v -> v.getVersionNo() + 1)
-                .orElse(1);
-
-        String path = fileStorageService.store(file, task.getCompanyId(), projectId, "room-tasks");
-        RoomTaskFileVersion version = new RoomTaskFileVersion();
-        version.setTaskId(taskId);
-        version.setVersionNo(next);
-        version.setUploadedBy(principal.getAccountId());
-        version.setUploaderRole(client ? FileUploaderRole.CLIENT : FileUploaderRole.STAFF);
-        version.setFilePath(path);
-        version.setOriginalName(file.getOriginalFilename());
-        version.setContentType(file.getContentType());
-        version.setFileSize(file.getSize());
-        version.setChangeNotes(changeNotes);
-        version.setStatus(FileVersionStatus.SUBMITTED);
-        version.setIsFinal(false);
-        RoomTaskFileVersion saved = versionRepository.save(version);
-
-        addEvent(taskId, RoomTaskEventType.FILE_UPLOADED, principal.getAccountId(),
-                "Uploaded v" + next + ": " + saved.getOriginalName(), null);
-
-        if (!client && task.getStatus() == RoomTaskStatus.CHANGES_REQUESTED) {
-            task.setStatus(RoomTaskStatus.OPEN);
-            taskRepository.save(task);
-        }
-
+        RoomTaskFileVersion saved = createVersionFromFile(task, projectId, file, changeNotes, principal);
         return mapVersion(saved, projectId);
     }
 
@@ -414,6 +376,7 @@ public class RoomCollabService {
     public RoomMessageResponse postTaskMessage(
             Long projectId, UUID taskId, String body, MultipartFile file, UUID referencedVersionId) {
         AuthPrincipal principal = requirePrincipal();
+        requireProjectAccess(projectId);
         RoomTask task = requireTask(projectId, taskId);
         if (!StringUtils.hasText(body) && (file == null || file.isEmpty()) && referencedVersionId == null) {
             throw new BadRequestException("Message body, attachment, or version reference required");
@@ -422,7 +385,17 @@ public class RoomCollabService {
         msg.setTaskId(taskId);
         msg.setSenderAccountId(principal.getAccountId());
         msg.setBody(body);
-        if (referencedVersionId != null) {
+
+        // Chat file upload also creates a task file version (single upload path).
+        if (file != null && !file.isEmpty()) {
+            RoomTaskFileVersion created = createVersionFromFile(task, projectId, file, body, principal);
+            msg.setReferencedVersionId(created.getUuid());
+            msg.setAttachmentPath(created.getFilePath());
+            msg.setAttachmentName(created.getOriginalName());
+            if (!StringUtils.hasText(body)) {
+                msg.setBody("Uploaded v" + created.getVersionNo() + ": " + created.getOriginalName());
+            }
+        } else if (referencedVersionId != null) {
             RoomTaskFileVersion version = versionRepository.findByUuidAndTaskId(referencedVersionId, taskId)
                     .orElseThrow(() -> new BadRequestException("Referenced version not found on this task"));
             msg.setReferencedVersionId(version.getUuid());
@@ -430,14 +403,10 @@ public class RoomCollabService {
                 msg.setBody("Referring to v" + version.getVersionNo() + ": " + version.getOriginalName());
             }
         }
-        if (file != null && !file.isEmpty()) {
-            String path = fileStorageService.store(file, task.getCompanyId(), projectId, "room-tasks");
-            msg.setAttachmentPath(path);
-            msg.setAttachmentName(file.getOriginalFilename());
-        }
+
         RoomTaskMessage saved = taskMessageRepository.save(msg);
         String eventMsg = StringUtils.hasText(saved.getBody()) ? saved.getBody() : "Attachment uploaded";
-        if (referencedVersionId != null) {
+        if (saved.getReferencedVersionId() != null) {
             eventMsg = eventMsg + " [ref version]";
         }
         addEvent(taskId, RoomTaskEventType.MESSAGE, principal.getAccountId(), eventMsg, null);
@@ -609,6 +578,57 @@ public class RoomCollabService {
         return StringUtils.hasText(floor) ? floor.trim() : "General";
     }
 
+    private RoomTaskFileVersion createVersionFromFile(
+            RoomTask task,
+            Long projectId,
+            MultipartFile file,
+            String changeNotes,
+            AuthPrincipal principal) {
+        if (file == null || file.isEmpty()) {
+            throw new BadRequestException("File is required");
+        }
+        boolean client = isClient(principal);
+        if (client) {
+            if (task.getStatus() != RoomTaskStatus.AWAITING_CLIENT) {
+                throw new ForbiddenException("Client can only upload when awaiting review");
+            }
+        } else {
+            if (task.getStatus() == RoomTaskStatus.APPROVED || task.getStatus() == RoomTaskStatus.CLOSED) {
+                throw new BadRequestException("Task is closed");
+            }
+        }
+
+        UUID taskId = task.getUuid();
+        int next = versionRepository.findFirstByTaskIdOrderByVersionNoDesc(taskId)
+                .map(v -> v.getVersionNo() + 1)
+                .orElse(1);
+
+        String path = fileStorageService.store(file, task.getCompanyId(), projectId, "room-tasks");
+        RoomTaskFileVersion version = new RoomTaskFileVersion();
+        version.setTaskId(taskId);
+        version.setVersionNo(next);
+        version.setUploadedBy(principal.getAccountId());
+        version.setUploaderRole(client ? FileUploaderRole.CLIENT : FileUploaderRole.STAFF);
+        version.setFilePath(path);
+        version.setOriginalName(file.getOriginalFilename());
+        version.setContentType(file.getContentType());
+        version.setFileSize(file.getSize());
+        version.setChangeNotes(changeNotes);
+        version.setStatus(FileVersionStatus.SUBMITTED);
+        version.setIsFinal(false);
+        RoomTaskFileVersion saved = versionRepository.save(version);
+
+        addEvent(taskId, RoomTaskEventType.FILE_UPLOADED, principal.getAccountId(),
+                "Uploaded v" + next + ": " + saved.getOriginalName(), null);
+
+        if (!client && task.getStatus() == RoomTaskStatus.CHANGES_REQUESTED) {
+            task.setStatus(RoomTaskStatus.OPEN);
+            taskRepository.save(task);
+        }
+
+        return saved;
+    }
+
     private void addEvent(UUID taskId, RoomTaskEventType type, Long actorId, String message, String meta) {
         RoomTaskEvent event = new RoomTaskEvent();
         event.setTaskId(taskId);
@@ -741,33 +761,34 @@ public class RoomCollabService {
                 .senderAccountId(m.getSenderAccountId())
                 .body(m.getBody())
                 .attachmentName(m.getAttachmentName())
-                .attachmentUrl(m.getAttachmentPath() != null
-                        ? "/api/projects/files?path=" + m.getAttachmentPath()
-                        : null)
                 .referencedVersionId(m.getReferencedVersionId())
                 .createdAt(m.getCreatedAt());
         if (m.getReferencedVersionId() != null) {
             versionRepository.findById(m.getReferencedVersionId()).ifPresent(v -> {
+                String downloadUrl = "/api/projects/" + projectId + "/room-tasks/" + v.getTaskId()
+                        + "/versions/" + v.getUuid() + "/download";
                 builder.referencedVersionNo(v.getVersionNo());
                 builder.referencedFileName(v.getOriginalName());
-                builder.referencedDownloadUrl(
-                        "/api/projects/" + projectId + "/room-tasks/" + v.getTaskId()
-                                + "/versions/" + v.getUuid() + "/download");
+                builder.referencedDownloadUrl(downloadUrl);
+                // Prefer working version download over broken /api/projects/files path
+                builder.attachmentUrl(downloadUrl);
+                if (!StringUtils.hasText(m.getAttachmentName())) {
+                    builder.attachmentName(v.getOriginalName());
+                }
             });
         }
         return builder.build();
     }
 
     private RoomMessageResponse mapRoomMessage(RoomMessage m) {
+        // Room chat attachments have no version download; omit broken /files URL.
         return RoomMessageResponse.builder()
                 .uuid(m.getUuid())
                 .projectRoomId(m.getProjectRoomId())
                 .senderAccountId(m.getSenderAccountId())
                 .body(m.getBody())
                 .attachmentName(m.getAttachmentName())
-                .attachmentUrl(m.getAttachmentPath() != null
-                        ? "/api/projects/files?path=" + m.getAttachmentPath()
-                        : null)
+                .attachmentUrl(null)
                 .linkedTaskId(m.getLinkedTaskId())
                 .createdAt(m.getCreatedAt())
                 .build();

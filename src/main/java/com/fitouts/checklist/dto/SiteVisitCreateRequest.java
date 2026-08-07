@@ -7,6 +7,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import com.fitouts.checklist.domain.SiteVisitPropertyType;
+
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
@@ -43,6 +45,10 @@ public class SiteVisitCreateRequest {
     private Long createdBy;
 
     private UUID checklistTemplateUuid;
+
+    private SiteVisitPropertyType propertyType;
+    private String propertyTypeCustom;
+    private List<RoomScopeDto> roomScopes = new ArrayList<>();
 
     private List<String> categories = new ArrayList<>();
 

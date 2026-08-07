@@ -3,7 +3,6 @@ package com.fitouts.checklist.dto;
 import java.util.ArrayList;
 import java.util.List;
 
-import jakarta.validation.constraints.NotBlank;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -11,9 +10,10 @@ import lombok.Setter;
 @Setter
 public class SiteVisitReportItemRequest {
 
-    @NotBlank
     private String response;
-
     private String remarks;
+    private String roomName;
+    private String sectionName;
+    private String question;
     private List<String> photoUrls = new ArrayList<>();
 }
