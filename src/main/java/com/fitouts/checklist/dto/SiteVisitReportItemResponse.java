@@ -15,6 +15,9 @@ public class SiteVisitReportItemResponse {
     private UUID uuid;
     private String response;
     private String remarks;
+    private String roomName;
+    private String sectionName;
+    private String question;
     private List<String> photoUrls;
 
     public void setUuid(UUID uuid) {

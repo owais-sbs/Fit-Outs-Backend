@@ -1,14 +1,21 @@
 package com.fitouts.project.application;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import com.fitouts.auth.domain.Role;
+import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.project.domain.Project;
 import com.fitouts.project.domain.ProjectRepository;
 import com.fitouts.shared.context.CompanyContext;
+import com.fitouts.shared.error.ForbiddenException;
+import com.fitouts.shared.error.NotFoundException;
 
 @Service
 public class ProjectService {
@@ -37,12 +44,24 @@ public class ProjectService {
 
     public List<Project> getAll() {
         UUID companyId = CompanyContext.get();
+        AuthPrincipal principal = currentPrincipalOrNull();
+        if (principal != null && isPureClient(principal)) {
+            return projectRepository.findByCompanyIdAndClientIdAndIsDeletedFalse(
+                    companyId, principal.getAccountId());
+        }
         return projectRepository.findByCompanyIdAndIsDeletedFalse(companyId);
     }
 
     public Project getById(Long id) {
-        return projectRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Project not found"));
+        Project project = projectRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Project not found"));
+        AuthPrincipal principal = currentPrincipalOrNull();
+        if (principal != null && isPureClient(principal)
+                && (project.getClientId() == null
+                        || !project.getClientId().equals(principal.getAccountId()))) {
+            throw new ForbiddenException("Not your project");
+        }
+        return project;
     }
 
     public Project update(Long id, Project request) {
@@ -91,5 +110,21 @@ public class ProjectService {
         project.setDeleted(true);
         project.setActive(false);
         return projectRepository.save(project);
+    }
+
+    private AuthPrincipal currentPrincipalOrNull() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !(auth.getPrincipal() instanceof AuthPrincipal principal)) {
+            return null;
+        }
+        return principal;
+    }
+
+    private boolean isPureClient(AuthPrincipal principal) {
+        Set<Role> roles = principal.getRoles();
+        if (roles == null || !roles.contains(Role.CLIENT)) {
+            return false;
+        }
+        return roles.stream().allMatch(r -> r == Role.CLIENT);
     }
 }

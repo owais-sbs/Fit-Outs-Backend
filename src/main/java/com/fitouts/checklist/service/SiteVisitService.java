@@ -13,6 +13,8 @@ import com.fitouts.checklist.domain.ChecklistTemplate;
 import com.fitouts.checklist.domain.SiteVisit;
 import com.fitouts.checklist.domain.SiteVisitAssignment;
 import com.fitouts.checklist.domain.SiteVisitLocationDetails;
+import com.fitouts.checklist.domain.SiteVisitStatus;
+import com.fitouts.checklist.dto.SiteVisitChecklistScopeRequest;
 import com.fitouts.checklist.dto.SiteVisitCreateRequest;
 import com.fitouts.checklist.dto.SiteVisitLocationDetailsRequest;
 import com.fitouts.checklist.dto.SiteVisitResponse;
@@ -25,6 +27,7 @@ import com.fitouts.company.application.CompanyService;
 import com.fitouts.employee.domain.Employee;
 import com.fitouts.employee.domain.EmployeeRepository;
 import com.fitouts.shared.context.CompanyContext;
+import com.fitouts.shared.error.BadRequestException;
 import com.fitouts.shared.error.ConflictException;
 import com.fitouts.shared.error.NotFoundException;
 
@@ -50,14 +53,15 @@ public class SiteVisitService {
     	SiteVisit siteVisit = mapper.toEntity(request);
 
     	UUID companyId = CompanyContext.get();
-    	if (companyId != null) {
-    	    siteVisit.setCompany(companyService.getCompany(companyId));
-    	    if (siteVisit.getChecklistTemplateUuid() == null) {
-    	        checklistTemplateRepository
-    	                .findFirstByCompanyUuidAndNameIgnoreCase(companyId, DEFAULT_CHECKLIST_NAME)
-    	                .map(ChecklistTemplate::getUuid)
-    	                .ifPresent(siteVisit::setChecklistTemplateUuid);
-    	    }
+    	if (companyId == null) {
+    	    throw new BadRequestException("Company context is required to schedule a site visit");
+    	}
+    	siteVisit.setCompany(companyService.getCompany(companyId));
+    	if (siteVisit.getChecklistTemplateUuid() == null) {
+    	    checklistTemplateRepository
+    	            .findFirstByCompanyUuidAndNameIgnoreCase(companyId, DEFAULT_CHECKLIST_NAME)
+    	            .map(ChecklistTemplate::getUuid)
+    	            .ifPresent(siteVisit::setChecklistTemplateUuid);
     	}
 
     	SiteVisit savedSiteVisit = repository.save(siteVisit);
@@ -90,13 +94,19 @@ public class SiteVisitService {
     @Transactional(readOnly = true)
     public List<SiteVisitResponse> getAll() {
         UUID companyId = CompanyContext.get();
-        if (companyId != null) {
-            return repository.findByCompanyUuid(companyId).stream()
-                    .map(mapper::toResponse)
-                    .toList();
-        }
-        return repository.findAll().stream()
-                .map(mapper::toResponse)
+        List<SiteVisit> visits = companyId != null
+                ? repository.findByCompanyUuid(companyId)
+                : repository.findAll();
+        return visits.stream()
+                .map(visit -> {
+                    try {
+                        return mapper.toResponse(visit);
+                    } catch (Exception ex) {
+                        // Skip corrupt rows so one bad visit does not empty the whole list
+                        return null;
+                    }
+                })
+                .filter(r -> r != null)
                 .toList();
     }
 
@@ -114,6 +124,19 @@ public class SiteVisitService {
 
         SiteVisitLocationDetails details = mapper.toLocationEntity(request);
         siteVisit.setLocationDetails(details);
+        return mapper.toResponse(repository.save(siteVisit));
+    }
+
+    @Transactional
+    public SiteVisitResponse updateChecklistScope(UUID uuid, SiteVisitChecklistScopeRequest request) {
+        SiteVisit siteVisit = getSiteVisit(uuid);
+        if (siteVisit.getStatus() == SiteVisitStatus.COMPLETED) {
+            throw new ConflictException("Cannot update checklist scope on a completed site visit");
+        }
+        if (siteVisit.getStatus() == SiteVisitStatus.CANCELLED) {
+            throw new ConflictException("Cannot update checklist scope on a cancelled site visit");
+        }
+        mapper.applyChecklistScope(siteVisit, request);
         return mapper.toResponse(repository.save(siteVisit));
     }
 

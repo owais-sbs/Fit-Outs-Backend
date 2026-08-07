@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import com.fitouts.checklist.domain.SiteVisitPropertyType;
 import com.fitouts.checklist.domain.SiteVisitStatus;
 
 import lombok.Builder;
@@ -31,6 +32,10 @@ public class SiteVisitResponse {
     private String notes;
     private Long createdBy;
     private UUID checklistTemplateUuid;
+    private SiteVisitPropertyType propertyType;
+    private String propertyTypeCustom;
+    @Builder.Default
+    private List<RoomScopeDto> roomScopes = new ArrayList<>();
     @Builder.Default
     private List<String> categories = new ArrayList<>();
     @Builder.Default

@@ -50,7 +50,17 @@ public class SecurityConfig {
                         .authenticationEntryPoint(authenticationEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler))
                 .authorizeHttpRequests(auth -> auth
-                        .anyRequest().permitAll())
+                        .requestMatchers(
+                                "/api/auth/login",
+                                "/api/auth/verify-otp",
+                                "/swagger-ui/**",
+                                "/swagger-ui.html",
+                                "/v3/api-docs/**",
+                                "/api-docs/**",
+                                "/actuator/health",
+                                "/actuator/health/**"
+                        ).permitAll()
+                        .anyRequest().authenticated())
                 .addFilterAfter(sessionActivityFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(companyContextFilter, SessionActivityFilter.class);
 

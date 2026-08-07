@@ -9,7 +9,9 @@ import java.util.List;
 import java.util.UUID;
 
 import com.fitouts.account.domain.Account;
+import com.fitouts.checklist.dto.RoomScopeDto;
 import com.fitouts.company.domain.Company;
+import com.fitouts.shared.persistence.RoomScopesJsonConverter;
 import com.fitouts.shared.persistence.StringListJsonConverter;
 
 import jakarta.persistence.CascadeType;
@@ -79,6 +81,17 @@ public class SiteVisit {
     @Convert(converter = StringListJsonConverter.class)
     @Column(columnDefinition = "TEXT")
     private List<String> rooms = new ArrayList<>();
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "property_type", length = 32)
+    private SiteVisitPropertyType propertyType;
+
+    @Column(name = "property_type_custom", length = 120)
+    private String propertyTypeCustom;
+
+    @Convert(converter = RoomScopesJsonConverter.class)
+    @Column(name = "room_scopes", columnDefinition = "TEXT")
+    private List<RoomScopeDto> roomScopes = new ArrayList<>();
 
     @Column(nullable = false, updatable = false)
     private OffsetDateTime createdAt;
