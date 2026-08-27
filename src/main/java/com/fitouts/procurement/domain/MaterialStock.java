@@ -36,8 +36,18 @@ public class MaterialStock {
     @Builder.Default
     private BigDecimal quantityOnHand = BigDecimal.ZERO;
 
+    @Column(name = "quantity_reserved", nullable = false, precision = 14, scale = 3)
+    @Builder.Default
+    private BigDecimal quantityReserved = BigDecimal.ZERO;
+
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
+
+    public BigDecimal availableQuantity() {
+        BigDecimal onHand = quantityOnHand != null ? quantityOnHand : BigDecimal.ZERO;
+        BigDecimal reserved = quantityReserved != null ? quantityReserved : BigDecimal.ZERO;
+        return onHand.subtract(reserved);
+    }
 
     @PrePersist
     @PreUpdate

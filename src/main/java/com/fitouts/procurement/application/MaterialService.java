@@ -2,6 +2,7 @@ package com.fitouts.procurement.application;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
@@ -101,11 +102,17 @@ public class MaterialService {
         UUID companyId = CompanyContext.get();
         Pageable pageable = PageRequest.of(page, size, Sort.by("materialName").ascending());
         Specification<Material> spec = MaterialSpecification.filter(filter, companyId);
-        Map<UUID, BigDecimal> stockMap = materialStockRepository.findAllByCompanyWithMaterial(companyId).stream()
-                .collect(Collectors.toMap(s -> s.getMaterial().getId(), MaterialStock::getQuantityOnHand));
+        Page<Material> materials = materialRepository.findAll(spec, pageable);
+        List<UUID> pageIds = materials.getContent().stream().map(Material::getId).toList();
+        Map<UUID, BigDecimal> stockMap = pageIds.isEmpty()
+                ? Map.of()
+                : materialStockRepository.findByCompanyUuidAndMaterialIdIn(companyId, pageIds).stream()
+                        .collect(Collectors.toMap(
+                                s -> s.getMaterial().getId(),
+                                MaterialStock::getQuantityOnHand,
+                                (a, b) -> a));
 
-        return materialRepository.findAll(spec, pageable)
-                .map(m -> mapToResponse(m, stockMap.getOrDefault(m.getId(), BigDecimal.ZERO)));
+        return materials.map(m -> mapToResponse(m, stockMap.getOrDefault(m.getId(), BigDecimal.ZERO)));
     }
 
     public MaterialResponse activate(UUID id) {

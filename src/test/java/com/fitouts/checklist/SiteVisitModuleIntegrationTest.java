@@ -174,7 +174,7 @@ class SiteVisitModuleIntegrationTest {
                 .andExpect(jsonPath("$.data.items[0].photoUrls.length()").value(3))
                 .andExpect(jsonPath("$.data.clientAccountCreated").value(true))
                 .andExpect(jsonPath("$.data.clientEmail").value("claire@mossinteriors.com"))
-                .andExpect(jsonPath("$.data.temporaryPassword").isNotEmpty());
+                .andExpect(jsonPath("$.data.inviteEmailSent").value(true));
 
         mockMvc.perform(get("/api/site-visits/GetSiteVisitByUuid/{uuid}", siteVisitUuid))
                 .andExpect(status().isOk())
@@ -268,7 +268,7 @@ class SiteVisitModuleIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.clientAccountCreated").value(false))
                 .andExpect(jsonPath("$.data.clientEmail").value("existing-client@example.com"))
-                .andExpect(jsonPath("$.data.temporaryPassword").value(org.hamcrest.Matchers.nullValue()));
+                .andExpect(jsonPath("$.data.inviteEmailSent").value(true));
 
         Account updatedAccount = accountRepository.findByEmail("existing-client@example.com").orElseThrow();
         org.assertj.core.api.Assertions.assertThat(updatedAccount.getRoles()).contains(Role.ADMIN, Role.CLIENT);

@@ -55,6 +55,9 @@ public class SiteVisitLocationDetails {
     private String landmark;
     private String accessNotes;
 
+    @Column(name = "maps_share_url", length = 500)
+    private String mapsShareUrl;
+
     @Column(nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 

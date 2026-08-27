@@ -11,4 +11,6 @@ public interface RoomTaskFileVersionRepository extends JpaRepository<RoomTaskFil
     Optional<RoomTaskFileVersion> findFirstByTaskIdOrderByVersionNoDesc(UUID taskId);
     Optional<RoomTaskFileVersion> findByUuidAndTaskId(UUID uuid, UUID taskId);
     List<RoomTaskFileVersion> findByTaskIdAndIsFinalTrue(UUID taskId);
+
+    List<RoomTaskFileVersion> findByTaskIdInAndIsFinalTrue(List<UUID> taskIds);
 }

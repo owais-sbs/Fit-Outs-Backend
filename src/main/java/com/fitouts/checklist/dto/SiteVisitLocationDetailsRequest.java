@@ -31,4 +31,5 @@ public class SiteVisitLocationDetailsRequest {
     private String unitNumber;
     private String landmark;
     private String accessNotes;
+    private String mapsShareUrl;
 }

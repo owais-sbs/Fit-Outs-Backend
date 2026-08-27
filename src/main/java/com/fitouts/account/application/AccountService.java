@@ -134,6 +134,16 @@ public class AccountService {
             Account account = existingAccount.get();
             account.setIsActive(true);
             account.getRoles().add(Role.CLIENT);
+            if (account.getCompany() == null) {
+                if (lead.getCompanyEntity() != null) {
+                    account.setCompany(lead.getCompanyEntity());
+                } else if (CompanyContext.get() != null) {
+                    account.setCompany(companyService.getCompany(CompanyContext.get()));
+                }
+            }
+            if (account.getCompanyName() == null && account.getCompany() != null) {
+                account.setCompanyName(account.getCompany().getCompanyName());
+            }
             return new ClientAccountConversionResult(
                     false,
                     repository.save(account).getId(),
@@ -148,6 +158,14 @@ public class AccountService {
         account.setPassword(passwordEncoder.encode(temporaryPassword));
         account.setPhone(trimNullable(lead.getPhone()));
         account.setCompanyName(lead.getCompanyEntity() != null ? lead.getCompanyEntity().getCompanyName() : null);
+        if (lead.getCompanyEntity() != null) {
+            account.setCompany(lead.getCompanyEntity());
+        } else if (CompanyContext.get() != null) {
+            account.setCompany(companyService.getCompany(CompanyContext.get()));
+            if (account.getCompanyName() == null) {
+                account.setCompanyName(account.getCompany().getCompanyName());
+            }
+        }
         account.setIsActive(true);
         account.setRoles(new HashSet<>(List.of(Role.CLIENT)));
 

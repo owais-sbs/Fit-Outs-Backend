@@ -30,6 +30,29 @@ public class FileStorageService {
     }
   }
 
+  public String store(MultipartFile file, String subfolder) {
+    if (file == null || file.isEmpty()) {
+      throw new BadRequestException("File is empty");
+    }
+    String original = file.getOriginalFilename();
+    if (original == null || original.isBlank()) {
+      throw new BadRequestException("File name is required");
+    }
+    String safeName = original.replaceAll("[^a-zA-Z0-9._-]", "_");
+    String unique = UUID.randomUUID() + "_" + safeName;
+    Path targetDir = root.resolve(subfolder);
+    try {
+      Files.createDirectories(targetDir);
+      Path target = targetDir.resolve(unique);
+      try (InputStream in = file.getInputStream()) {
+        Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
+      }
+      return root.relativize(target).toString().replace('\\', '/');
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to store file", e);
+    }
+  }
+
   public String store(MultipartFile file, UUID companyId, Long projectId, String subfolder) {
     if (file == null || file.isEmpty()) {
       throw new BadRequestException("File is empty");

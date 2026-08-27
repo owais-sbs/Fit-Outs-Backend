@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<body>
+<table th:replace="~{fragments :: wrapper(~{::main})}">
+  <div th:fragment="main">
+      <h1 style="margin:0 0 20px;font-size:20px;line-height:1.4;color:#0f172a;font-weight:700;">Site visit location confirmed</h1>
+      <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#334155;" th:if="${forClient}">
+        Hello <strong th:text="${clientName}">there</strong>,
+      </p>
+      <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#334155;" th:unless="${forClient}">Hello,</p>
+      <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#334155;">
+        The site visit location for
+        <strong th:text="${schedule}">date</strong>
+        has been confirmed:
+      </p>
+
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
+             style="margin:0 0 24px;background-color:#f8fafc;border-radius:6px;border:1px solid #e2e8f0;">
+        <tr>
+          <td style="padding:20px;">
+            <p th:if="${addressLine1 != null and !#strings.isEmpty(addressLine1)}"
+               style="margin:0 0 8px;font-size:14px;line-height:1.5;color:#0f172a;" th:text="${addressLine1}">Address</p>
+            <p th:if="${addressLine2 != null and !#strings.isEmpty(addressLine2)}"
+               style="margin:0 0 12px;font-size:14px;line-height:1.5;color:#0f172a;" th:text="${addressLine2}">Address 2</p>
+            <p th:if="${buildingName != null and !#strings.isEmpty(buildingName)}"
+               style="margin:0 0 6px;font-size:13px;color:#334155;"><span style="color:#64748b;font-weight:600;">Building:</span> <span th:text="${buildingName}"></span></p>
+            <p th:if="${unitNumber != null and !#strings.isEmpty(unitNumber)}"
+               style="margin:0 0 6px;font-size:13px;color:#334155;"><span style="color:#64748b;font-weight:600;">Unit / Villa:</span> <span th:text="${unitNumber}"></span></p>
+            <p th:if="${floor != null and !#strings.isEmpty(floor)}"
+               style="margin:0 0 6px;font-size:13px;color:#334155;"><span style="color:#64748b;font-weight:600;">Floor:</span> <span th:text="${floor}"></span></p>
+            <p th:if="${landmark != null and !#strings.isEmpty(landmark)}"
+               style="margin:0 0 6px;font-size:13px;color:#334155;"><span style="color:#64748b;font-weight:600;">Landmark:</span> <span th:text="${landmark}"></span></p>
+            <p th:if="${area != null and !#strings.isEmpty(area)}"
+               style="margin:0 0 6px;font-size:13px;color:#334155;"><span style="color:#64748b;font-weight:600;">Area:</span> <span th:text="${area}"></span></p>
+            <p th:if="${cityLine != null and !#strings.isEmpty(cityLine)}"
+               style="margin:0 0 6px;font-size:13px;color:#334155;" th:text="${cityLine}">City</p>
+            <p th:if="${mapsShareUrl != null and !#strings.isEmpty(mapsShareUrl)}" style="margin:12px 0 0;">
+              <a th:href="${mapsShareUrl}"
+                 style="font-size:14px;color:#2563eb;text-decoration:none;font-weight:600;">Open in Google Maps →</a>
+            </p>
+            <p th:if="${(mapsShareUrl == null or #strings.isEmpty(mapsShareUrl)) and coordinates != null and !#strings.isEmpty(coordinates)}"
+               style="margin:8px 0 0;font-size:13px;color:#334155;"><span style="color:#64748b;font-weight:600;">Coordinates:</span> <span th:text="${coordinates}"></span></p>
+          </td>
+        </tr>
+      </table>
+
+      <a th:replace="~{fragments :: button(${visitUrl}, 'View site visit')}"></a>
+  </div>
+</table>
+</body>
+</html>

@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<body>
+<table th:replace="~{fragments :: wrapper(~{::main})}">
+  <div th:fragment="main">
+      <h1 style="margin:0 0 20px;font-size:20px;line-height:1.4;color:#0f172a;font-weight:700;">New message</h1>
+      <p style="margin:0 0 8px;font-size:14px;color:#64748b;">New message from</p>
+      <p style="margin:0 0 20px;font-size:16px;font-weight:600;color:#0f172a;" th:text="${senderName}">Sender</p>
+
+      <div style="margin:0 0 24px;padding:16px;background-color:#f8fafc;border-left:4px solid #2563eb;border-radius:0 6px 6px 0;">
+        <p style="margin:0;font-size:14px;line-height:1.6;color:#334155;white-space:pre-wrap;" th:text="${excerpt}">Message</p>
+      </div>
+
+      <a th:replace="~{fragments :: button(${conversationUrl}, 'Open conversation')}"></a>
+  </div>
+</table>
+</body>
+</html>

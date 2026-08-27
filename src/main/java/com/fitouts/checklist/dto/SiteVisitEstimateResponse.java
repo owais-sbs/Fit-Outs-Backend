@@ -7,6 +7,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import com.fitouts.appendix.dto.AppendixMasterResponse;
+
 import com.fitouts.checklist.domain.SiteVisitEstimateStatus;
 
 import lombok.Builder;
@@ -35,6 +37,10 @@ public class SiteVisitEstimateResponse {
     private SiteVisitEstimateStatus status;
     @Builder.Default
     private List<SiteVisitEstimateLineResponse> lines = new ArrayList<>();
+    @Builder.Default
+    private List<UUID> selectedAppendixIds = new ArrayList<>();
+    @Builder.Default
+    private List<AppendixMasterResponse> selectedAppendices = new ArrayList<>();
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
 }

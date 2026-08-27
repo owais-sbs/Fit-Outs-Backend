@@ -104,7 +104,36 @@ public class RoomTypeService {
         Specification<RoomType> spec = RoomTypeSpecification.filter(
                 filter != null ? filter : new RoomTypeFilterRequest(), companyId);
 
-        return roomTypeRepository.findAll(spec, pageable).map(this::mapToResponse);
+        // List view only needs room fields + work item IDs — not full material trees
+        // (those are loaded in getById when editing a room).
+        return roomTypeRepository.findAll(spec, pageable).map(this::mapToListResponse);
+    }
+
+    private RoomTypeResponse mapToListResponse(RoomType roomType) {
+        if (roomType.getRoomMaster() != null) {
+            roomType.getRoomMaster().getName();
+        }
+        if (roomType.getCompany() != null) {
+            roomType.getCompany().getUuid();
+        }
+
+        return RoomTypeResponse.builder()
+                .id(roomType.getId())
+                .companyId(roomType.getCompany() != null ? roomType.getCompany().getUuid() : null)
+                .roomTypeName(roomType.getRoomTypeName())
+                .roomCode(roomType.getRoomCode())
+                .category(roomType.getCategory())
+                .roomMasterId(roomType.getRoomMaster() != null ? roomType.getRoomMaster().getId() : null)
+                .roomMasterName(roomType.getRoomMaster() != null ? roomType.getRoomMaster().getName() : null)
+                .description(roomType.getDescription())
+                .active(roomType.getActive())
+                .createdAt(roomType.getCreatedAt())
+                .updatedAt(roomType.getUpdatedAt())
+                .createdBy(roomType.getCreatedBy())
+                .updatedBy(roomType.getUpdatedBy())
+                .workItemIds(List.of())
+                .workItems(List.of())
+                .build();
     }
 
     public RoomTypeResponse activate(UUID id) {

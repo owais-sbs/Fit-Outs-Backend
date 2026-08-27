@@ -3,6 +3,7 @@ package com.fitouts.checklist.dto;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 import lombok.Getter;
 import lombok.Setter;
@@ -23,4 +24,5 @@ public class SiteVisitEstimateRequest {
     private String currency;
     private String notes;
     private List<SiteVisitEstimateLineRequest> lines = new ArrayList<>();
+    private List<UUID> selectedAppendixIds = new ArrayList<>();
 }

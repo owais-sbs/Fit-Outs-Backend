@@ -24,6 +24,9 @@ import com.fitouts.shared.error.NotFoundException;
 import com.fitouts.account.api.AccountCreateRequest;
 import com.fitouts.account.api.AccountResponse;
 import com.fitouts.account.application.AccountService;
+import com.fitouts.account.application.ClientAccountConversionResult;
+import com.fitouts.account.application.ClientPortalInviteService;
+import com.fitouts.project.application.ProjectService;
 
 @Service
 @Transactional
@@ -35,15 +38,17 @@ public class LeadService {
     private final AccountRepository accountRepository;
     private final PasswordEncoder passwordEncoder;
     private final AccountService accountService;
-
-    private static final String CLIENT_PASSWORD = "123456";
+    private final ClientPortalInviteService clientPortalInviteService;
+    private final ProjectService projectService;
 
     public LeadService(LeadRepository leadRepository,
                        LeadStatusHistoryRepository historyRepository,
                        CompanyService companyService,
                        AccountRepository accountRepository,
                        PasswordEncoder passwordEncoder,
-                       AccountService accountService) {
+                       AccountService accountService,
+                       ClientPortalInviteService clientPortalInviteService,
+                       ProjectService projectService) {
 
         this.leadRepository = leadRepository;
         this.historyRepository = historyRepository;
@@ -51,6 +56,8 @@ public class LeadService {
         this.accountRepository = accountRepository;
         this.passwordEncoder = passwordEncoder;
         this.accountService = accountService;
+        this.clientPortalInviteService = clientPortalInviteService;
+        this.projectService = projectService;
     }
 
     // CREATE LEAD
@@ -153,6 +160,10 @@ public class LeadService {
 //
 //                accountService.create(request);
 //        }
+
+        if (status == LeadStatus.CLIENT && lead.getStatus() != LeadStatus.CLIENT) {
+            ensureClientAccountAndSendInvite(lead);
+        }
 
         lead.setStatus(status);
         
@@ -382,55 +393,9 @@ public class LeadService {
             throw new BadRequestException("Lead email is required to convert to client");
         }
 
-        String email = lead.getEmail().trim().toLowerCase();
-
-        if (accountRepository.findByEmail(email).isEmpty()) {
-
-            AccountCreateRequest request = new AccountCreateRequest();
-
-            request.setFullName(
-                    lead.getClientName() != null
-                            ? lead.getClientName()
-                            : "Client"
-            );
-
-            request.setEmail(email);
-
-            request.setPassword("123456");
-
-            request.setPhone(lead.getPhone());
-
-            request.setCompanyName(
-                    lead.getCompanyEntity() != null
-                            ? lead.getCompanyEntity().getCompanyName()
-                            : null
-            );
-
-            request.setCompanyUuid(
-                    lead.getCompanyEntity() != null
-                            ? lead.getCompanyEntity().getUuid()
-                            : null
-            );
-
-            request.setRoles(Set.of(Role.CLIENT));
-
-            accountService.create(request);
-
-        } else {
-
-            Account account = accountRepository.findByEmail(email).get();
-
-            if (!account.getRoles().contains(Role.CLIENT)) {
-                account.getRoles().add(Role.CLIENT);
-            }
-
-            account.setIsActive(true);
-
-            accountRepository.save(account);
-        }
+        ensureClientAccountAndSendInvite(lead);
 
         lead.setStatus(LeadStatus.CLIENT);
-        lead.setAccountCreated(true);
         lead.setUpdatedAt(LocalDateTime.now());
         lead.setLastActivityDate(LocalDateTime.now());
 
@@ -454,6 +419,13 @@ public class LeadService {
 
         return updated;
     }
+
+    private void ensureClientAccountAndSendInvite(Lead lead) {
+        ClientAccountConversionResult conversion = accountService.createOrUpdateClientAccountForLead(lead);
+        lead.setAccountCreated(true);
+        clientPortalInviteService.sendPortalInvite(conversion.clientAccountId(), lead.getClientName());
+        projectService.ensureStarterProjectForClient(lead, conversion.clientAccountId());
+    }
     
     public AccountResponse createAccount(Long leadId) {
 
@@ -464,49 +436,19 @@ public class LeadService {
             throw new BadRequestException("Lead email is required");
         }
 
-        String email = lead.getEmail().trim().toLowerCase();
-
-        if (accountRepository.findByEmail(email).isPresent()) {
+        ClientAccountConversionResult conversion = accountService.createOrUpdateClientAccountForLead(lead);
+        if (!conversion.clientAccountCreated()) {
             throw new ConflictException(
-                    "Account already exists with email: " + email
+                    "Account already exists with email: " + lead.getEmail().trim().toLowerCase()
             );
         }
 
-        AccountCreateRequest request = new AccountCreateRequest();
-
-        request.setFullName(
-                lead.getClientName() != null
-                        ? lead.getClientName()
-                        : "Client"
-        );
-
-        request.setEmail(email);
-
-        request.setPassword("123456");
-
-        request.setPhone(lead.getPhone());
-
-        request.setCompanyName(
-                lead.getCompanyEntity() != null
-                        ? lead.getCompanyEntity().getCompanyName()
-                        : null
-        );
-
-        request.setCompanyUuid(
-                lead.getCompanyEntity() != null
-                        ? lead.getCompanyEntity().getUuid()
-                        : null
-        );
-
-        request.setRoles(Set.of(Role.CLIENT));
-
-        AccountResponse account = accountService.create(request);
-
         lead.setAccountCreated(true);
         lead.setUpdatedAt(LocalDateTime.now());
-
         leadRepository.save(lead);
 
-        return account;
+        clientPortalInviteService.sendPortalInvite(conversion.clientAccountId(), lead.getClientName());
+
+        return accountService.getById(conversion.clientAccountId());
     }
 }

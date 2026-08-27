@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -182,10 +183,9 @@ public class WorkItemService {
         Specification<WorkItem> spec = WorkItemSpecification.filter(
                 filter != null ? filter : new WorkItemFilterRequest(), companyId);
 
-        return workItemRepository.findAll(spec, pageable).map(wi -> {
-            List<WorkItemMaterial> lines = workItemMaterialRepository.findByWorkItemId(wi.getId());
-            return mapToResponse(wi, lines);
-        });
+        Page<WorkItem> workItems = workItemRepository.findAll(spec, pageable);
+        touchAssociations(workItems.getContent());
+        return workItems.map(wi -> mapToResponse(wi, null));
     }
 
     @Transactional(readOnly = true)
@@ -195,10 +195,23 @@ public class WorkItemService {
 
         Specification<WorkItem> spec = WorkItemSpecification.filterBySurfaceType(surfaceType, companyId);
 
-        return workItemRepository.findAll(spec, pageable).map(wi -> {
-            List<WorkItemMaterial> lines = workItemMaterialRepository.findByWorkItemId(wi.getId());
-            return mapToResponse(wi, lines);
-        });
+        Page<WorkItem> workItems = workItemRepository.findAll(spec, pageable);
+        touchAssociations(workItems.getContent());
+        return workItems.map(wi -> mapToResponse(wi, null));
+    }
+
+    private void touchAssociations(List<WorkItem> workItems) {
+        if (workItems == null || workItems.isEmpty()) {
+            return;
+        }
+        for (WorkItem wi : workItems) {
+            if (wi.getWorkItemMaster() != null) {
+                wi.getWorkItemMaster().getName();
+            }
+            if (wi.getCompany() != null) {
+                wi.getCompany().getUuid();
+            }
+        }
     }
 
     public WorkItemResponse activate(UUID id) {

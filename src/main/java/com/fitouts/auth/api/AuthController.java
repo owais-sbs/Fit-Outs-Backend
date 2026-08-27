@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.fitouts.account.application.ClientPortalInviteService;
 import com.fitouts.auth.application.AuthService;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.shared.api.BaseController;
@@ -30,6 +31,40 @@ import lombok.RequiredArgsConstructor;
 public class AuthController extends BaseController {
 
     private final AuthService authService;
+    private final ClientPortalInviteService clientPortalInviteService;
+
+    @PostMapping("/password-setup/request")
+    public ResponseEntity<?> requestPasswordSetup(@Valid @RequestBody RequestPasswordSetupRequest request) {
+        try {
+            clientPortalInviteService.resendSetupEmail(request.getEmail());
+            return successResponse(new MessageResponse(
+                    "If a client portal account exists for that email, a password setup link has been sent."));
+        } catch (Exception exception) {
+            return failureResponse("Unable to process request", exception.getMessage());
+        }
+    }
+
+    @GetMapping("/password-setup/{token}")
+    public ResponseEntity<?> validatePasswordSetupToken(@PathVariable String token) {
+        try {
+            return successResponse(clientPortalInviteService.validateToken(token));
+        } catch (Exception exception) {
+            return failureResponse("Unable to validate link", exception.getMessage());
+        }
+    }
+
+    @PostMapping("/password-setup/{token}")
+    public ResponseEntity<?> completePasswordSetup(
+            @PathVariable String token,
+            @Valid @RequestBody CompletePasswordSetupRequest request) {
+
+        try {
+            clientPortalInviteService.completePasswordSetup(token, request.getPassword());
+            return successResponse(new MessageResponse("Password set successfully. You can now sign in."));
+        } catch (Exception exception) {
+            return failureResponse("Unable to set password", exception.getMessage());
+        }
+    }
 
     @PostMapping("/login")
     public ResponseEntity<?> login(

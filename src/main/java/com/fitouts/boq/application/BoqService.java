@@ -4,12 +4,14 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.boq.api.*;
 import com.fitouts.boq.domain.BoqDocument;
 import com.fitouts.boq.domain.BoqDocumentRepository;
@@ -25,7 +27,9 @@ import com.fitouts.roomcollab.application.RoomCollabService;
 import com.fitouts.shared.context.CompanyContext;
 import com.fitouts.shared.enums.BoqDocumentStatus;
 import com.fitouts.shared.error.BadRequestException;
+import com.fitouts.shared.error.ForbiddenException;
 import com.fitouts.shared.error.NotFoundException;
+import com.fitouts.shared.security.PortalAccessHelper;
 
 import lombok.RequiredArgsConstructor;
 
@@ -42,6 +46,7 @@ public class BoqService {
     private final QtoLineRepository qtoLineRepository;
     private final ProjectService projectService;
     private final RoomCollabService roomCollabService;
+    private final PortalAccessHelper portalAccess;
 
     public BoqDocumentResponse generateFromQto(UUID sessionId) {
         QtoSession session = qtoService.findSession(sessionId);
@@ -133,6 +138,8 @@ public class BoqService {
 
     @Transactional(readOnly = true)
     public List<BoqDocumentResponse> listByProject(Long projectId) {
+        // Enforces company + pure-client ownership via ProjectService
+        projectService.getById(projectId);
         return boqDocumentRepository.findByProjectIdOrderByCreatedAtDesc(projectId)
                 .stream()
                 .map(d -> mapDocument(d, boqLineRepository.findByBoqIdOrderBySortOrderAsc(d.getId())))
@@ -180,8 +187,22 @@ public class BoqService {
 
     private BoqDocument findDocument(UUID id) {
         UUID companyId = CompanyContext.get();
-        return boqDocumentRepository.findByIdAndCompanyId(id, companyId)
+        BoqDocument doc = boqDocumentRepository.findByIdAndCompanyId(id, companyId)
                 .orElseThrow(() -> new NotFoundException("BOQ not found"));
+        AuthPrincipal principal = portalAccess.requirePrincipal();
+        if (portalAccess.isPureClient(principal)) {
+            if (doc.getProject() == null
+                    || !Objects.equals(doc.getProject().getClientId(), principal.getAccountId())) {
+                throw new ForbiddenException("Not your BOQ");
+            }
+            if (doc.getStatus() == BoqDocumentStatus.DRAFT
+                    || doc.getStatus() == BoqDocumentStatus.PENDING_SENIOR_QS
+                    || doc.getStatus() == BoqDocumentStatus.PENDING_PM
+                    || doc.getStatus() == BoqDocumentStatus.PENDING_DIRECTOR) {
+                throw new ForbiddenException("BOQ is not ready for client review");
+            }
+        }
+        return doc;
     }
 
     private BoqDocumentResponse mapDocument(BoqDocument doc, List<BoqLine> lines) {
