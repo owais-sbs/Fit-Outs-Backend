@@ -25,6 +25,7 @@ public class SiteVisitLocationDetailsResponse {
     private String unitNumber;
     private String landmark;
     private String accessNotes;
+    private String mapsShareUrl;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
 

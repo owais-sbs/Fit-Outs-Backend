@@ -99,6 +99,12 @@ public class SiteVisit {
     @Column(nullable = false)
     private OffsetDateTime updatedAt;
 
+    @Column(name = "initial_email_sent_at")
+    private OffsetDateTime initialEmailSentAt;
+
+    @Column(name = "location_email_sent_at")
+    private OffsetDateTime locationEmailSentAt;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "company_id")
     private Company company;

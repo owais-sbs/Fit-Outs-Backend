@@ -1,9 +1,13 @@
 package com.fitouts.checklist.mapper;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Component;
 
@@ -96,28 +100,57 @@ public class SiteVisitMapper {
         details.setUnitNumber(trimNullable(request.getUnitNumber()));
         details.setLandmark(trimNullable(request.getLandmark()));
         details.setAccessNotes(trimNullable(request.getAccessNotes()));
+        details.setMapsShareUrl(trimNullable(request.getMapsShareUrl()));
         return details;
     }
 
     public SiteVisitResponse toResponse(SiteVisit siteVisit) {
-        List<Long> accountIds = siteVisit.getAssignments() == null
-                ? List.of()
-                : siteVisit.getAssignments()
-                    .stream()
-                    .filter(a -> a != null && a.getEmployee() != null)
-                    .map(a -> a.getEmployee().getId())
-                    .toList();
+        return toResponse(siteVisit, null, false);
+    }
+
+    /** List view: one shared employee map, omit heavy room scope blobs. */
+    public List<SiteVisitResponse> toListResponses(List<SiteVisit> visits) {
+        if (visits == null || visits.isEmpty()) {
+            return List.of();
+        }
+        List<Long> accountIds = visits.stream()
+                .flatMap(v -> assignmentAccountIds(v).stream())
+                .distinct()
+                .toList();
+        Map<Long, Employee> employeesByAccountId = accountIds.isEmpty()
+                ? Collections.emptyMap()
+                : employeeRepository.findByAccountIdIn(accountIds).stream()
+                        .filter(e -> e.getAccountId() != null)
+                        .collect(Collectors.toMap(Employee::getAccountId, e -> e, (a, b) -> a));
+        List<SiteVisitResponse> out = new ArrayList<>(visits.size());
+        for (SiteVisit visit : visits) {
+            try {
+                out.add(toResponse(visit, employeesByAccountId, true));
+            } catch (Exception ignored) {
+                // skip corrupt rows
+            }
+        }
+        return out;
+    }
+
+    public SiteVisitResponse toResponse(
+            SiteVisit siteVisit, Map<Long, Employee> employeesByAccountId, boolean slimList) {
+        List<Long> accountIds = assignmentAccountIds(siteVisit);
 
         List<Long> employeeIds = List.of();
         List<String> employeeNames = List.of();
         if (!accountIds.isEmpty()) {
-            List<Employee> employees = employeeRepository.findByAccountIdIn(accountIds);
-            employeeIds = employees.stream()
-                    .map(Employee::getId)
-                    .toList();
-            employeeNames = employees.stream()
-                    .map(Employee::getEmployeeName)
-                    .toList();
+            List<Employee> employees;
+            if (employeesByAccountId != null) {
+                employees = accountIds.stream()
+                        .map(employeesByAccountId::get)
+                        .filter(Objects::nonNull)
+                        .toList();
+            } else {
+                employees = employeeRepository.findByAccountIdIn(accountIds);
+            }
+            employeeIds = employees.stream().map(Employee::getId).toList();
+            employeeNames = employees.stream().map(Employee::getEmployeeName).toList();
         }
 
         SiteVisitResponse response = SiteVisitResponse.builder()
@@ -134,21 +167,31 @@ public class SiteVisitMapper {
                 .checklistTemplateUuid(siteVisit.getChecklistTemplateUuid())
                 .propertyType(siteVisit.getPropertyType())
                 .propertyTypeCustom(siteVisit.getPropertyTypeCustom())
-                .roomScopes(siteVisit.getRoomScopes() != null
+                .roomScopes(slimList ? new ArrayList<>() : (siteVisit.getRoomScopes() != null
                         ? new ArrayList<>(siteVisit.getRoomScopes())
-                        : new ArrayList<>())
-                .categories(siteVisit.getCategories() != null
+                        : new ArrayList<>()))
+                .categories(slimList ? new ArrayList<>() : (siteVisit.getCategories() != null
                         ? new ArrayList<>(siteVisit.getCategories())
-                        : new ArrayList<>())
-                .rooms(siteVisit.getRooms() != null
+                        : new ArrayList<>()))
+                .rooms(slimList ? new ArrayList<>() : (siteVisit.getRooms() != null
                         ? new ArrayList<>(siteVisit.getRooms())
-                        : new ArrayList<>())
+                        : new ArrayList<>()))
                 .createdAt(siteVisit.getCreatedAt())
                 .updatedAt(siteVisit.getUpdatedAt())
                 .locationDetails(toLocationResponse(siteVisit.getLocationDetails()))
                 .build();
         response.setUuid(siteVisit.getUuid());
         return response;
+    }
+
+    private List<Long> assignmentAccountIds(SiteVisit siteVisit) {
+        if (siteVisit.getAssignments() == null) {
+            return List.of();
+        }
+        return siteVisit.getAssignments().stream()
+                .filter(a -> a != null && a.getEmployee() != null)
+                .map(a -> a.getEmployee().getId())
+                .toList();
     }
 
     public SiteVisitLocationDetailsResponse toLocationResponse(SiteVisitLocationDetails details) {
@@ -168,6 +211,7 @@ public class SiteVisitMapper {
                 .unitNumber(details.getUnitNumber())
                 .landmark(details.getLandmark())
                 .accessNotes(details.getAccessNotes())
+                .mapsShareUrl(details.getMapsShareUrl())
                 .createdAt(details.getCreatedAt())
                 .updatedAt(details.getUpdatedAt())
                 .build();

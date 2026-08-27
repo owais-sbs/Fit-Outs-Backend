@@ -11,6 +11,7 @@ import org.springframework.util.StringUtils;
 
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
+import com.fitouts.lead.domain.Lead;
 import com.fitouts.project.domain.Project;
 import com.fitouts.project.domain.ProjectRepository;
 import com.fitouts.shared.context.CompanyContext;
@@ -109,6 +110,38 @@ public class ProjectService {
         Project project = getById(id);
         project.setDeleted(true);
         project.setActive(false);
+        return projectRepository.save(project);
+    }
+
+    public Project ensureStarterProjectForClient(Lead lead, Long accountId) {
+        if (lead == null || accountId == null) {
+            return null;
+        }
+        UUID companyId = lead.getCompanyEntity() != null
+                ? lead.getCompanyEntity().getUuid()
+                : CompanyContext.get();
+        if (companyId == null) {
+            return null;
+        }
+        List<Project> existing =
+                projectRepository.findByCompanyIdAndClientIdAndIsDeletedFalse(companyId, accountId);
+        if (!existing.isEmpty()) {
+            return existing.get(0);
+        }
+
+        Project project = new Project();
+        String clientLabel = StringUtils.hasText(lead.getClientName()) ? lead.getClientName().trim() : "Client";
+        project.setName(clientLabel + " — Fit-Out Project");
+        project.setClientId(accountId);
+        project.setCompanyId(companyId);
+        project.setStatus("Planning");
+        project.setProgress(0);
+        if (StringUtils.hasText(lead.getProjectType())) {
+            project.setProjectType(lead.getProjectType());
+        }
+        if (StringUtils.hasText(lead.getNotes())) {
+            project.setDescription(lead.getNotes());
+        }
         return projectRepository.save(project);
     }
 

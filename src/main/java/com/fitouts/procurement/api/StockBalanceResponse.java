@@ -17,6 +17,8 @@ public class StockBalanceResponse {
     private String materialCode;
     private String materialCategoryName;
     private BigDecimal quantityOnHand;
+    private BigDecimal quantityReserved;
+    private BigDecimal quantityAvailable;
     private BigDecimal costPrice;
     private BigDecimal stockValue;
     private BigDecimal minStockLevel;

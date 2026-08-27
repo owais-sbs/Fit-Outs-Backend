@@ -23,7 +23,8 @@ public class SiteVisitReportResponse {
     private Boolean clientAccountCreated;
     private Long clientAccountId;
     private String clientEmail;
-    private String temporaryPassword;
+    private Boolean inviteEmailSent;
+    private List<SiteVisitRecordingResponse> recordings;
 
     public void setUuid(UUID uuid) {
         this.uuid = uuid;

@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -20,7 +21,9 @@ import com.fitouts.shared.enums.BoqApprovalAction;
 import com.fitouts.shared.enums.BoqApprovalStep;
 import com.fitouts.shared.enums.BoqDocumentStatus;
 import com.fitouts.shared.error.BadRequestException;
+import com.fitouts.shared.error.ForbiddenException;
 import com.fitouts.shared.error.NotFoundException;
+import com.fitouts.shared.security.PortalAccessHelper;
 
 import lombok.RequiredArgsConstructor;
 
@@ -34,6 +37,7 @@ public class BoqApprovalService {
     private final BoqApprovalLogRepository boqApprovalLogRepository;
     private final BoqAuthHelper boqAuthHelper;
     private final BoqService boqService;
+    private final PortalAccessHelper portalAccess;
 
     public BoqDocumentResponse submitForApproval(UUID boqId) {
         AuthPrincipal principal = boqAuthHelper.requirePrincipal();
@@ -62,6 +66,7 @@ public class BoqApprovalService {
     public BoqDocumentResponse approve(UUID boqId, String comments) {
         AuthPrincipal principal = boqAuthHelper.requirePrincipal();
         BoqDocument doc = findDocument(boqId);
+        assertClientOwnsIfNeeded(principal, doc);
         boqAuthHelper.requireApproverForStatus(principal, doc.getStatus());
 
         BoqApprovalStep step = boqAuthHelper.stepForStatus(doc.getStatus());
@@ -85,6 +90,7 @@ public class BoqApprovalService {
     public BoqDocumentResponse reject(UUID boqId, String comments) {
         AuthPrincipal principal = boqAuthHelper.requirePrincipal();
         BoqDocument doc = findDocument(boqId);
+        assertClientOwnsIfNeeded(principal, doc);
         boqAuthHelper.requireApproverForStatus(principal, doc.getStatus());
 
         if (!StringUtils.hasText(comments)) {
@@ -196,6 +202,13 @@ public class BoqApprovalService {
 
         return boqDocumentRepository.findByCompanyIdAndStatusInOrderBySubmittedAtDesc(companyId, statuses)
                 .stream()
+                .filter(doc -> {
+                    if (!portalAccess.isPureClient(principal)) {
+                        return true;
+                    }
+                    return doc.getProject() != null
+                            && Objects.equals(doc.getProject().getClientId(), principal.getAccountId());
+                })
                 .map(this::mapInboxItem)
                 .collect(Collectors.toList());
     }
@@ -216,8 +229,28 @@ public class BoqApprovalService {
 
     private BoqDocument findDocument(UUID id) {
         UUID companyId = CompanyContext.get();
-        return boqDocumentRepository.findByIdAndCompanyId(id, companyId)
+        BoqDocument doc = boqDocumentRepository.findByIdAndCompanyId(id, companyId)
                 .orElseThrow(() -> new NotFoundException("BOQ not found"));
+        AuthPrincipal principal = boqAuthHelper.requirePrincipal();
+        assertClientOwnsIfNeeded(principal, doc);
+        return doc;
+    }
+
+    private void assertClientOwnsIfNeeded(AuthPrincipal principal, BoqDocument doc) {
+        if (!portalAccess.isPureClient(principal)) {
+            return;
+        }
+        if (doc.getProject() == null
+                || !Objects.equals(doc.getProject().getClientId(), principal.getAccountId())) {
+            throw new ForbiddenException("Not your BOQ");
+        }
+        // Clients may only view/act on pending-client or later statuses
+        if (doc.getStatus() == BoqDocumentStatus.DRAFT
+                || doc.getStatus() == BoqDocumentStatus.PENDING_SENIOR_QS
+                || doc.getStatus() == BoqDocumentStatus.PENDING_PM
+                || doc.getStatus() == BoqDocumentStatus.PENDING_DIRECTOR) {
+            throw new ForbiddenException("BOQ is not ready for client review");
+        }
     }
 
     private String incrementVersion(String current) {

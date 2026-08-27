@@ -77,8 +77,9 @@ public class StockService {
         }
         Material material = materialService.find(request.getMaterialId());
         MaterialStock stock = getOrCreateStock(material);
-        if (stock.getQuantityOnHand().compareTo(request.getQuantity()) < 0) {
-            throw new BadRequestException("Insufficient stock for " + material.getMaterialName());
+        if (stock.availableQuantity().compareTo(request.getQuantity()) < 0) {
+            throw new BadRequestException("Insufficient available stock for " + material.getMaterialName()
+                    + " (on hand minus reserved)");
         }
         stock.setQuantityOnHand(stock.getQuantityOnHand().subtract(request.getQuantity()));
         materialStockRepository.save(stock);
@@ -125,7 +126,22 @@ public class StockService {
                         .company(companyService.getCompany(companyId))
                         .material(material)
                         .quantityOnHand(BigDecimal.ZERO)
+                        .quantityReserved(BigDecimal.ZERO)
                         .build()));
+    }
+
+    /**
+     * Soft-hold: increase reserved quantity for a material (does not reduce on-hand).
+     */
+    public void increaseReserved(UUID materialId, BigDecimal delta) {
+        if (materialId == null || delta == null || delta.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        Material material = materialService.find(materialId);
+        MaterialStock stock = getOrCreateStock(material);
+        BigDecimal current = stock.getQuantityReserved() != null ? stock.getQuantityReserved() : BigDecimal.ZERO;
+        stock.setQuantityReserved(current.add(delta));
+        materialStockRepository.save(stock);
     }
 
     private StockMovement saveMovement(Material material, StockMovementType type, BigDecimal quantity,
@@ -152,16 +168,20 @@ public class StockService {
         BigDecimal cost = m.getCostPrice() != null ? m.getCostPrice() : BigDecimal.ZERO;
         BigDecimal value = stock.getQuantityOnHand().multiply(cost).setScale(2, RoundingMode.HALF_UP);
         BigDecimal min = m.getMinStockLevel() != null ? m.getMinStockLevel() : BigDecimal.ZERO;
+        BigDecimal reserved = stock.getQuantityReserved() != null ? stock.getQuantityReserved() : BigDecimal.ZERO;
+        BigDecimal available = stock.availableQuantity();
         return StockBalanceResponse.builder()
                 .materialId(m.getId())
                 .materialName(m.getMaterialName())
                 .materialCode(m.getMaterialCode())
                 .materialCategoryName(m.getMaterialCategory() != null ? m.getMaterialCategory().getName() : null)
                 .quantityOnHand(stock.getQuantityOnHand())
+                .quantityReserved(reserved)
+                .quantityAvailable(available)
                 .costPrice(m.getCostPrice())
                 .stockValue(value)
                 .minStockLevel(min)
-                .lowStock(stock.getQuantityOnHand().compareTo(min) < 0)
+                .lowStock(available.compareTo(min) < 0)
                 .lastUpdated(stock.getUpdatedAt())
                 .build();
     }

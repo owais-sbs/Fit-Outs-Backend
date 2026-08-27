@@ -3,11 +3,14 @@ package com.fitouts.checklist.service;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.Year;
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.fitouts.appendix.application.SiteVisitEstimateAppendixService;
+import com.fitouts.appendix.dto.AppendixMasterResponse;
 import com.fitouts.checklist.domain.SiteVisit;
 import com.fitouts.checklist.domain.SiteVisitEstimate;
 import com.fitouts.checklist.domain.SiteVisitEstimateStatus;
@@ -21,7 +24,11 @@ import com.fitouts.lead.domain.Lead;
 import com.fitouts.lead.domain.LeadRepository;
 import com.fitouts.shared.error.BadRequestException;
 import com.fitouts.shared.error.ConflictException;
+import com.fitouts.shared.error.ForbiddenException;
 import com.fitouts.shared.error.NotFoundException;
+import com.fitouts.shared.context.CompanyContext;
+import com.fitouts.shared.security.PortalAccessHelper;
+import com.fitouts.auth.security.AuthPrincipal;
 
 import lombok.RequiredArgsConstructor;
 
@@ -34,16 +41,54 @@ public class SiteVisitEstimateService {
     private final SiteVisitService siteVisitService;
     private final SiteVisitEstimateMapper mapper;
     private final LeadRepository leadRepository;
+    private final SiteVisitEstimateAppendixService appendixService;
+    private final PortalAccessHelper portalAccess;
+
+    private SiteVisitEstimateResponse enrich(SiteVisitEstimate estimate) {
+        SiteVisitEstimateResponse response = mapper.toResponse(estimate);
+        List<UUID> ids = appendixService.getSelectedIds(estimate.getUuid());
+        List<AppendixMasterResponse> appendices = appendixService.getSelectedAppendices(estimate.getUuid());
+        response.setSelectedAppendixIds(ids);
+        response.setSelectedAppendices(appendices);
+        return response;
+    }
 
     @Transactional
     public SiteVisitEstimateResponse getOrCreate(UUID siteVisitUuid) {
         SiteVisit visit = siteVisitService.getSiteVisit(siteVisitUuid);
-        return mapper.toResponse(estimateRepository.findBySiteVisitUuid(siteVisitUuid)
+        AuthPrincipal principal = portalAccess.requirePrincipal();
+        if (portalAccess.isPureClient(principal)) {
+            SiteVisitEstimate estimate = estimateRepository.findBySiteVisitUuid(siteVisitUuid)
+                    .orElseThrow(() -> new NotFoundException("Estimate not found"));
+            if (estimate.getStatus() != SiteVisitEstimateStatus.ISSUED) {
+                throw new ForbiddenException("Estimate is not available yet");
+            }
+            return enrich(estimate);
+        }
+        return enrich(estimateRepository.findBySiteVisitUuid(siteVisitUuid)
                 .orElseGet(() -> createDraft(visit)));
+    }
+
+    @Transactional(readOnly = true)
+    public List<SiteVisitEstimateResponse> listIssuedForCurrentClient() {
+        AuthPrincipal principal = portalAccess.requirePrincipal();
+        if (!portalAccess.isPureClient(principal)) {
+            throw new ForbiddenException("Client access only");
+        }
+        UUID companyId = CompanyContext.get();
+        if (companyId == null) {
+            throw new BadRequestException("Company context is required");
+        }
+        return estimateRepository
+                .findIssuedForClientEmail(companyId, principal.getEmail(), SiteVisitEstimateStatus.ISSUED)
+                .stream()
+                .map(this::enrich)
+                .toList();
     }
 
     @Transactional
     public SiteVisitEstimateResponse upsert(UUID siteVisitUuid, SiteVisitEstimateRequest request) {
+        portalAccess.requireStaff();
         SiteVisit visit = siteVisitService.getSiteVisit(siteVisitUuid);
         SiteVisitEstimate estimate = estimateRepository.findBySiteVisitUuid(siteVisitUuid)
                 .orElseGet(() -> createDraft(visit));
@@ -53,11 +98,16 @@ public class SiteVisitEstimateService {
         }
 
         mapper.applyRequest(estimate, request);
-        return mapper.toResponse(estimateRepository.save(estimate));
+        SiteVisitEstimate saved = estimateRepository.save(estimate);
+        if (request.getSelectedAppendixIds() != null) {
+            appendixService.syncSelections(saved, request.getSelectedAppendixIds());
+        }
+        return enrich(saved);
     }
 
     @Transactional
     public SiteVisitEstimateResponse issue(UUID siteVisitUuid) {
+        portalAccess.requireStaff();
         SiteVisit visit = siteVisitService.getSiteVisit(siteVisitUuid);
         if (!reportRepository.existsBySiteVisitUuid(siteVisitUuid)) {
             throw new BadRequestException("Submit the site visit checklist report before issuing an estimate");
@@ -70,7 +120,7 @@ public class SiteVisitEstimateService {
             throw new BadRequestException("Add at least one draft BoQ line before issuing");
         }
         if (estimate.getStatus() == SiteVisitEstimateStatus.ISSUED) {
-            return mapper.toResponse(estimate);
+            return enrich(estimate);
         }
 
         if (estimate.getQuoteNo() == null || estimate.getQuoteNo().isBlank()) {
@@ -80,7 +130,7 @@ public class SiteVisitEstimateService {
             estimate.setValidUntil(LocalDate.now().plusDays(30));
         }
         estimate.setStatus(SiteVisitEstimateStatus.ISSUED);
-        return mapper.toResponse(estimateRepository.save(estimate));
+        return enrich(estimateRepository.save(estimate));
     }
 
     private SiteVisitEstimate createDraft(SiteVisit visit) {

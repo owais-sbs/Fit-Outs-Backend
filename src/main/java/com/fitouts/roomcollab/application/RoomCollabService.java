@@ -3,11 +3,14 @@ package com.fitouts.roomcollab.application;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
@@ -18,12 +21,16 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.fitouts.account.domain.Account;
+import com.fitouts.account.domain.AccountRepository;
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.boq.domain.BoqDocument;
 import com.fitouts.boq.domain.BoqDocumentRepository;
 import com.fitouts.boq.domain.BoqLine;
 import com.fitouts.boq.domain.BoqLineRepository;
+import com.fitouts.communications.application.CommunicationEmailNotificationService;
+import com.fitouts.communications.application.CommunicationService;
 import com.fitouts.drawing.application.FileStorageService;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
@@ -51,11 +58,19 @@ public class RoomCollabService {
     private final BoqDocumentRepository boqDocumentRepository;
     private final BoqLineRepository boqLineRepository;
     private final FileStorageService fileStorageService;
+    private final AccountRepository accountRepository;
+    private final CommunicationService communicationService;
+    private final CommunicationEmailNotificationService emailNotificationService;
 
     public List<ProjectRoomResponse> listRooms(Long projectId) {
         Project project = requireProjectAccess(projectId);
         List<ProjectRoom> rooms = roomRepository.findByProjectIdOrderBySortOrderAscFloorLabelAscNameAsc(project.getId());
-        return rooms.stream().map(this::mapRoom).toList();
+        List<RoomTask> allTasks = taskRepository.findByProjectIdOrderByCreatedAtDesc(project.getId());
+        Map<UUID, List<RoomTask>> tasksByRoom = allTasks.stream()
+                .collect(Collectors.groupingBy(RoomTask::getProjectRoomId));
+        return rooms.stream()
+                .map(room -> mapRoom(room, tasksByRoom.getOrDefault(room.getUuid(), List.of())))
+                .toList();
     }
 
     public ProjectRoomResponse createRoom(Long projectId, ProjectRoomCreateRequest request) {
@@ -74,7 +89,9 @@ public class RoomCollabService {
         room.setRoomTypeId(request.getRoomTypeId());
         room.setSource(RoomSource.MANUAL);
         room.setSortOrder(request.getSortOrder() != null ? request.getSortOrder() : 0);
-        return mapRoom(roomRepository.save(room));
+        ProjectRoom saved = roomRepository.save(room);
+        communicationService.ensureChannelForProjectRoom(saved);
+        return mapRoom(saved, List.of());
     }
 
     public ProjectRoomResponse updateRoom(Long projectId, UUID roomId, ProjectRoomCreateRequest request) {
@@ -92,7 +109,9 @@ public class RoomCollabService {
         if (request.getSortOrder() != null) {
             room.setSortOrder(request.getSortOrder());
         }
-        return mapRoom(roomRepository.save(room));
+        ProjectRoom saved = roomRepository.save(room);
+        List<RoomTask> tasks = taskRepository.findByProjectRoomIdOrderByCreatedAtDesc(saved.getUuid());
+        return mapRoom(saved, tasks);
     }
 
     public int syncRoomsFromBoq(Long projectId) {
@@ -120,6 +139,7 @@ public class RoomCollabService {
                     room.setSource(RoomSource.BOQ);
                     room.setSortOrder(order++);
                     roomRepository.save(room);
+                    communicationService.ensureChannelForProjectRoom(room);
                     created++;
                 }
             }
@@ -147,6 +167,7 @@ public class RoomCollabService {
                 room.setSource(RoomSource.BOQ);
                 room.setSortOrder(order++);
                 roomRepository.save(room);
+                communicationService.ensureChannelForProjectRoom(room);
             }
         }
     }
@@ -162,7 +183,7 @@ public class RoomCollabService {
     public List<RoomTaskResponse> listTasksForProject(Long projectId) {
         requireProjectAccess(projectId);
         return taskRepository.findByProjectIdOrderByCreatedAtDesc(projectId).stream()
-                .map(t -> mapTask(t, false))
+                .map(t -> mapTask(t, true))
                 .toList();
     }
 
@@ -208,6 +229,7 @@ public class RoomCollabService {
         RoomTask saved = taskRepository.save(task);
         addEvent(saved.getUuid(), RoomTaskEventType.CREATED, principal.getAccountId(),
                 "Task created: " + saved.getTitle(), null);
+        communicationService.ensureChannelForRoomTask(saved);
         return mapTask(saved, true);
     }
 
@@ -410,6 +432,13 @@ public class RoomCollabService {
             eventMsg = eventMsg + " [ref version]";
         }
         addEvent(taskId, RoomTaskEventType.MESSAGE, principal.getAccountId(), eventMsg, null);
+        emailNotificationService.notifyRoomTaskMessage(
+                taskId,
+                saved.getUuid(),
+                principal.getAccountId(),
+                senderDisplayName(principal),
+                saved.getBody());
+        communicationService.broadcastTaskMessage(task, saved, projectId);
         return mapTaskMessage(saved, projectId);
     }
 
@@ -441,34 +470,56 @@ public class RoomCollabService {
             msg.setAttachmentPath(path);
             msg.setAttachmentName(file.getOriginalFilename());
         }
-        return mapRoomMessage(roomMessageRepository.save(msg));
+        RoomMessage saved = roomMessageRepository.save(msg);
+        emailNotificationService.notifyProjectRoomMessage(
+                roomId,
+                saved.getUuid(),
+                principal.getAccountId(),
+                senderDisplayName(principal),
+                saved.getBody());
+        communicationService.broadcastRoomMessage(room, saved);
+        return mapRoomMessage(saved);
     }
 
     public FinalReportResponse finalReport(Long projectId) {
         Project project = requireProjectAccess(projectId);
         List<ProjectRoom> rooms = roomRepository.findByProjectIdOrderBySortOrderAscFloorLabelAscNameAsc(projectId);
+        List<RoomTask> allTasks = taskRepository.findByProjectIdOrderByCreatedAtDesc(projectId);
+        Map<UUID, List<RoomTask>> tasksByRoom = allTasks.stream()
+                .collect(Collectors.groupingBy(RoomTask::getProjectRoomId));
+
+        List<UUID> closedTaskIds = allTasks.stream()
+                .filter(t -> t.getStatus() == RoomTaskStatus.APPROVED || t.getStatus() == RoomTaskStatus.CLOSED)
+                .map(RoomTask::getUuid)
+                .toList();
+        Map<UUID, RoomTaskFileVersion> finalByTask = new HashMap<>();
+        if (!closedTaskIds.isEmpty()) {
+            for (RoomTaskFileVersion v : versionRepository.findByTaskIdInAndIsFinalTrue(closedTaskIds)) {
+                finalByTask.putIfAbsent(v.getTaskId(), v);
+            }
+        }
+
         List<FinalReportResponse.FinalReportRoom> roomReports = new ArrayList<>();
         for (ProjectRoom room : rooms) {
-            List<RoomTask> tasks = taskRepository.findByProjectRoomIdOrderByCreatedAtDesc(room.getUuid());
             List<FinalReportResponse.FinalReportItem> items = new ArrayList<>();
-            for (RoomTask task : tasks) {
+            for (RoomTask task : tasksByRoom.getOrDefault(room.getUuid(), List.of())) {
                 if (task.getStatus() != RoomTaskStatus.APPROVED && task.getStatus() != RoomTaskStatus.CLOSED) {
                     continue;
                 }
-                versionRepository.findByTaskIdAndIsFinalTrue(task.getUuid()).stream().findFirst().ifPresent(v -> {
-                    items.add(FinalReportResponse.FinalReportItem.builder()
-                            .taskUuid(task.getUuid())
-                            .title(task.getTitle())
-                            .taskType(task.getTaskType())
-                            .approvedAt(task.getApprovedAt())
-                            .clientApprovalDays(task.getClientApprovalDays())
-                            .revisionCount(task.getRevisionCount())
-                            .fileName(v.getOriginalName())
-                            .versionUuid(v.getUuid())
-                            .downloadUrl("/api/projects/" + projectId + "/room-tasks/" + task.getUuid()
-                                    + "/versions/" + v.getUuid() + "/download")
-                            .build());
-                });
+                RoomTaskFileVersion v = finalByTask.get(task.getUuid());
+                if (v == null) continue;
+                items.add(FinalReportResponse.FinalReportItem.builder()
+                        .taskUuid(task.getUuid())
+                        .title(task.getTitle())
+                        .taskType(task.getTaskType())
+                        .approvedAt(task.getApprovedAt())
+                        .clientApprovalDays(task.getClientApprovalDays())
+                        .revisionCount(task.getRevisionCount())
+                        .fileName(v.getOriginalName())
+                        .versionUuid(v.getUuid())
+                        .downloadUrl("/api/projects/" + projectId + "/room-tasks/" + task.getUuid()
+                                + "/versions/" + v.getUuid() + "/download")
+                        .build());
             }
             if (!items.isEmpty()) {
                 roomReports.add(FinalReportResponse.FinalReportRoom.builder()
@@ -639,9 +690,9 @@ public class RoomCollabService {
         eventRepository.save(event);
     }
 
-    private ProjectRoomResponse mapRoom(ProjectRoom room) {
-        List<RoomTask> tasks = taskRepository.findByProjectRoomIdOrderByCreatedAtDesc(room.getUuid());
-        int open = (int) tasks.stream()
+    private ProjectRoomResponse mapRoom(ProjectRoom room, List<RoomTask> tasks) {
+        List<RoomTask> safeTasks = tasks != null ? tasks : List.of();
+        int open = (int) safeTasks.stream()
                 .filter(t -> t.getStatus() != RoomTaskStatus.APPROVED && t.getStatus() != RoomTaskStatus.CLOSED)
                 .count();
         return ProjectRoomResponse.builder()
@@ -652,7 +703,7 @@ public class RoomCollabService {
                 .roomTypeId(room.getRoomTypeId())
                 .source(room.getSource())
                 .sortOrder(room.getSortOrder())
-                .taskCount(tasks.size())
+                .taskCount(safeTasks.size())
                 .openTaskCount(open)
                 .createdAt(room.getCreatedAt())
                 .updatedAt(room.getUpdatedAt())
@@ -759,6 +810,7 @@ public class RoomCollabService {
                 .uuid(m.getUuid())
                 .taskId(m.getTaskId())
                 .senderAccountId(m.getSenderAccountId())
+                .senderName(resolveSenderName(m.getSenderAccountId()))
                 .body(m.getBody())
                 .attachmentName(m.getAttachmentName())
                 .referencedVersionId(m.getReferencedVersionId())
@@ -781,16 +833,36 @@ public class RoomCollabService {
     }
 
     private RoomMessageResponse mapRoomMessage(RoomMessage m) {
-        // Room chat attachments have no version download; omit broken /files URL.
+        String attachmentUrl = StringUtils.hasText(m.getAttachmentPath())
+                ? "/api/files/" + m.getAttachmentPath()
+                : null;
         return RoomMessageResponse.builder()
                 .uuid(m.getUuid())
                 .projectRoomId(m.getProjectRoomId())
                 .senderAccountId(m.getSenderAccountId())
+                .senderName(resolveSenderName(m.getSenderAccountId()))
                 .body(m.getBody())
                 .attachmentName(m.getAttachmentName())
-                .attachmentUrl(null)
+                .attachmentUrl(attachmentUrl)
                 .linkedTaskId(m.getLinkedTaskId())
                 .createdAt(m.getCreatedAt())
                 .build();
+    }
+
+    private String resolveSenderName(Long accountId) {
+        if (accountId == null) return "";
+        return accountRepository.findById(accountId)
+                .map(Account::getFullName)
+                .orElse("#" + accountId);
+    }
+
+    private String senderDisplayName(AuthPrincipal principal) {
+        if (principal == null) {
+            return "";
+        }
+        return accountRepository.findById(principal.getAccountId())
+                .map(Account::getFullName)
+                .filter(StringUtils::hasText)
+                .orElse(principal.getEmail());
     }
 }
