@@ -21,4 +21,17 @@ public class SubcontractorPackageResponse {
     private String appointedCompanyName;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
+
+    /** Sum of BOQ line quantities for this package section (when BOQ approved). */
+    private java.math.BigDecimal boqPlannedQty;
+    /** Sum of approved claim quantities on this package. */
+    private java.math.BigDecimal approvedClaimedQty;
+    /** boqPlannedQty - approvedClaimedQty (min 0). */
+    private java.math.BigDecimal remainingQty;
+
+    private String projectName;
+    private String projectLocation;
+    private String projectStatus;
+    private String projectType;
+    private String assignedManager;
 }

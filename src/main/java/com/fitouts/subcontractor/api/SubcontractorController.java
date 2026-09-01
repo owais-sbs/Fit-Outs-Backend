@@ -100,6 +100,24 @@ public class SubcontractorController extends BaseController {
         }
     }
 
+    @GetMapping("/api/subcontractor/my-projects")
+    public Object myProjects() {
+        try {
+            return successResponse(subcontractorService.myProjects());
+        } catch (Exception e) {
+            return failureResponse("Failed to load my projects", e.getMessage());
+        }
+    }
+
+    @GetMapping("/api/subcontractor/projects/{projectId}")
+    public Object getMyProject(@PathVariable Long projectId) {
+        try {
+            return successResponse(subcontractorService.getMyProject(projectId));
+        } catch (Exception e) {
+            return failureResponse("Failed to load project", e.getMessage());
+        }
+    }
+
     @PostMapping("/api/subcontractor/packages/{uuid}/claims")
     public Object createClaim(@PathVariable UUID uuid, @RequestBody SubcontractorClaimRequest request) {
         try {

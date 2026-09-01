@@ -19,6 +19,15 @@ public class QualityTemplateController extends BaseController {
 
     private final HoldPointService holdPointService;
 
+    @GetMapping
+    public Object list() {
+        try {
+            return successResponse(holdPointService.listTemplates());
+        } catch (Exception e) {
+            return failureResponse("Failed to list quality templates", e.getMessage());
+        }
+    }
+
     @GetMapping("/{activityType}")
     public Object get(@PathVariable String activityType) {
         try {

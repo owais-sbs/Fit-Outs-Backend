@@ -17,4 +17,8 @@ public class ProgressUpdateResponse {
     private BigDecimal labourHours;
     private Long reportedBy;
     private OffsetDateTime reportedAt;
+
+    /** PENDING, APPROVED, REJECTED — from linked progress_validation */
+    private String validationStatus;
+    private String validationReason;
 }

@@ -1,11 +1,13 @@
 package com.fitouts.subcontractor.application;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 import org.springframework.security.core.Authentication;
@@ -27,17 +29,21 @@ import com.fitouts.planning.application.PlanningService;
 import com.fitouts.planning.domain.PlanAreaStatus;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
+import com.fitouts.schedule.domain.ScheduleActivity;
+import com.fitouts.schedule.domain.ScheduleActivityRepository;
 import com.fitouts.shared.context.CompanyContext;
 import com.fitouts.shared.enums.BoqDocumentStatus;
 import com.fitouts.shared.error.BadRequestException;
 import com.fitouts.shared.error.ForbiddenException;
 import com.fitouts.shared.error.NotFoundException;
+import com.fitouts.holdpoint.application.HoldPointGuardService;
 import com.fitouts.subcontractor.api.AppointSubcontractorRequest;
 import com.fitouts.subcontractor.api.ClaimRejectRequest;
 import com.fitouts.subcontractor.api.SubcontractorClaimRequest;
 import com.fitouts.subcontractor.api.SubcontractorClaimResponse;
 import com.fitouts.subcontractor.api.SubcontractorPackageRequest;
 import com.fitouts.subcontractor.api.SubcontractorPackageResponse;
+import com.fitouts.subcontractor.api.SubcontractorProjectSummary;
 import com.fitouts.subcontractor.domain.SubcontractorClaim;
 import com.fitouts.subcontractor.domain.SubcontractorClaimRepository;
 import com.fitouts.subcontractor.domain.SubcontractorClaimStatus;
@@ -59,6 +65,8 @@ public class SubcontractorService {
     private final BoqLineRepository boqLineRepository;
     private final AccountService accountService;
     private final ClientPortalInviteService clientPortalInviteService;
+    private final HoldPointGuardService holdPointGuardService;
+    private final ScheduleActivityRepository scheduleActivityRepository;
 
     @Transactional(readOnly = true)
     public List<SubcontractorPackageResponse> listPackages(Long projectId) {
@@ -190,6 +198,65 @@ public class SubcontractorService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<SubcontractorProjectSummary> myProjects() {
+        AuthPrincipal principal = requireAuthenticated();
+        UUID companyId = requireCompany();
+        List<SubcontractorPackage> packages = packageRepository
+                .findByAppointedAccountIdAndCompanyIdOrderByCreatedAtDesc(principal.getAccountId(), companyId);
+        Map<Long, List<SubcontractorPackage>> byProject = new LinkedHashMap<>();
+        for (SubcontractorPackage pkg : packages) {
+            byProject.computeIfAbsent(pkg.getProjectId(), k -> new ArrayList<>()).add(pkg);
+        }
+        List<SubcontractorProjectSummary> result = new ArrayList<>();
+        for (Map.Entry<Long, List<SubcontractorPackage>> entry : byProject.entrySet()) {
+            Project project = resolveProject(entry.getKey());
+            List<SubcontractorPackage> projectPackages = entry.getValue();
+            long activeCount = projectPackages.stream()
+                    .filter(p -> p.getStatus() != SubcontractorPackageStatus.COMPLETE)
+                    .count();
+            result.add(SubcontractorProjectSummary.builder()
+                    .projectId(entry.getKey())
+                    .projectName(project != null ? project.getName() : "Project #" + entry.getKey())
+                    .location(project != null ? project.getLocation() : null)
+                    .status(project != null ? project.getStatus() : null)
+                    .projectType(project != null ? project.getProjectType() : null)
+                    .assignedManager(project != null ? project.getAssignedManager() : null)
+                    .packageCount(projectPackages.size())
+                    .activePackageCount((int) activeCount)
+                    .build());
+        }
+        return result;
+    }
+
+    @Transactional(readOnly = true)
+    public SubcontractorProjectSummary getMyProject(Long projectId) {
+        AuthPrincipal principal = requireAuthenticated();
+        UUID companyId = requireCompany();
+        List<SubcontractorPackage> packages = packageRepository
+                .findByAppointedAccountIdAndCompanyIdOrderByCreatedAtDesc(principal.getAccountId(), companyId)
+                .stream()
+                .filter(p -> Objects.equals(p.getProjectId(), projectId))
+                .toList();
+        if (packages.isEmpty()) {
+            throw new NotFoundException("Project not found or not assigned to you");
+        }
+        Project project = resolveProject(projectId);
+        long activeCount = packages.stream()
+                .filter(p -> p.getStatus() != SubcontractorPackageStatus.COMPLETE)
+                .count();
+        return SubcontractorProjectSummary.builder()
+                .projectId(projectId)
+                .projectName(project != null ? project.getName() : "Project #" + projectId)
+                .location(project != null ? project.getLocation() : null)
+                .status(project != null ? project.getStatus() : null)
+                .projectType(project != null ? project.getProjectType() : null)
+                .assignedManager(project != null ? project.getAssignedManager() : null)
+                .packageCount(packages.size())
+                .activePackageCount((int) activeCount)
+                .build();
+    }
+
     @Transactional
     public SubcontractorClaimResponse createClaim(UUID packageUuid, SubcontractorClaimRequest request) {
         AuthPrincipal principal = requireAuthenticated();
@@ -198,14 +265,17 @@ public class SubcontractorService {
                 .orElseThrow(() -> new NotFoundException("Package not found"));
         assertCanClaimOnPackage(principal, pkg);
 
+        BigDecimal plannedQty = resolvePlannedQty(pkg, request);
+        BigDecimal claimedQty = request != null && request.getClaimedQty() != null
+                ? request.getClaimedQty() : BigDecimal.ZERO;
+        validateClaimQuantities(pkg, claimedQty, null, plannedQty);
+
         SubcontractorClaim claim = new SubcontractorClaim();
         claim.setPackageUuid(pkg.getUuid());
         claim.setProjectId(pkg.getProjectId());
         claim.setCompanyId(companyId);
-        claim.setClaimedQty(request != null && request.getClaimedQty() != null
-                ? request.getClaimedQty() : BigDecimal.ZERO);
-        claim.setPlannedQty(request != null && request.getPlannedQty() != null
-                ? request.getPlannedQty() : BigDecimal.ZERO);
+        claim.setClaimedQty(claimedQty);
+        claim.setPlannedQty(plannedQty);
         claim.setNotes(request != null ? request.getNotes() : null);
         claim.setStatus(SubcontractorClaimStatus.DRAFT);
         return toClaimResponse(claimRepository.save(claim));
@@ -243,11 +313,20 @@ public class SubcontractorService {
         SubcontractorPackage pkg = packageRepository.findByUuidAndCompanyId(claim.getPackageUuid(), claim.getCompanyId())
                 .orElseThrow(() -> new NotFoundException("Package not found"));
         assertCanClaimOnPackage(principal, pkg);
+        holdPointGuardService.assertClaimAllowed(claim.getProjectId());
 
         if (claim.getStatus() != SubcontractorClaimStatus.DRAFT
                 && claim.getStatus() != SubcontractorClaimStatus.REJECTED) {
             throw new BadRequestException("Only DRAFT or REJECTED claims can be submitted");
         }
+
+        BigDecimal planned = claim.getPlannedQty();
+        if (planned == null || planned.compareTo(BigDecimal.ZERO) <= 0) {
+            planned = computeBoqPlannedQty(pkg);
+            claim.setPlannedQty(planned);
+        }
+        validateClaimQuantities(pkg, claim.getClaimedQty(), claim.getUuid(), planned);
+
         claim.setStatus(SubcontractorClaimStatus.SUBMITTED);
         claim.setSubmittedBy(principal.getAccountId());
         claim.setSubmittedAt(OffsetDateTime.now());
@@ -262,11 +341,15 @@ public class SubcontractorService {
         AuthPrincipal principal = requirePmOrAdmin();
         requireProject(projectId);
         SubcontractorClaim claim = requireSubmittedClaim(claimUuid, projectId);
+        SubcontractorPackage pkg = packageRepository.findByUuidAndCompanyId(claim.getPackageUuid(), claim.getCompanyId())
+                .orElseThrow(() -> new NotFoundException("Package not found"));
         claim.setStatus(SubcontractorClaimStatus.APPROVED);
         claim.setDecidedBy(principal.getAccountId());
         claim.setDecidedAt(OffsetDateTime.now());
         claim.setReason(null);
-        return toClaimResponse(claimRepository.save(claim));
+        SubcontractorClaim saved = claimRepository.save(claim);
+        syncScheduleProgressForPackage(pkg);
+        return toClaimResponse(saved);
     }
 
     @Transactional
@@ -356,6 +439,94 @@ public class SubcontractorService {
         return code;
     }
 
+    private BigDecimal computeBoqPlannedQty(SubcontractorPackage pkg) {
+        if (!StringUtils.hasText(pkg.getBoqSectionCode())) {
+            return BigDecimal.ZERO;
+        }
+        BoqDocument approved = findLatestApprovedBoq(pkg.getProjectId(), pkg.getCompanyId());
+        if (approved == null) {
+            return BigDecimal.ZERO;
+        }
+        String section = pkg.getBoqSectionCode().trim();
+        return boqLineRepository.findByBoqIdOrderBySortOrderAsc(approved.getId()).stream()
+                .filter(line -> section.equals(resolveCategoryCode(line)))
+                .map(BoqLine::getQuantity)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal resolvePlannedQty(SubcontractorPackage pkg, SubcontractorClaimRequest request) {
+        if (request != null && request.getPlannedQty() != null
+                && request.getPlannedQty().compareTo(BigDecimal.ZERO) > 0) {
+            return request.getPlannedQty();
+        }
+        BigDecimal fromBoq = computeBoqPlannedQty(pkg);
+        return fromBoq.compareTo(BigDecimal.ZERO) > 0 ? fromBoq : BigDecimal.ZERO;
+    }
+
+    private BigDecimal sumClaimedQty(UUID packageUuid, UUID excludeClaimUuid, SubcontractorClaimStatus... statuses) {
+        List<SubcontractorClaim> claims = claimRepository.findByPackageUuidAndCompanyIdOrderByCreatedAtDesc(
+                packageUuid, requireCompany());
+        java.util.Set<SubcontractorClaimStatus> allowed = java.util.Set.of(statuses);
+        return claims.stream()
+                .filter(c -> excludeClaimUuid == null || !excludeClaimUuid.equals(c.getUuid()))
+                .filter(c -> allowed.contains(c.getStatus()))
+                .map(SubcontractorClaim::getClaimedQty)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private void validateClaimQuantities(
+            SubcontractorPackage pkg,
+            BigDecimal newClaimed,
+            UUID excludeClaimUuid,
+            BigDecimal plannedQty) {
+        if (plannedQty == null || plannedQty.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        BigDecimal reserved = sumClaimedQty(pkg.getUuid(), excludeClaimUuid,
+                SubcontractorClaimStatus.APPROVED,
+                SubcontractorClaimStatus.SUBMITTED);
+        BigDecimal total = reserved.add(newClaimed != null ? newClaimed : BigDecimal.ZERO);
+        if (total.compareTo(plannedQty) > 0) {
+            BigDecimal remaining = plannedQty.subtract(reserved).max(BigDecimal.ZERO);
+            throw new BadRequestException(
+                    "Claimed quantity exceeds remaining planned qty (" + remaining + " remaining of " + plannedQty + ")");
+        }
+    }
+
+    /**
+     * Updates schedule activity % when package name matches an activity on the project.
+     */
+    private void syncScheduleProgressForPackage(SubcontractorPackage pkg) {
+        BigDecimal planned = computeBoqPlannedQty(pkg);
+        if (planned.compareTo(BigDecimal.ZERO) <= 0) {
+            planned = sumClaimedQty(pkg.getUuid(), null, SubcontractorClaimStatus.APPROVED);
+            if (planned.compareTo(BigDecimal.ZERO) <= 0) {
+                return;
+            }
+        }
+        BigDecimal approved = sumClaimedQty(pkg.getUuid(), null, SubcontractorClaimStatus.APPROVED);
+        int pct = approved.multiply(BigDecimal.valueOf(100))
+                .divide(planned, 0, RoundingMode.HALF_UP)
+                .intValue();
+        final int finalPct = Math.min(100, Math.max(0, pct));
+
+        String pkgName = pkg.getName() != null ? pkg.getName().trim() : "";
+        if (pkgName.isEmpty()) {
+            return;
+        }
+        scheduleActivityRepository
+                .findByProjectIdAndCompanyIdOrderBySortOrderAscStartDateAsc(pkg.getProjectId(), pkg.getCompanyId())
+                .stream()
+                .filter(a -> a.getName() != null && a.getName().trim().equalsIgnoreCase(pkgName))
+                .findFirst()
+                .ifPresent(activity -> {
+                    activity.setPercentComplete(finalPct);
+                    scheduleActivityRepository.save(activity);
+                });
+    }
+
     private void syncPlanning(Long projectId, Long updatedBy) {
         UUID companyId = CompanyContext.get();
         long total = packageRepository.countByProjectIdAndCompanyId(projectId, companyId);
@@ -419,6 +590,11 @@ public class SubcontractorService {
     }
 
     private SubcontractorPackageResponse toPackageResponse(SubcontractorPackage pkg) {
+        BigDecimal boqPlanned = computeBoqPlannedQty(pkg);
+        BigDecimal approved = sumClaimedQty(pkg.getUuid(), null,
+                SubcontractorClaimStatus.APPROVED);
+        BigDecimal remaining = boqPlanned.subtract(approved).max(BigDecimal.ZERO);
+        Project project = resolveProject(pkg.getProjectId());
         return SubcontractorPackageResponse.builder()
                 .uuid(pkg.getUuid())
                 .projectId(pkg.getProjectId())
@@ -430,7 +606,31 @@ public class SubcontractorService {
                 .appointedCompanyName(pkg.getAppointedCompanyName())
                 .createdAt(pkg.getCreatedAt())
                 .updatedAt(pkg.getUpdatedAt())
+                .boqPlannedQty(boqPlanned)
+                .approvedClaimedQty(approved)
+                .remainingQty(remaining)
+                .projectName(project != null ? project.getName() : null)
+                .projectLocation(project != null ? project.getLocation() : null)
+                .projectStatus(project != null ? project.getStatus() : null)
+                .projectType(project != null ? project.getProjectType() : null)
+                .assignedManager(project != null ? project.getAssignedManager() : null)
                 .build();
+    }
+
+    private Project resolveProject(Long projectId) {
+        if (projectId == null) {
+            return null;
+        }
+        try {
+            Project project = projectService.getById(projectId);
+            UUID companyId = CompanyContext.get();
+            if (companyId == null || project.getCompanyId() == null || !companyId.equals(project.getCompanyId())) {
+                return null;
+            }
+            return project;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private SubcontractorClaimResponse toClaimResponse(SubcontractorClaim claim) {
