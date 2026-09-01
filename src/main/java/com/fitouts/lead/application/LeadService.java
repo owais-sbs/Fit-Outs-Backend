@@ -421,10 +421,31 @@ public class LeadService {
     }
 
     private void ensureClientAccountAndSendInvite(Lead lead) {
+        attachCompanyIfMissing(lead);
+
         ClientAccountConversionResult conversion = accountService.createOrUpdateClientAccountForLead(lead);
         lead.setAccountCreated(true);
         clientPortalInviteService.sendPortalInvite(conversion.clientAccountId(), lead.getClientName());
-        projectService.ensureStarterProjectForClient(lead, conversion.clientAccountId());
+
+        var project = projectService.ensureStarterProjectForClient(lead, conversion.clientAccountId());
+        if (project == null) {
+            throw new BadRequestException(
+                    "Unable to create starter project for this lead. Ensure your account belongs to a company and try again."
+            );
+        }
+    }
+
+    private void attachCompanyIfMissing(Lead lead) {
+        if (lead.getCompanyEntity() != null) {
+            return;
+        }
+        UUID companyId = CompanyContext.get();
+        if (companyId == null) {
+            throw new BadRequestException(
+                    "Cannot convert lead to client without a company. Sign in with a company-scoped admin account."
+            );
+        }
+        lead.setCompanyEntity(companyService.getCompany(companyId));
     }
     
     public AccountResponse createAccount(Long leadId) {

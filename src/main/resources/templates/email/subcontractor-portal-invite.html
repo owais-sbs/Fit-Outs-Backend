@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<body>
+<table th:replace="~{fragments :: wrapper(~{::main})}">
+  <div th:fragment="main">
+      <h1 style="margin:0 0 20px;font-size:20px;line-height:1.4;color:#0f172a;font-weight:700;">Welcome to your subcontractor portal</h1>
+      <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#334155;">
+        Hello <strong th:text="${clientName}">there</strong>,
+      </p>
+      <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#334155;">
+        You have been appointed to a work package. Click the button below to choose a password and sign in to the subcontractor portal —
+        where you can view your packages and submit progress claims.
+      </p>
+
+      <a th:replace="~{fragments :: button(${setupUrl}, 'Set your password')}"></a>
+
+      <p style="margin:24px 0 0;font-size:13px;line-height:1.6;color:#64748b;">
+        This link expires in 7 days. After setting your password, sign in at
+        <a th:href="${loginUrl}" th:text="${loginUrl}" style="color:#2563eb;">login</a>.
+      </p>
+  </div>
+</table>
+</body>
+</html>
