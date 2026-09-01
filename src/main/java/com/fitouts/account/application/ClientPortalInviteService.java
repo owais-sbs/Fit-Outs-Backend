@@ -2,6 +2,7 @@ package com.fitouts.account.application;
 
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -39,8 +40,11 @@ public class ClientPortalInviteService {
     private final EmailService emailService;
     private final EmailTemplateService emailTemplateService;
 
-    @Value("${app.public-url:http://localhost:3002}")
+    @Value("${app.public-url:http://localhost:3000}")
     private String publicUrl;
+
+    @Value("${app.login-url:https://fitouts.onepathsolutions.com}")
+    private String loginUrl;
 
     @Transactional
     public boolean sendPortalInvite(Long accountId, String clientName) {
@@ -57,7 +61,29 @@ public class ClientPortalInviteService {
     }
 
     @Transactional
+    public boolean sendStaffPortalInvite(Long accountId, String displayName, String roleLabel) {
+        Map<String, Object> extras = new HashMap<>();
+        extras.put("roleLabel", StringUtils.hasText(roleLabel) ? roleLabel.trim() : "team member");
+        return sendPortalInvite(
+                accountId,
+                displayName,
+                "staff-portal-invite",
+                "Welcome — set up your staff portal access",
+                extras);
+    }
+
+    @Transactional
     public boolean sendPortalInvite(Long accountId, String displayName, String template, String subject) {
+        return sendPortalInvite(accountId, displayName, template, subject, Map.of());
+    }
+
+    @Transactional
+    public boolean sendPortalInvite(
+            Long accountId,
+            String displayName,
+            String template,
+            String subject,
+            Map<String, Object> extraVars) {
         Account account = accountRepository.findById(accountId)
                 .orElseThrow(() -> new NotFoundException("Account not found"));
 
@@ -70,10 +96,15 @@ public class ClientPortalInviteService {
         String setupUrl = buildSetupUrl(tokenValue);
         String greeting = StringUtils.hasText(displayName) ? displayName.trim() : account.getFullName();
 
-        String html = emailTemplateService.render(template, Map.of(
-                "clientName", StringUtils.hasText(greeting) ? greeting : "there",
-                "setupUrl", setupUrl,
-                "loginUrl", normalizePublicUrl() + "/login"));
+        Map<String, Object> vars = new HashMap<>();
+        vars.put("clientName", StringUtils.hasText(greeting) ? greeting : "there");
+        vars.put("setupUrl", setupUrl);
+        vars.put("loginUrl", normalizeLoginUrl() + "/login");
+        if (extraVars != null) {
+            vars.putAll(extraVars);
+        }
+
+        String html = emailTemplateService.render(template, vars);
 
         emailService.sendAsync(EmailMessage.builder()
                 .to(account.getEmail())
@@ -86,8 +117,8 @@ public class ClientPortalInviteService {
     }
 
     /**
-     * Resend a client portal password-setup link. Always succeeds from the caller's
-     * perspective when the email is well-formed; silently no-ops if no eligible account exists.
+     * Resend a password-setup link. Always succeeds from the caller's perspective
+     * when the email is well-formed; silently no-ops if no eligible account exists.
      */
     @Transactional
     public void resendSetupEmail(String email) {
@@ -101,17 +132,21 @@ public class ClientPortalInviteService {
             return;
         }
 
-        if (!Boolean.TRUE.equals(account.getIsActive())
-                || (!account.getRoles().contains(Role.CLIENT)
-                        && !account.getRoles().contains(Role.SUBCONTRACTOR))) {
-            log.debug("Password setup resend skipped for ineligible account {}", account.getId());
+        if (!Boolean.TRUE.equals(account.getIsActive())) {
+            log.debug("Password setup resend skipped for inactive account {}", account.getId());
             return;
         }
 
         if (account.getRoles().contains(Role.SUBCONTRACTOR)) {
             sendSubcontractorPortalInvite(account.getId(), account.getFullName());
-        } else {
+        } else if (account.getRoles().contains(Role.CLIENT)) {
             sendPortalInvite(account.getId(), account.getFullName());
+        } else {
+            String roleLabel = account.getRoles().stream()
+                    .findFirst()
+                    .map(Role::displayLabel)
+                    .orElse("team member");
+            sendStaffPortalInvite(account.getId(), account.getFullName(), roleLabel);
         }
     }
 
@@ -137,7 +172,7 @@ public class ClientPortalInviteService {
                 .valid(true)
                 .email(account.getEmail())
                 .fullName(account.getFullName())
-                .message("Set a password to access your client portal.")
+                .message("Set a password to access your portal.")
                 .build();
     }
 
@@ -178,7 +213,15 @@ public class ClientPortalInviteService {
     }
 
     private String normalizePublicUrl() {
-        String url = publicUrl == null ? "http://localhost:3002" : publicUrl.trim();
+        return stripTrailingSlash(publicUrl, "http://localhost:3000");
+    }
+
+    private String normalizeLoginUrl() {
+        return stripTrailingSlash(loginUrl, "https://fitouts.onepathsolutions.com");
+    }
+
+    private static String stripTrailingSlash(String value, String fallback) {
+        String url = !StringUtils.hasText(value) ? fallback : value.trim();
         while (url.endsWith("/")) {
             url = url.substring(0, url.length() - 1);
         }

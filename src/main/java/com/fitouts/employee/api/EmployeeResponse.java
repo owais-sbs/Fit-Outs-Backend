@@ -22,5 +22,6 @@ public class EmployeeResponse {
     private Set<Feature> features;
     private Boolean active;
     private Long accountId;
+    private Boolean inviteEmailSent;
     private LocalDateTime createdAt;
 }

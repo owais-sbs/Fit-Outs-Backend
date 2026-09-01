@@ -1,6 +1,7 @@
 package com.fitouts.employee.api;
 
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -26,6 +27,19 @@ public class EmployeeController extends BaseController {
             return successResponse("Employee created successfully", employeeService.create(request));
         } catch (Exception exception) {
             return failureResponse("Unable to create employee", exception.getMessage());
+        }
+    }
+
+    @PostMapping("/{id}/resend-invite")
+    public ResponseEntity<?> resendInvite(@PathVariable Long id) {
+        try {
+            boolean sent = employeeService.resendInvite(id);
+            if (sent) {
+                return successResponse("Invite email sent", Map.of("inviteEmailSent", true));
+            }
+            return successResponse("Unable to send invite email", Map.of("inviteEmailSent", false));
+        } catch (Exception exception) {
+            return failureResponse("Unable to resend invite", exception.getMessage());
         }
     }
 

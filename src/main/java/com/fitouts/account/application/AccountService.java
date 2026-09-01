@@ -3,7 +3,6 @@ package com.fitouts.account.application;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
-import java.security.SecureRandom;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -21,17 +20,13 @@ import com.fitouts.shared.context.CompanyContext;
 import com.fitouts.shared.error.BadRequestException;
 import com.fitouts.shared.error.ConflictException;
 import com.fitouts.shared.error.NotFoundException;
+import com.fitouts.shared.security.TemporaryPasswordGenerator;
 
 import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
 public class AccountService {
-
-    private static final String TEMP_PASSWORD_CHARS =
-            "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789@#$%";
-    private static final int TEMP_PASSWORD_LENGTH = 14;
-    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final AccountRepository repository;
     private final PasswordEncoder passwordEncoder;
@@ -151,7 +146,7 @@ public class AccountService {
                     null);
         }
 
-        String temporaryPassword = generateTemporaryPassword();
+        String temporaryPassword = TemporaryPasswordGenerator.generate();
         Account account = new Account();
         account.setFullName(requiredValue(lead.getClientName(), "Client"));
         account.setEmail(email);
@@ -225,7 +220,7 @@ public class AccountService {
             );
         }
 
-        String temporaryPassword = generateTemporaryPassword();
+        String temporaryPassword = TemporaryPasswordGenerator.generate();
         Account account = new Account();
         account.setFullName(requiredValue(fullName, "Subcontractor"));
         account.setEmail(normalizedEmail);
@@ -274,14 +269,6 @@ public class AccountService {
                 .active(account.getIsActive())
                 .roles(account.getRoles())
                 .build();
-    }
-
-    private String generateTemporaryPassword() {
-        StringBuilder password = new StringBuilder(TEMP_PASSWORD_LENGTH);
-        for (int index = 0; index < TEMP_PASSWORD_LENGTH; index++) {
-            password.append(TEMP_PASSWORD_CHARS.charAt(SECURE_RANDOM.nextInt(TEMP_PASSWORD_CHARS.length())));
-        }
-        return password.toString();
     }
 
     private String requiredValue(String value, String fallback) {
