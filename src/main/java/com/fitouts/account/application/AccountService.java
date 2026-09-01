@@ -166,11 +166,96 @@ public class AccountService {
                 account.setCompanyName(account.getCompany().getCompanyName());
             }
         }
+        if (account.getCompany() == null) {
+            throw new BadRequestException(
+                    "Cannot create client account without a company. Sign in with a company-scoped admin account."
+            );
+        }
         account.setIsActive(true);
         account.setRoles(new HashSet<>(List.of(Role.CLIENT)));
 
         Account saved = repository.save(account);
         return new ClientAccountConversionResult(true, saved.getId(), saved.getEmail(), temporaryPassword);
+    }
+
+    /**
+     * Creates or updates an account with SUBCONTRACTOR role for package appointment.
+     */
+    @Transactional
+    public ClientAccountConversionResult createOrUpdateSubcontractorAccount(
+            String fullName,
+            String email,
+            String phone,
+            String companyName) {
+        if (email == null || email.isBlank()) {
+            throw new BadRequestException("Subcontractor email is required");
+        }
+
+        String normalizedEmail = email.trim().toLowerCase();
+        Optional<Account> existingAccount = repository.findByEmail(normalizedEmail);
+        if (existingAccount.isPresent()) {
+            Account account = existingAccount.get();
+            account.setIsActive(true);
+            account.getRoles().add(Role.SUBCONTRACTOR);
+            if (account.getCompany() == null && CompanyContext.get() != null) {
+                account.setCompany(companyService.getCompany(CompanyContext.get()));
+            }
+            if (companyName != null && !companyName.isBlank()) {
+                account.setCompanyName(companyName.trim());
+            } else if (account.getCompanyName() == null && account.getCompany() != null) {
+                account.setCompanyName(account.getCompany().getCompanyName());
+            }
+            if (phone != null && !phone.isBlank() && account.getPhone() == null) {
+                account.setPhone(phone.trim());
+            }
+            if (fullName != null && !fullName.isBlank()
+                    && (account.getFullName() == null || account.getFullName().isBlank())) {
+                account.setFullName(fullName.trim());
+            }
+            return new ClientAccountConversionResult(
+                    false,
+                    repository.save(account).getId(),
+                    account.getEmail(),
+                    null);
+        }
+
+        if (CompanyContext.get() == null) {
+            throw new BadRequestException(
+                    "Cannot create subcontractor account without a company. Sign in with a company-scoped account."
+            );
+        }
+
+        String temporaryPassword = generateTemporaryPassword();
+        Account account = new Account();
+        account.setFullName(requiredValue(fullName, "Subcontractor"));
+        account.setEmail(normalizedEmail);
+        account.setPassword(passwordEncoder.encode(temporaryPassword));
+        account.setPhone(trimNullable(phone));
+        account.setCompany(companyService.getCompany(CompanyContext.get()));
+        account.setCompanyName(
+                companyName != null && !companyName.isBlank()
+                        ? companyName.trim()
+                        : account.getCompany().getCompanyName());
+        account.setIsActive(true);
+        account.setRoles(new HashSet<>(List.of(Role.SUBCONTRACTOR)));
+
+        Account saved = repository.save(account);
+        return new ClientAccountConversionResult(true, saved.getId(), saved.getEmail(), temporaryPassword);
+    }
+
+    /**
+     * Ensures an existing account can be appointed as a subcontractor (adds role if missing).
+     */
+    @Transactional
+    public ClientAccountConversionResult ensureSubcontractorAccount(Long accountId, String companyName) {
+        Account account = getAccount(accountId);
+        account.setIsActive(true);
+        account.getRoles().add(Role.SUBCONTRACTOR);
+        if (companyName != null && !companyName.isBlank()) {
+            account.setCompanyName(companyName.trim());
+        }
+        Account saved = repository.save(account);
+        return new ClientAccountConversionResult(false, saved.getId(), saved.getEmail(), null);
     }
 
     private Account getAccount(Long id) {

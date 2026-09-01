@@ -44,26 +44,40 @@ public class ClientPortalInviteService {
 
     @Transactional
     public boolean sendPortalInvite(Long accountId, String clientName) {
+        return sendPortalInvite(accountId, clientName, "client-portal-invite", "Welcome — set up your client portal access");
+    }
+
+    @Transactional
+    public boolean sendSubcontractorPortalInvite(Long accountId, String displayName) {
+        return sendPortalInvite(
+                accountId,
+                displayName,
+                "subcontractor-portal-invite",
+                "Welcome — set up your subcontractor portal access");
+    }
+
+    @Transactional
+    public boolean sendPortalInvite(Long accountId, String displayName, String template, String subject) {
         Account account = accountRepository.findById(accountId)
                 .orElseThrow(() -> new NotFoundException("Account not found"));
 
         if (!StringUtils.hasText(account.getEmail())) {
-            log.warn("Skipping client portal invite — account {} has no email", accountId);
+            log.warn("Skipping portal invite — account {} has no email", accountId);
             return false;
         }
 
         String tokenValue = issueToken(account);
         String setupUrl = buildSetupUrl(tokenValue);
-        String greeting = StringUtils.hasText(clientName) ? clientName.trim() : account.getFullName();
+        String greeting = StringUtils.hasText(displayName) ? displayName.trim() : account.getFullName();
 
-        String html = emailTemplateService.render("client-portal-invite", Map.of(
+        String html = emailTemplateService.render(template, Map.of(
                 "clientName", StringUtils.hasText(greeting) ? greeting : "there",
                 "setupUrl", setupUrl,
                 "loginUrl", normalizePublicUrl() + "/login"));
 
         emailService.sendAsync(EmailMessage.builder()
                 .to(account.getEmail())
-                .subject("Welcome — set up your client portal access")
+                .subject(subject)
                 .body(html)
                 .html(true)
                 .build());
@@ -87,12 +101,18 @@ public class ClientPortalInviteService {
             return;
         }
 
-        if (!Boolean.TRUE.equals(account.getIsActive()) || !account.getRoles().contains(Role.CLIENT)) {
+        if (!Boolean.TRUE.equals(account.getIsActive())
+                || (!account.getRoles().contains(Role.CLIENT)
+                        && !account.getRoles().contains(Role.SUBCONTRACTOR))) {
             log.debug("Password setup resend skipped for ineligible account {}", account.getId());
             return;
         }
 
-        sendPortalInvite(account.getId(), account.getFullName());
+        if (account.getRoles().contains(Role.SUBCONTRACTOR)) {
+            sendSubcontractorPortalInvite(account.getId(), account.getFullName());
+        } else {
+            sendPortalInvite(account.getId(), account.getFullName());
+        }
     }
 
     @Transactional(readOnly = true)

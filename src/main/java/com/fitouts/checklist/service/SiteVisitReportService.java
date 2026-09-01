@@ -6,21 +6,13 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.fitouts.account.application.AccountService;
-import com.fitouts.account.application.ClientAccountConversionResult;
-import com.fitouts.account.application.ClientPortalInviteService;
 import com.fitouts.checklist.domain.SiteVisit;
 import com.fitouts.checklist.domain.SiteVisitReport;
 import com.fitouts.checklist.domain.SiteVisitStatus;
 import com.fitouts.checklist.dto.SiteVisitReportRequest;
 import com.fitouts.checklist.dto.SiteVisitReportResponse;
-import com.fitouts.checklist.dto.SiteVisitRecordingResponse;
 import com.fitouts.checklist.mapper.SiteVisitReportMapper;
 import com.fitouts.checklist.repository.SiteVisitReportRepository;
-import com.fitouts.lead.domain.Lead;
-import com.fitouts.lead.domain.LeadRepository;
-import com.fitouts.lead.domain.LeadStatus;
-import com.fitouts.project.application.ProjectService;
 import com.fitouts.shared.error.ConflictException;
 import com.fitouts.shared.error.NotFoundException;
 
@@ -33,10 +25,6 @@ public class SiteVisitReportService {
     private final SiteVisitReportRepository repository;
     private final SiteVisitService siteVisitService;
     private final SiteVisitReportMapper mapper;
-    private final LeadRepository leadRepository;
-    private final AccountService accountService;
-    private final ClientPortalInviteService clientPortalInviteService;
-    private final ProjectService projectService;
     private final SiteVisitRecordingService recordingService;
 
     @Transactional(readOnly = true)
@@ -59,26 +47,9 @@ public class SiteVisitReportService {
         request.getItems().forEach(item ->
                 report.addItem(mapper.toItemEntity(item, normalizePhotoUrls(item.getPhotoUrls()))));
 
-        Lead lead = leadRepository.findById(siteVisit.getLeadId())
-                .orElseThrow(() -> new NotFoundException("Lead not found"));
-
-        ClientAccountConversionResult conversion =
-                accountService.createOrUpdateClientAccountForLead(lead);
-
-        lead.setStatus(LeadStatus.CLIENT);
-        lead.setAccountCreated(true);
         siteVisit.setStatus(SiteVisitStatus.COMPLETED);
 
-        boolean inviteSent = clientPortalInviteService.sendPortalInvite(
-                conversion.clientAccountId(),
-                lead.getClientName());
-        projectService.ensureStarterProjectForClient(lead, conversion.clientAccountId());
-
         SiteVisitReportResponse response = mapper.toResponse(repository.save(report));
-        response.setClientAccountCreated(conversion.clientAccountCreated());
-        response.setClientAccountId(conversion.clientAccountId());
-        response.setClientEmail(conversion.clientEmail());
-        response.setInviteEmailSent(inviteSent);
         response.setRecordings(recordingService.listByVisit(siteVisitUuid));
         recordingService.processPendingForVisit(siteVisitUuid);
         return response;

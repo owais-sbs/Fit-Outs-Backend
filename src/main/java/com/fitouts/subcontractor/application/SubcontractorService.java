@@ -14,6 +14,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import com.fitouts.account.application.ClientAccountConversionResult;
+import com.fitouts.account.application.ClientPortalInviteService;
+import com.fitouts.account.application.AccountService;
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.boq.domain.BoqDocument;
@@ -54,6 +57,8 @@ public class SubcontractorService {
     private final PlanningService planningService;
     private final BoqDocumentRepository boqDocumentRepository;
     private final BoqLineRepository boqLineRepository;
+    private final AccountService accountService;
+    private final ClientPortalInviteService clientPortalInviteService;
 
     @Transactional(readOnly = true)
     public List<SubcontractorPackageResponse> listPackages(Long projectId) {
@@ -128,16 +133,48 @@ public class SubcontractorService {
     public SubcontractorPackageResponse appoint(Long projectId, UUID uuid, AppointSubcontractorRequest request) {
         AuthPrincipal principal = requireStaff();
         requireProject(projectId);
-        if (request == null || request.getAccountId() == null) {
-            throw new BadRequestException("accountId is required");
+        if (request == null) {
+            throw new BadRequestException("Appoint request is required");
         }
+
+        String companyName = trimToNull(request.getCompanyName());
+        ClientAccountConversionResult accountResult;
+        if (request.getAccountId() != null) {
+            accountResult = accountService.ensureSubcontractorAccount(request.getAccountId(), companyName);
+        } else if (StringUtils.hasText(request.getEmail())) {
+            accountResult = accountService.createOrUpdateSubcontractorAccount(
+                    request.getFullName(),
+                    request.getEmail(),
+                    request.getPhone(),
+                    companyName);
+        } else {
+            throw new BadRequestException("Select an existing subcontractor or provide email to create one");
+        }
+
+        if (companyName == null) {
+            var account = accountService.getById(accountResult.clientAccountId());
+            companyName = trimToNull(account.getCompanyName());
+            if (companyName == null) {
+                companyName = trimToNull(account.getFullName());
+            }
+            if (companyName == null) {
+                companyName = trimToNull(request.getFullName());
+            }
+        }
+
         SubcontractorPackage pkg = requirePackageForProject(uuid, projectId);
-        pkg.setAppointedAccountId(request.getAccountId());
-        pkg.setAppointedCompanyName(trimToNull(request.getCompanyName()));
+        pkg.setAppointedAccountId(accountResult.clientAccountId());
+        pkg.setAppointedCompanyName(companyName);
         if (pkg.getStatus() != SubcontractorPackageStatus.COMPLETE) {
             pkg.setStatus(SubcontractorPackageStatus.IN_PROGRESS);
         }
         pkg = packageRepository.save(pkg);
+
+        String inviteName = pkg.getAppointedCompanyName() != null
+                ? pkg.getAppointedCompanyName()
+                : (StringUtils.hasText(request.getFullName()) ? request.getFullName().trim() : "there");
+        clientPortalInviteService.sendSubcontractorPortalInvite(accountResult.clientAccountId(), inviteName);
+
         syncPlanning(pkg.getProjectId(), principal.getAccountId());
         return toPackageResponse(pkg);
     }

@@ -171,20 +171,16 @@ class SiteVisitModuleIntegrationTest {
                                 """.formatted(items.get(0).getUuid(), items.get(1).getUuid())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items.length()").value(2))
-                .andExpect(jsonPath("$.data.items[0].photoUrls.length()").value(3))
-                .andExpect(jsonPath("$.data.clientAccountCreated").value(true))
-                .andExpect(jsonPath("$.data.clientEmail").value("claire@mossinteriors.com"))
-                .andExpect(jsonPath("$.data.inviteEmailSent").value(true));
+                .andExpect(jsonPath("$.data.items[0].photoUrls.length()").value(3));
 
         mockMvc.perform(get("/api/site-visits/GetSiteVisitByUuid/{uuid}", siteVisitUuid))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("COMPLETED"))
                 .andExpect(jsonPath("$.data.locationDetails.pincode").value("500081"));
 
-        Account clientAccount = accountRepository.findByEmail("claire@mossinteriors.com").orElseThrow();
-        org.assertj.core.api.Assertions.assertThat(clientAccount.getRoles()).contains(Role.CLIENT);
+        org.assertj.core.api.Assertions.assertThat(accountRepository.findByEmail("claire@mossinteriors.com")).isEmpty();
         org.assertj.core.api.Assertions.assertThat(leadRepository.findById(lead.getId()).orElseThrow().getStatus())
-                .isEqualTo(LeadStatus.CLIENT);
+                .isNotEqualTo(LeadStatus.CLIENT);
     }
 
     @Test
@@ -238,7 +234,7 @@ class SiteVisitModuleIntegrationTest {
     }
 
     @Test
-    void reportCompletionReusesExistingClientAccount() throws Exception {
+    void reportCompletionDoesNotConvertLeadToClient() throws Exception {
         Lead lead = leadRepository.save(lead("existing-client@example.com", "Existing Client"));
         Account account = new Account();
         account.setFullName("Existing Client");
@@ -265,13 +261,12 @@ class SiteVisitModuleIntegrationTest {
                                   ]
                                 }
                                 """.formatted(templateItemUuid)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.clientAccountCreated").value(false))
-                .andExpect(jsonPath("$.data.clientEmail").value("existing-client@example.com"))
-                .andExpect(jsonPath("$.data.inviteEmailSent").value(true));
+                .andExpect(status().isOk());
 
-        Account updatedAccount = accountRepository.findByEmail("existing-client@example.com").orElseThrow();
-        org.assertj.core.api.Assertions.assertThat(updatedAccount.getRoles()).contains(Role.ADMIN, Role.CLIENT);
+        Account unchangedAccount = accountRepository.findByEmail("existing-client@example.com").orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(unchangedAccount.getRoles()).containsExactly(Role.ADMIN);
+        org.assertj.core.api.Assertions.assertThat(leadRepository.findById(lead.getId()).orElseThrow().getStatus())
+                .isEqualTo(LeadStatus.QUALIFIED);
     }
 
     private List<ChecklistTemplateItem> orderedItems() {
