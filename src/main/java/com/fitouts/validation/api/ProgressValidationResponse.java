@@ -20,4 +20,12 @@ public class ProgressValidationResponse {
     private OffsetDateTime decidedAt;
     private String reason;
     private OffsetDateTime createdAt;
+
+    /** Enriched display fields */
+    private String projectName;
+    private String activityName;
+    private Integer percentComplete;
+    private String progressNotes;
+    private String reportedByName;
+    private OffsetDateTime reportedAt;
 }

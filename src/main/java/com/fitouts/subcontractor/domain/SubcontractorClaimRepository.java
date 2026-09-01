@@ -13,4 +13,7 @@ public interface SubcontractorClaimRepository extends JpaRepository<Subcontracto
     Optional<SubcontractorClaim> findByUuidAndCompanyId(UUID uuid, UUID companyId);
 
     List<SubcontractorClaim> findByProjectIdAndCompanyIdOrderByCreatedAtDesc(Long projectId, UUID companyId);
+
+    List<SubcontractorClaim> findByCompanyIdAndStatusOrderBySubmittedAtDesc(
+            UUID companyId, SubcontractorClaimStatus status);
 }

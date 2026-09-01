@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.fitouts.shared.web.BaseController;
 import com.fitouts.validation.application.ProgressValidationService;
+import com.fitouts.validation.application.ValidationInboxService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -18,11 +19,12 @@ import lombok.RequiredArgsConstructor;
 public class ProgressValidationController extends BaseController {
 
     private final ProgressValidationService progressValidationService;
+    private final ValidationInboxService validationInboxService;
 
     @GetMapping("/api/validation/inbox")
     public Object inbox() {
         try {
-            return successResponse(progressValidationService.inbox());
+            return successResponse(validationInboxService.inbox());
         } catch (Exception e) {
             return failureResponse("Failed to load validation inbox", e.getMessage());
         }
@@ -31,7 +33,7 @@ public class ProgressValidationController extends BaseController {
     @GetMapping("/api/projects/{projectId}/validations")
     public Object listByProject(@PathVariable Long projectId) {
         try {
-            return successResponse(progressValidationService.listByProject(projectId));
+            return successResponse(validationInboxService.inboxForProject(projectId));
         } catch (Exception e) {
             return failureResponse("Failed to list validations", e.getMessage());
         }

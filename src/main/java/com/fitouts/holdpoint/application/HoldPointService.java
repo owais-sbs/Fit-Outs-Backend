@@ -140,7 +140,7 @@ public class HoldPointService {
 
     @Transactional(readOnly = true)
     public QualityTemplateResponse getTemplate(String activityType) {
-        requireAdmin();
+        requireStaff();
         UUID companyId = requireCompany();
         String type = requireActivityType(activityType);
         return templateRepository.findByCompanyIdAndActivityType(companyId, type)
@@ -168,6 +168,15 @@ public class HoldPointService {
                 });
         template.setChecklistJson(resolveTemplateChecklistJson(request));
         return toTemplateResponse(templateRepository.save(template));
+    }
+
+    @Transactional(readOnly = true)
+    public List<QualityTemplateResponse> listTemplates() {
+        requireStaff();
+        UUID companyId = requireCompany();
+        return templateRepository.findByCompanyIdOrderByActivityTypeAsc(companyId).stream()
+                .map(this::toTemplateResponse)
+                .toList();
     }
 
     private String resolveChecklistJson(HoldPointRequest request) {

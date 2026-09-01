@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import com.fitouts.billing.application.BillingService;
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.project.application.ProjectService;
@@ -38,6 +39,7 @@ public class ProgressValidationService {
     private final ActivityProgressUpdateRepository progressRepository;
     private final ScheduleActivityRepository activityRepository;
     private final ProjectService projectService;
+    private final BillingService billingService;
 
     @Transactional
     public ProgressValidation createPendingForProgress(ActivityProgressUpdate update) {
@@ -101,11 +103,23 @@ public class ProgressValidationService {
     public ProgressValidationResponse approve(UUID uuid) {
         AuthPrincipal principal = requirePmOrAdmin();
         ProgressValidation validation = requirePending(uuid);
+        ActivityProgressUpdate progress = progressRepository.findById(validation.getProgressUpdateUuid())
+                .orElseThrow(() -> new NotFoundException("Progress update not found"));
+        ScheduleActivity activity = activityRepository
+                .findByUuidAndCompanyId(validation.getActivityUuid(), requireCompany())
+                .orElseThrow(() -> new NotFoundException("Activity not found"));
+
+        activity.setPercentComplete(progress.getPercentComplete());
+        activityRepository.save(activity);
+
         validation.setStatus(ProgressValidationStatus.APPROVED);
         validation.setDecidedBy(principal.getAccountId());
         validation.setDecidedAt(OffsetDateTime.now());
         validation.setReason(null);
-        return toResponse(validationRepository.save(validation));
+        validationRepository.save(validation);
+
+        billingService.evaluateTriggersForActivity(activity.getUuid());
+        return toResponse(validation);
     }
 
     @Transactional

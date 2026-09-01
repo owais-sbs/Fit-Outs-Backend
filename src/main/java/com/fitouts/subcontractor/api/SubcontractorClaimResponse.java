@@ -27,4 +27,10 @@ public class SubcontractorClaimResponse {
     private String reason;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
+
+    /** Enriched display fields */
+    private String packageName;
+    private String projectName;
+    private String subcontractorName;
+    private String submittedByName;
 }

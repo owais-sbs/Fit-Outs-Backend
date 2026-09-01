@@ -20,7 +20,7 @@ import org.springframework.util.StringUtils;
 
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
-import com.fitouts.billing.application.BillingService;
+import com.fitouts.holdpoint.application.HoldPointGuardService;
 import com.fitouts.planning.application.PlanningService;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
@@ -50,6 +50,8 @@ import com.fitouts.shared.error.BadRequestException;
 import com.fitouts.shared.error.ForbiddenException;
 import com.fitouts.shared.error.NotFoundException;
 import com.fitouts.validation.application.ProgressValidationService;
+import com.fitouts.validation.domain.ProgressValidation;
+import com.fitouts.validation.domain.ProgressValidationRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -65,7 +67,8 @@ public class ScheduleService {
     private final ProjectService projectService;
     private final PlanningService planningService;
     private final ProgressValidationService progressValidationService;
-    private final BillingService billingService;
+    private final ProgressValidationRepository validationRepository;
+    private final HoldPointGuardService holdPointGuardService;
 
     @Transactional(readOnly = true)
     public ProjectScheduleResponse getSchedule(Long projectId) {
@@ -215,7 +218,7 @@ public class ScheduleService {
         ScheduleActivity activity = new ScheduleActivity();
         activity.setProjectId(project.getId());
         activity.setCompanyId(CompanyContext.get());
-        applyRequest(activity, request);
+        applyRequest(activity, request, true);
         activity.setPublishStatus(SchedulePublishStatus.DRAFT);
         activity.setCreatedBy(principal.getAccountId());
         return toActivity(activityRepository.save(activity));
@@ -237,7 +240,7 @@ public class ScheduleService {
                 && request.getEndDate().isBefore(activity.getStartDate())) {
             throw new BadRequestException("endDate must be on or after startDate");
         }
-        applyRequest(activity, request);
+        applyRequest(activity, request, false);
         if (!StringUtils.hasText(activity.getName())) {
             throw new BadRequestException("name is required");
         }
@@ -378,6 +381,8 @@ public class ScheduleService {
             throw new BadRequestException("percentComplete must be 0–100");
         }
 
+        holdPointGuardService.assertProgressAllowed(activity.getProjectId(), activity.getUuid());
+
         ActivityProgressUpdate update = new ActivityProgressUpdate();
         update.setActivityUuid(activity.getUuid());
         update.setProjectId(activity.getProjectId());
@@ -388,14 +393,8 @@ public class ScheduleService {
         update.setReportedBy(principal.getAccountId());
         update = progressRepository.save(update);
 
-        activity.setPercentComplete(pct);
-        activityRepository.save(activity);
-
-        // Wave B: auto-create PENDING PM validation for the progress claim
+        // PM validation gate: activity % updates only after approve()
         progressValidationService.createPendingForProgress(update);
-
-        // UAT closeout: auto-trigger billing milestones linked to this activity
-        billingService.evaluateTriggersForActivity(activity.getUuid());
 
         return toProgress(update);
     }
@@ -419,11 +418,11 @@ public class ScheduleService {
                 .toList();
     }
 
-    private void applyRequest(ScheduleActivity activity, ScheduleActivityRequest request) {
+    private void applyRequest(ScheduleActivity activity, ScheduleActivityRequest request, boolean allowPercentEdit) {
         if (StringUtils.hasText(request.getName())) activity.setName(request.getName().trim());
         if (request.getStartDate() != null) activity.setStartDate(request.getStartDate());
         if (request.getEndDate() != null) activity.setEndDate(request.getEndDate());
-        if (request.getPercentComplete() != null) {
+        if (allowPercentEdit && request.getPercentComplete() != null) {
             int pct = request.getPercentComplete();
             if (pct < 0 || pct > 100) throw new BadRequestException("percentComplete must be 0–100");
             activity.setPercentComplete(pct);
@@ -551,14 +550,18 @@ public class ScheduleService {
     }
 
     private ProgressUpdateResponse toProgress(ActivityProgressUpdate u) {
-        return ProgressUpdateResponse.builder()
+        ProgressUpdateResponse.ProgressUpdateResponseBuilder builder = ProgressUpdateResponse.builder()
                 .uuid(u.getUuid())
                 .activityUuid(u.getActivityUuid())
                 .percentComplete(u.getPercentComplete())
                 .notes(u.getNotes())
                 .labourHours(u.getLabourHours())
                 .reportedBy(u.getReportedBy())
-                .reportedAt(u.getReportedAt())
-                .build();
+                .reportedAt(u.getReportedAt());
+        validationRepository.findByProgressUpdateUuid(u.getUuid()).ifPresent(v -> {
+            builder.validationStatus(v.getStatus() != null ? v.getStatus().name() : null);
+            builder.validationReason(v.getReason());
+        });
+        return builder.build();
     }
 }
