@@ -45,6 +45,8 @@ public class SiteVisitEstimateResponse {
     private List<UUID> selectedAppendixIds = new ArrayList<>();
     @Builder.Default
     private List<AppendixMasterResponse> selectedAppendices = new ArrayList<>();
+    @Builder.Default
+    private List<String> excludedScopeRefs = new ArrayList<>();
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
 }
