@@ -24,4 +24,6 @@ public class SiteVisitEstimateLineResponse {
     private BigDecimal rate;
     private BigDecimal amount;
     private Integer displayOrder;
+    private String lineSource;
+    private String scopeRef;
 }
