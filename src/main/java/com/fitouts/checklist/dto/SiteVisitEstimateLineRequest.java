@@ -20,4 +20,6 @@ public class SiteVisitEstimateLineRequest {
     private String unit;
     private BigDecimal rate;
     private Integer displayOrder;
+    private String lineSource;
+    private String scopeRef;
 }
