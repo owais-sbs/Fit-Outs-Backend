@@ -65,6 +65,12 @@ public class SiteVisitEstimateLine {
     @Column(name = "display_order", nullable = false)
     private Integer displayOrder = 0;
 
+    @Column(name = "line_source", length = 32)
+    private String lineSource;
+
+    @Column(name = "scope_ref", length = 500)
+    private String scopeRef;
+
     @Column(nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
