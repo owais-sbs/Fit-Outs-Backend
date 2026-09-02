@@ -72,6 +72,18 @@ public class SiteVisitEstimate {
     @Column(name = "prepared_by", length = 200)
     private String preparedBy;
 
+    @Column(name = "include_stamp", nullable = false)
+    private boolean includeStamp = true;
+
+    @Column(name = "include_signature", nullable = false)
+    private boolean includeSignature = true;
+
+    @Column(name = "stamp_image_path", length = 512)
+    private String stampImagePath;
+
+    @Column(name = "signature_image_path", length = 512)
+    private String signatureImagePath;
+
     @Column(nullable = false, length = 8)
     private String currency = "AED";
 

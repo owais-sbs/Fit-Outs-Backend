@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -186,6 +187,48 @@ public class SiteVisitController extends BaseController {
                     siteVisitEstimateService.issue(uuid));
         } catch (Exception exception) {
             return failureResponse("Unable to issue site visit estimate", exception.getMessage());
+        }
+    }
+
+    @PostMapping("/{uuid}/estimate/stamp")
+    public ResponseEntity<?> uploadEstimateStamp(
+            @PathVariable UUID uuid,
+            @RequestParam("file") MultipartFile file) {
+        try {
+            return successResponse("Stamp updated for this visit", siteVisitEstimateService.uploadStamp(uuid, file));
+        } catch (Exception exception) {
+            return failureResponse("Unable to upload stamp", exception.getMessage());
+        }
+    }
+
+    @PostMapping("/{uuid}/estimate/signature")
+    public ResponseEntity<?> uploadEstimateSignature(
+            @PathVariable UUID uuid,
+            @RequestParam("file") MultipartFile file) {
+        try {
+            return successResponse(
+                    "Signature updated for this visit",
+                    siteVisitEstimateService.uploadSignature(uuid, file));
+        } catch (Exception exception) {
+            return failureResponse("Unable to upload signature", exception.getMessage());
+        }
+    }
+
+    @DeleteMapping("/{uuid}/estimate/stamp")
+    public ResponseEntity<?> clearEstimateStamp(@PathVariable UUID uuid) {
+        try {
+            return successResponse("Using company stamp", siteVisitEstimateService.clearStamp(uuid));
+        } catch (Exception exception) {
+            return failureResponse("Unable to clear stamp", exception.getMessage());
+        }
+    }
+
+    @DeleteMapping("/{uuid}/estimate/signature")
+    public ResponseEntity<?> clearEstimateSignature(@PathVariable UUID uuid) {
+        try {
+            return successResponse("Using company signature", siteVisitEstimateService.clearSignature(uuid));
+        } catch (Exception exception) {
+            return failureResponse("Unable to clear signature", exception.getMessage());
         }
     }
 

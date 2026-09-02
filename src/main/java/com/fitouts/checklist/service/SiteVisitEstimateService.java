@@ -8,6 +8,7 @@ import java.util.UUID;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.fitouts.appendix.application.SiteVisitEstimateAppendixService;
 import com.fitouts.appendix.dto.AppendixMasterResponse;
@@ -20,6 +21,8 @@ import com.fitouts.checklist.dto.SiteVisitEstimateResponse;
 import com.fitouts.checklist.mapper.SiteVisitEstimateMapper;
 import com.fitouts.checklist.repository.SiteVisitEstimateRepository;
 import com.fitouts.checklist.repository.SiteVisitReportRepository;
+import com.fitouts.company.application.CoverLetterBrandingService;
+import com.fitouts.drawing.application.FileStorageService;
 import com.fitouts.lead.domain.Lead;
 import com.fitouts.lead.domain.LeadRepository;
 import com.fitouts.shared.error.BadRequestException;
@@ -43,6 +46,7 @@ public class SiteVisitEstimateService {
     private final LeadRepository leadRepository;
     private final SiteVisitEstimateAppendixService appendixService;
     private final PortalAccessHelper portalAccess;
+    private final FileStorageService fileStorageService;
 
     private SiteVisitEstimateResponse enrich(SiteVisitEstimate estimate) {
         SiteVisitEstimateResponse response = mapper.toResponse(estimate);
@@ -131,6 +135,70 @@ public class SiteVisitEstimateService {
         }
         estimate.setStatus(SiteVisitEstimateStatus.ISSUED);
         return enrich(estimateRepository.save(estimate));
+    }
+
+    @Transactional
+    public SiteVisitEstimateResponse uploadStamp(UUID siteVisitUuid, MultipartFile file) {
+        return uploadOverride(siteVisitUuid, file, true);
+    }
+
+    @Transactional
+    public SiteVisitEstimateResponse uploadSignature(UUID siteVisitUuid, MultipartFile file) {
+        return uploadOverride(siteVisitUuid, file, false);
+    }
+
+    @Transactional
+    public SiteVisitEstimateResponse clearStamp(UUID siteVisitUuid) {
+        return clearOverride(siteVisitUuid, true);
+    }
+
+    @Transactional
+    public SiteVisitEstimateResponse clearSignature(UUID siteVisitUuid) {
+        return clearOverride(siteVisitUuid, false);
+    }
+
+    private SiteVisitEstimateResponse uploadOverride(UUID siteVisitUuid, MultipartFile file, boolean stamp) {
+        portalAccess.requireStaff();
+        CoverLetterBrandingService.requireImage(file);
+        SiteVisitEstimate estimate = editableEstimate(siteVisitUuid);
+        UUID companyId = estimate.getCompany() != null
+                ? estimate.getCompany().getUuid()
+                : CompanyContext.get();
+        String previous = stamp ? estimate.getStampImagePath() : estimate.getSignatureImagePath();
+        String path = fileStorageService.store(file, "cover-letter/" + companyId + "/visits/" + siteVisitUuid);
+        if (stamp) {
+            estimate.setStampImagePath(path);
+            estimate.setIncludeStamp(true);
+        } else {
+            estimate.setSignatureImagePath(path);
+            estimate.setIncludeSignature(true);
+        }
+        SiteVisitEstimate saved = estimateRepository.save(estimate);
+        fileStorageService.deleteIfExists(previous);
+        return enrich(saved);
+    }
+
+    private SiteVisitEstimateResponse clearOverride(UUID siteVisitUuid, boolean stamp) {
+        portalAccess.requireStaff();
+        SiteVisitEstimate estimate = editableEstimate(siteVisitUuid);
+        if (stamp) {
+            fileStorageService.deleteIfExists(estimate.getStampImagePath());
+            estimate.setStampImagePath(null);
+        } else {
+            fileStorageService.deleteIfExists(estimate.getSignatureImagePath());
+            estimate.setSignatureImagePath(null);
+        }
+        return enrich(estimateRepository.save(estimate));
+    }
+
+    private SiteVisitEstimate editableEstimate(UUID siteVisitUuid) {
+        SiteVisit visit = siteVisitService.getSiteVisit(siteVisitUuid);
+        SiteVisitEstimate estimate = estimateRepository.findBySiteVisitUuid(siteVisitUuid)
+                .orElseGet(() -> createDraft(visit));
+        if (estimate.getStatus() == SiteVisitEstimateStatus.ISSUED) {
+            throw new ConflictException("Issued estimates cannot be edited. Create a new revision manually if needed.");
+        }
+        return estimate;
     }
 
     private SiteVisitEstimate createDraft(SiteVisit visit) {
