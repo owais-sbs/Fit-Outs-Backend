@@ -21,6 +21,8 @@ public class SiteVisitEstimateRequest {
     private String locationLabel;
     private String subject;
     private String preparedBy;
+    private Boolean includeStamp;
+    private Boolean includeSignature;
     private String currency;
     private String notes;
     private List<SiteVisitEstimateLineRequest> lines = new ArrayList<>();

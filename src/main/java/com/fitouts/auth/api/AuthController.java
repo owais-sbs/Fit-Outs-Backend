@@ -38,7 +38,7 @@ public class AuthController extends BaseController {
         try {
             clientPortalInviteService.resendSetupEmail(request.getEmail());
             return successResponse(new MessageResponse(
-                    "If a client portal account exists for that email, a password setup link has been sent."));
+                    "If an account exists for that email, a password setup link has been sent."));
         } catch (Exception exception) {
             return failureResponse("Unable to process request", exception.getMessage());
         }

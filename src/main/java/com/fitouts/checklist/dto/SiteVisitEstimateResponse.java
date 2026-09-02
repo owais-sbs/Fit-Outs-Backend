@@ -31,6 +31,10 @@ public class SiteVisitEstimateResponse {
     private String locationLabel;
     private String subject;
     private String preparedBy;
+    private Boolean includeStamp;
+    private Boolean includeSignature;
+    private String stampImageUrl;
+    private String signatureImageUrl;
     private String currency;
     private String notes;
     private BigDecimal subtotal;

@@ -30,6 +30,10 @@ public class SiteVisitEstimateMapper {
                 .locationLabel(estimate.getLocationLabel())
                 .subject(estimate.getSubject())
                 .preparedBy(estimate.getPreparedBy())
+                .includeStamp(estimate.isIncludeStamp())
+                .includeSignature(estimate.isIncludeSignature())
+                .stampImageUrl(toFileUrl(estimate.getStampImagePath()))
+                .signatureImageUrl(toFileUrl(estimate.getSignatureImagePath()))
                 .currency(estimate.getCurrency())
                 .notes(estimate.getNotes())
                 .subtotal(estimate.getSubtotal())
@@ -92,6 +96,12 @@ public class SiteVisitEstimateMapper {
         if (request.getPreparedBy() != null) {
             estimate.setPreparedBy(trimNullable(request.getPreparedBy()));
         }
+        if (request.getIncludeStamp() != null) {
+            estimate.setIncludeStamp(request.getIncludeStamp());
+        }
+        if (request.getIncludeSignature() != null) {
+            estimate.setIncludeSignature(request.getIncludeSignature());
+        }
         if (request.getCurrency() != null && !request.getCurrency().isBlank()) {
             estimate.setCurrency(request.getCurrency().trim());
         }
@@ -151,5 +161,12 @@ public class SiteVisitEstimateMapper {
 
     private String trimNullable(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    public static String toFileUrl(String path) {
+        if (path == null || path.isBlank()) {
+            return null;
+        }
+        return "/api/files/" + path;
     }
 }

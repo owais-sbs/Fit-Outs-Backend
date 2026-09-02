@@ -36,6 +36,12 @@ public class Company implements Serializable {
 
     private String logo;
 
+    @Column(name = "stamp_image_path", length = 512)
+    private String stampImagePath;
+
+    @Column(name = "signature_image_path", length = 512)
+    private String signatureImagePath;
+
     @Column(nullable = true, unique = true, length = 100)
     private String domainSlug;
 
