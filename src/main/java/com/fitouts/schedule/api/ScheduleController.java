@@ -1,7 +1,9 @@
 package com.fitouts.schedule.api;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -9,6 +11,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.fitouts.schedule.application.ScheduleService;
@@ -37,6 +40,17 @@ public class ScheduleController extends BaseController {
             return successResponse(scheduleService.createActivity(projectId, request));
         } catch (Exception e) {
             return failureResponse("Failed to create activity", e.getMessage());
+        }
+    }
+
+    @PostMapping("/api/projects/{projectId}/schedule/activities/from-room-task")
+    public Object createActivityFromRoomTask(
+            @PathVariable Long projectId,
+            @RequestBody ScheduleFromRoomTaskRequest request) {
+        try {
+            return successResponse(scheduleService.createActivityFromRoomTask(projectId, request));
+        } catch (Exception e) {
+            return failureResponse("Failed to create activity from room task", e.getMessage());
         }
     }
 
@@ -121,6 +135,20 @@ public class ScheduleController extends BaseController {
             return successResponse(scheduleService.listProgress(activityUuid));
         } catch (Exception e) {
             return failureResponse("Failed to list progress", e.getMessage());
+        }
+    }
+
+    @GetMapping("/api/schedule/calendar-events")
+    public Object calendarEvents(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) Long projectId,
+            @RequestParam(required = false) Long assigneeAccountId) {
+        try {
+            return successResponse(scheduleService.calendarEvents(
+                    startDate, endDate, projectId, assigneeAccountId));
+        } catch (Exception e) {
+            return failureResponse("Failed to load calendar events", e.getMessage());
         }
     }
 

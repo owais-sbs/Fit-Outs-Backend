@@ -1,6 +1,7 @@
 package com.fitouts.project.application;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -123,10 +124,12 @@ public class ProjectService {
         if (companyId == null) {
             return null;
         }
-        List<Project> existing =
-                projectRepository.findByCompanyIdAndClientIdAndIsDeletedFalse(companyId, accountId);
-        if (!existing.isEmpty()) {
-            return existing.get(0);
+        if (lead.getId() != null) {
+            Optional<Project> byLead =
+                    projectRepository.findByCompanyIdAndLeadIdAndIsDeletedFalse(companyId, lead.getId());
+            if (byLead.isPresent()) {
+                return byLead.get();
+            }
         }
 
         Project project = new Project();
@@ -134,6 +137,8 @@ public class ProjectService {
         project.setName(clientLabel + " — Fit-Out Project");
         project.setClientId(accountId);
         project.setCompanyId(companyId);
+        project.setLeadId(lead.getId());
+        project.setLeadReferenceNo(StringUtils.hasText(lead.getReferenceNo()) ? lead.getReferenceNo().trim() : null);
         project.setStatus("Planning");
         project.setProgress(0);
         if (StringUtils.hasText(lead.getProjectType())) {

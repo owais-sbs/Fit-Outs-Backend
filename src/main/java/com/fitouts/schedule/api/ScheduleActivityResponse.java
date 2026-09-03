@@ -28,4 +28,8 @@ public class ScheduleActivityResponse {
     private int sortOrder;
     private String delayReason;
     private OffsetDateTime updatedAt;
+    private String roomName;
+    private String roomTaskTitle;
+    private String roomTaskStatus;
+    private String assigneeName;
 }
