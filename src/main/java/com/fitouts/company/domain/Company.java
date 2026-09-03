@@ -1,5 +1,6 @@
 package com.fitouts.company.domain;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -26,6 +27,9 @@ import lombok.Setter;
 @Getter
 @Setter
 public class Company implements Serializable {
+
+    @Serial
+    private static final long serialVersionUID = -2862126059791512328L;
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
