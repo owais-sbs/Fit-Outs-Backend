@@ -3,7 +3,9 @@ package com.fitouts.auth.api;
 import java.util.List;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -108,8 +110,9 @@ public class AuthController extends BaseController {
     }
 
     @GetMapping("/me")
-    public ResponseEntity<?> me(@AuthenticationPrincipal AuthPrincipal principal) {
+    public ResponseEntity<?> me() {
         try {
+            AuthPrincipal principal = currentPrincipal();
             if (principal == null) {
                 return successResponse(null);
             }
@@ -120,11 +123,10 @@ public class AuthController extends BaseController {
     }
 
     @GetMapping("/sessions")
-    public ResponseEntity<?> sessions(
-            @AuthenticationPrincipal AuthPrincipal principal,
-            HttpServletRequest servletRequest) {
+    public ResponseEntity<?> sessions(HttpServletRequest servletRequest) {
 
         try {
+            AuthPrincipal principal = currentPrincipal();
             if (principal == null) {
                 return successResponse(List.of());
             }
@@ -137,12 +139,12 @@ public class AuthController extends BaseController {
 
     @DeleteMapping("/sessions/{sessionId}")
     public ResponseEntity<?> revokeSession(
-            @AuthenticationPrincipal AuthPrincipal principal,
             @PathVariable String sessionId,
             HttpServletRequest servletRequest,
             HttpServletResponse servletResponse) {
 
         try {
+            AuthPrincipal principal = currentPrincipal();
             if (principal == null) {
                 return failureResponse("Unable to revoke session", "Authentication required");
             }
@@ -151,5 +153,13 @@ public class AuthController extends BaseController {
         } catch (Exception exception) {
             return failureResponse("Unable to revoke session", exception.getMessage());
         }
+    }
+
+    private AuthPrincipal currentPrincipal() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.getPrincipal() instanceof AuthPrincipal principal) {
+            return principal;
+        }
+        return null;
     }
 }

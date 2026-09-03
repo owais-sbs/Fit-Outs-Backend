@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -37,12 +38,15 @@ public class BoqApprovalService {
     private final BoqAuthHelper boqAuthHelper;
     private final BoqService boqService;
     private final PortalAccessHelper portalAccess;
+    private final BoqProjectRules boqProjectRules;
 
     public BoqDocumentResponse submitForApproval(UUID boqId) {
         AuthPrincipal principal = boqAuthHelper.requirePrincipal();
         boqAuthHelper.requireSubmitRole(principal);
 
         BoqDocument doc = findDocument(boqId);
+        boqProjectRules.assertNotObsolete(doc);
+        boqProjectRules.assertNotFrozen(doc.getProject().getId());
         if (doc.getStatus() != BoqDocumentStatus.DRAFT) {
             throw new BadRequestException("Only draft BOQs can be submitted for approval");
         }
@@ -57,6 +61,7 @@ public class BoqApprovalService {
         doc.setSubmittedBy(principal.getAccountId());
         doc.setLastRejectionComment(null);
         boqDocumentRepository.save(doc);
+        boqProjectRules.obsoleteOthers(doc.getProject().getId(), doc.getId());
 
         appendLog(doc, BoqApprovalStep.QS_SUBMIT, BoqApprovalAction.SUBMITTED, principal, null);
         return boqService.getById(boqId);
@@ -65,8 +70,17 @@ public class BoqApprovalService {
     public BoqDocumentResponse approve(UUID boqId, String comments) {
         AuthPrincipal principal = boqAuthHelper.requirePrincipal();
         BoqDocument doc = findDocument(boqId);
+        boqProjectRules.assertNotObsolete(doc);
         assertClientOwnsIfNeeded(principal, doc);
         boqAuthHelper.requireApproverForStatus(principal, doc.getStatus());
+
+        if (boqAuthHelper.nextStatusAfterApproval(doc.getStatus()) == BoqDocumentStatus.APPROVED) {
+            Optional<BoqDocument> approved = boqProjectRules.findApproved(doc.getProject().getId());
+            if (approved.isPresent() && !approved.get().getId().equals(boqId)) {
+                throw new BadRequestException(
+                        "This project already has an approved BOQ. Further BOQs cannot be submitted or approved.");
+            }
+        }
 
         BoqApprovalStep step = boqAuthHelper.stepForStatus(doc.getStatus());
         BoqDocumentStatus next = boqAuthHelper.nextStatusAfterApproval(doc.getStatus());
@@ -76,6 +90,7 @@ public class BoqApprovalService {
             doc.setCurrentApprovalStep(null);
             doc.setApprovedAt(LocalDateTime.now());
             doc.setApprovedBy(principal.getAccountId());
+            boqProjectRules.obsoleteOthers(doc.getProject().getId(), doc.getId());
         } else {
             BoqApprovalStep nextStep = boqAuthHelper.stepForStatus(next);
             doc.setCurrentApprovalStep(nextStep != null ? nextStep.name() : null);
@@ -109,72 +124,23 @@ public class BoqApprovalService {
     public BoqDocumentResponse createRevision(UUID boqId, String revisionLabel) {
         AuthPrincipal principal = boqAuthHelper.requirePrincipal();
         boqAuthHelper.requireSubmitRole(principal);
-
-        BoqDocument source = findDocument(boqId);
-        if (source.getStatus() != BoqDocumentStatus.APPROVED && source.getStatus() != BoqDocumentStatus.FINAL) {
-            throw new BadRequestException("Only approved BOQs can be revised");
-        }
-
-        UUID rootId = source.getParentBoq() != null ? source.getParentBoq().getId() : source.getId();
-        List<BoqDocument> chain = new ArrayList<>(boqDocumentRepository.findByParentBoqIdOrderByCreatedAtAsc(rootId));
-        chain.add(source);
-        chain.sort(Comparator.comparing(BoqDocument::getCreatedAt));
-
-        String nextVersion = incrementVersion(chain.get(chain.size() - 1).getVersion());
-
-        BoqDocument revision = BoqDocument.builder()
-                .project(source.getProject())
-                .companyId(source.getCompanyId())
-                .qtoSession(source.getQtoSession())
-                .parentBoq(boqDocumentRepository.getReferenceById(rootId))
-                .version(nextVersion)
-                .revisionLabel(StringUtils.hasText(revisionLabel) ? revisionLabel.trim() : "Revision")
-                .status(BoqDocumentStatus.DRAFT)
-                .notes(source.getNotes())
-                .subtotal(source.getSubtotal())
-                .vatAmount(source.getVatAmount())
-                .grandTotal(source.getGrandTotal())
-                .build();
-        BoqDocument saved = boqDocumentRepository.save(revision);
-
-        List<BoqLine> sourceLines = boqLineRepository.findByBoqIdOrderBySortOrderAsc(source.getId());
-        for (BoqLine line : sourceLines) {
-            boqLineRepository.save(BoqLine.builder()
-                    .boq(saved)
-                    .categoryCode(line.getCategoryCode())
-                    .categoryName(line.getCategoryName())
-                    .description(line.getDescription())
-                    .unit(line.getUnit())
-                    .quantity(line.getQuantity())
-                    .rate(line.getRate())
-                    .amount(line.getAmount())
-                    .qtoLine(line.getQtoLine())
-                    .floorLabel(line.getFloorLabel())
-                    .roomLabel(line.getRoomLabel())
-                    .sortOrder(line.getSortOrder())
-                    .source(line.getSource())
-                    .build());
-        }
-
-        appendLog(saved, BoqApprovalStep.QS_SUBMIT, BoqApprovalAction.REVISION_CREATED, principal,
-                "Created from v" + source.getVersion());
-        return boqService.getById(saved.getId());
+        BoqDocument doc = findDocument(boqId);
+        boqProjectRules.assertNotFrozen(doc.getProject().getId());
+        throw new BadRequestException(
+                "Separate revisions are not used. Save a new survey BOQ to replace the pending version.");
     }
 
     @Transactional(readOnly = true)
     public BoqApprovalHistoryResponse getApprovalHistory(UUID boqId) {
         BoqDocument doc = findDocument(boqId);
-        UUID rootId = doc.getParentBoq() != null ? doc.getParentBoq().getId() : doc.getId();
-
-        List<BoqDocument> versions = new ArrayList<>();
-        boqDocumentRepository.findById(rootId).ifPresent(versions::add);
-        versions.addAll(boqDocumentRepository.findByParentBoqIdOrderByCreatedAtAsc(rootId));
-        if (!versions.stream().anyMatch(v -> v.getId().equals(doc.getId()))) {
-            versions.add(doc);
-        }
+        Long projectId = doc.getProject().getId();
+        List<BoqDocument> versions = new ArrayList<>(boqDocumentRepository.findByProjectIdOrderByCreatedAtDesc(projectId));
         versions.sort(Comparator.comparing(BoqDocument::getCreatedAt));
 
-        List<BoqApprovalLog> log = boqApprovalLogRepository.findByBoqIdOrderByCreatedAtAsc(boqId);
+        List<UUID> ids = versions.stream().map(BoqDocument::getId).collect(Collectors.toList());
+        List<BoqApprovalLog> log = ids.isEmpty()
+                ? List.of()
+                : boqApprovalLogRepository.findByBoqIdInOrderByCreatedAtAsc(ids);
 
         return BoqApprovalHistoryResponse.builder()
                 .boqId(boqId)
@@ -241,23 +207,9 @@ public class BoqApprovalService {
         if (doc.getStatus() == BoqDocumentStatus.DRAFT
                 || doc.getStatus() == BoqDocumentStatus.PENDING_SENIOR_QS
                 || doc.getStatus() == BoqDocumentStatus.PENDING_PM
-                || doc.getStatus() == BoqDocumentStatus.PENDING_DIRECTOR) {
+                || doc.getStatus() == BoqDocumentStatus.PENDING_DIRECTOR
+                || doc.getStatus() == BoqDocumentStatus.OBSOLETE) {
             throw new ForbiddenException("BOQ is not ready for client review");
-        }
-    }
-
-    private String incrementVersion(String current) {
-        if (!StringUtils.hasText(current)) {
-            return "1.1";
-        }
-        String[] parts = current.split("\\.");
-        try {
-            int major = Integer.parseInt(parts[0]);
-            int minor = parts.length > 1 ? Integer.parseInt(parts[1]) : 0;
-            minor += 1;
-            return major + "." + minor;
-        } catch (NumberFormatException e) {
-            return current + ".1";
         }
     }
 
