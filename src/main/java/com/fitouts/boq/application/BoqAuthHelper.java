@@ -1,5 +1,7 @@
 package com.fitouts.boq.application;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 
 import org.springframework.security.core.Authentication;
@@ -81,6 +83,48 @@ public class BoqAuthHelper {
             case CLIENT -> BoqDocumentStatus.PENDING_CLIENT;
             default -> null;
         };
+    }
+
+    /**
+     * Inbox is one approval step at a time. When the portal sends a role, only that
+     * step is returned (PM never sees PENDING_SENIOR_QS). Without a role param,
+     * union all inbox steps the account can act on.
+     */
+    public List<BoqDocumentStatus> inboxStatusesForPrincipal(AuthPrincipal principal, String roleParam) {
+        if (roleParam != null && !roleParam.isBlank()) {
+            Role requested = parseRoleParam(roleParam);
+            if (requested == null) {
+                return List.of();
+            }
+            if (!hasRole(principal, requested) && !hasRole(principal, Role.SUPER_ADMIN)) {
+                return List.of();
+            }
+            BoqDocumentStatus status = inboxStatusForRole(requested);
+            return status == null ? List.of() : List.of(status);
+        }
+        List<BoqDocumentStatus> statuses = new ArrayList<>();
+        if (principal.getRoles() == null) {
+            return List.of();
+        }
+        for (Role role : principal.getRoles()) {
+            BoqDocumentStatus status = inboxStatusForRole(role);
+            if (status != null) {
+                statuses.add(status);
+            }
+        }
+        return statuses;
+    }
+
+    public Role parseRoleParam(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String normalized = raw.trim().toUpperCase().replace('-', '_');
+        try {
+            return Role.valueOf(normalized);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     private boolean hasRole(AuthPrincipal principal, Role role) {
