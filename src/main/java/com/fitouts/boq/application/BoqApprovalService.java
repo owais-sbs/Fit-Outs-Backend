@@ -12,7 +12,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.boq.api.*;
 import com.fitouts.boq.domain.*;
@@ -185,17 +184,11 @@ public class BoqApprovalService {
     }
 
     @Transactional(readOnly = true)
-    public List<BoqInboxItemResponse> listPendingForCurrentUser() {
+    public List<BoqInboxItemResponse> listPendingForCurrentUser(String roleParam) {
         AuthPrincipal principal = boqAuthHelper.requirePrincipal();
         UUID companyId = CompanyContext.get();
 
-        List<BoqDocumentStatus> statuses = new ArrayList<>();
-        for (Role role : principal.getRoles()) {
-            BoqDocumentStatus status = boqAuthHelper.inboxStatusForRole(role);
-            if (status != null) {
-                statuses.add(status);
-            }
-        }
+        List<BoqDocumentStatus> statuses = boqAuthHelper.inboxStatusesForPrincipal(principal, roleParam);
         if (statuses.isEmpty()) {
             return List.of();
         }
