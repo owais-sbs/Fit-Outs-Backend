@@ -31,4 +31,15 @@ public interface SiteVisitEstimateRepository extends JpaRepository<SiteVisitEsti
             @Param("companyId") UUID companyId,
             @Param("email") String email,
             @Param("status") SiteVisitEstimateStatus status);
+
+    @Query("""
+            SELECT e FROM SiteVisitEstimate e
+            JOIN e.siteVisit sv
+            WHERE e.status = :status
+              AND sv.leadId = :leadId
+            ORDER BY e.updatedAt DESC
+            """)
+    List<SiteVisitEstimate> findByLeadIdAndStatusOrderByUpdatedAtDesc(
+            @Param("leadId") Long leadId,
+            @Param("status") SiteVisitEstimateStatus status);
 }

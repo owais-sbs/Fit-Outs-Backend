@@ -35,6 +35,12 @@ public class Project {
     @Column(name = "client_id")
     private Long clientId;
 
+    @Column(name = "lead_id")
+    private Long leadId;
+
+    @Column(name = "lead_reference_no", length = 64)
+    private String leadReferenceNo;
+
     @Column(length = 30)
     private String status = "Planning";
 
