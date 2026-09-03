@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -47,40 +48,25 @@ public class BoqService {
     private final ProjectService projectService;
     private final RoomCollabService roomCollabService;
     private final PortalAccessHelper portalAccess;
+    private final BoqProjectRules boqProjectRules;
 
     public BoqDocumentResponse generateFromQto(UUID sessionId) {
         QtoSession session = qtoService.findSession(sessionId);
-        List<QtoLine> qtoLines = qtoLineRepository.findBySessionIdOrderBySortOrderAsc(sessionId);
+        Long projectId = session.getProject().getId();
+        boqProjectRules.assertNotFrozen(projectId);
 
-        BoqDocument doc = BoqDocument.builder()
-                .project(session.getProject())
-                .companyId(session.getCompanyId())
-                .qtoSession(session)
-                .version("1.0")
-                .status(BoqDocumentStatus.DRAFT)
-                .build();
-        BoqDocument saved = boqDocumentRepository.save(doc);
-
-        List<BoqLine> lines = new ArrayList<>();
-        int order = 0;
-        for (QtoLine ql : qtoLines) {
-            String code = BoqJctMapper.categoryCode(ql.getLineType());
-            String name = BoqJctMapper.categoryName(code);
-            BigDecimal amount = ql.getAmount() != null ? ql.getAmount() : BigDecimal.ZERO;
-            lines.add(boqLineRepository.save(BoqLine.builder()
-                    .boq(saved)
-                    .categoryCode(code)
-                    .categoryName(name)
-                    .description(ql.getLabel())
-                    .unit(ql.getUnit())
-                    .quantity(ql.getQuantity())
-                    .rate(ql.getRate() != null ? ql.getRate() : BigDecimal.ZERO)
-                    .amount(amount)
-                    .qtoLine(ql)
-                    .sortOrder(order++)
-                    .source("QTO")
-                    .build()));
+        Optional<BoqDocument> liveDraft = boqProjectRules.findLiveDraft(projectId);
+        if (liveDraft.isPresent()) {
+            BoqDocument doc = liveDraft.get();
+            boqLineRepository.deleteByBoqId(doc.getId());
+            List<BoqLine> lines = saveQtoLines(doc, qtoLineRepository.findBySessionIdOrderBySortOrderAsc(sessionId));
+            doc.setQtoSession(session);
+            recalcTotals(doc, lines);
+            return mapDocument(doc, lines);
         }
+
+        BoqDocument saved = startNewDraft(session.getProject(), session.getCompanyId(), session, "1.0", null);
+        List<BoqLine> lines = saveQtoLines(saved, qtoLineRepository.findBySessionIdOrderBySortOrderAsc(sessionId));
         recalcTotals(saved, lines);
         return mapDocument(saved, lines);
     }
@@ -88,14 +74,23 @@ public class BoqService {
     public BoqDocumentResponse saveFromSurvey(BoqSurveySaveRequest request) {
         UUID companyId = CompanyContext.get();
         Project project = projectService.getById(request.getProjectId());
-        BoqDocument doc = BoqDocument.builder()
-                .project(project)
-                .companyId(companyId)
-                .version(request.getVersion() != null ? request.getVersion() : "1.0")
-                .status(BoqDocumentStatus.DRAFT)
-                .notes(request.getNotes())
-                .build();
-        BoqDocument saved = boqDocumentRepository.save(doc);
+        boqProjectRules.assertNotFrozen(project.getId());
+
+        Optional<BoqDocument> liveDraft = boqProjectRules.findLiveDraft(project.getId());
+        if (liveDraft.isPresent()) {
+            BoqDocument doc = liveDraft.get();
+            if (request.getNotes() != null) {
+                doc.setNotes(request.getNotes());
+            }
+            boqLineRepository.deleteByBoqId(doc.getId());
+            List<BoqLine> lines = saveLines(doc, request.getLines());
+            recalcTotals(doc, lines);
+            roomCollabService.syncRoomsFromBoqLines(project.getId(), companyId, lines);
+            return mapDocument(boqDocumentRepository.save(doc), lines);
+        }
+
+        String version = request.getVersion() != null ? request.getVersion() : nextDraftVersion(project.getId());
+        BoqDocument saved = startNewDraft(project, companyId, null, version, request.getNotes());
         List<BoqLine> lines = saveLines(saved, request.getLines());
         recalcTotals(saved, lines);
         roomCollabService.syncRoomsFromBoqLines(project.getId(), companyId, lines);
@@ -117,16 +112,80 @@ public class BoqService {
 
     public BoqDocumentResponse finalizeBoq(UUID id) {
         BoqDocument doc = findDocument(id);
+        boqProjectRules.assertNotObsolete(doc);
+        Long projectId = doc.getProject().getId();
+        Optional<BoqDocument> approved = boqProjectRules.findApproved(projectId);
+        if (approved.isPresent() && !approved.get().getId().equals(id)) {
+            throw new BadRequestException(
+                    "This project already has an approved BOQ. Further BOQs cannot be submitted or approved.");
+        }
         doc.setStatus(BoqDocumentStatus.APPROVED);
         doc.setApprovedAt(java.time.LocalDateTime.now());
+        boqProjectRules.obsoleteOthers(projectId, id);
         List<BoqLine> lines = boqLineRepository.findByBoqIdOrderBySortOrderAsc(id);
         return mapDocument(boqDocumentRepository.save(doc), lines);
     }
 
     private void assertEditable(BoqDocument doc) {
+        boqProjectRules.assertNotObsolete(doc);
+        boqProjectRules.assertNotFrozen(doc.getProject().getId());
         if (doc.getStatus() != BoqDocumentStatus.DRAFT) {
             throw new BadRequestException("BOQ can only be edited while in DRAFT status");
         }
+    }
+
+    private BoqDocument startNewDraft(Project project, UUID companyId, QtoSession session, String version, String notes) {
+        UUID parentId = null;
+        String actualVersion = version;
+        Optional<BoqDocument> live = boqProjectRules.findLive(project.getId());
+        if (live.isPresent() && boqProjectRules.isPending(live.get())) {
+            parentId = boqProjectRules.rootId(live.get());
+            actualVersion = boqProjectRules.nextVersion(project.getId());
+        }
+        BoqDocument.BoqDocumentBuilder builder = BoqDocument.builder()
+                .project(project)
+                .companyId(companyId)
+                .qtoSession(session)
+                .version(actualVersion != null ? actualVersion : "1.0")
+                .status(BoqDocumentStatus.DRAFT)
+                .notes(notes);
+        if (parentId != null) {
+            builder.parentBoq(boqDocumentRepository.getReferenceById(parentId));
+        }
+        BoqDocument saved = boqDocumentRepository.save(builder.build());
+        boqProjectRules.obsoleteOthers(project.getId(), saved.getId());
+        return saved;
+    }
+
+    private String nextDraftVersion(Long projectId) {
+        if (boqProjectRules.listForProject(projectId).isEmpty()) {
+            return "1.0";
+        }
+        return boqProjectRules.nextVersion(projectId);
+    }
+
+    private List<BoqLine> saveQtoLines(BoqDocument saved, List<QtoLine> qtoLines) {
+        List<BoqLine> lines = new ArrayList<>();
+        int order = 0;
+        for (QtoLine ql : qtoLines) {
+            String code = BoqJctMapper.categoryCode(ql.getLineType());
+            String name = BoqJctMapper.categoryName(code);
+            BigDecimal amount = ql.getAmount() != null ? ql.getAmount() : BigDecimal.ZERO;
+            lines.add(boqLineRepository.save(BoqLine.builder()
+                    .boq(saved)
+                    .categoryCode(code)
+                    .categoryName(name)
+                    .description(ql.getLabel())
+                    .unit(ql.getUnit())
+                    .quantity(ql.getQuantity())
+                    .rate(ql.getRate() != null ? ql.getRate() : BigDecimal.ZERO)
+                    .amount(amount)
+                    .qtoLine(ql)
+                    .sortOrder(order++)
+                    .source("QTO")
+                    .build()));
+        }
+        return lines;
     }
 
     @Transactional(readOnly = true)
@@ -198,7 +257,8 @@ public class BoqService {
             if (doc.getStatus() == BoqDocumentStatus.DRAFT
                     || doc.getStatus() == BoqDocumentStatus.PENDING_SENIOR_QS
                     || doc.getStatus() == BoqDocumentStatus.PENDING_PM
-                    || doc.getStatus() == BoqDocumentStatus.PENDING_DIRECTOR) {
+                    || doc.getStatus() == BoqDocumentStatus.PENDING_DIRECTOR
+                    || doc.getStatus() == BoqDocumentStatus.OBSOLETE) {
                 throw new ForbiddenException("BOQ is not ready for client review");
             }
         }
@@ -221,6 +281,7 @@ public class BoqService {
                 .grandTotal(doc.getGrandTotal())
                 .notes(doc.getNotes())
                 .lastRejectionComment(doc.getLastRejectionComment())
+                .live(doc.getStatus() != BoqDocumentStatus.OBSOLETE)
                 .lines(lines.stream().map(this::mapLine).collect(Collectors.toList()))
                 .submittedAt(doc.getSubmittedAt())
                 .approvedAt(doc.getApprovedAt())
