@@ -61,6 +61,9 @@ public class SubcontractorClaim {
     @Column
     private String reason;
 
+    @Column(name = "attachment_paths")
+    private String attachmentPaths;
+
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 

@@ -152,6 +152,17 @@ public class ScheduleController extends BaseController {
         }
     }
 
+    @PostMapping(value = "/api/schedule/progress/{progressUuid}/attachments", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Object uploadProgressAttachment(
+            @PathVariable UUID progressUuid,
+            @org.springframework.web.bind.annotation.RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
+        try {
+            return successResponse(scheduleService.uploadProgressAttachment(progressUuid, file));
+        } catch (Exception e) {
+            return failureResponse("Failed to upload progress attachment", e.getMessage());
+        }
+    }
+
     @GetMapping("/api/schedule/my-activities")
     public Object myActivities() {
         try {

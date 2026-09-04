@@ -18,4 +18,9 @@ public interface ProjectDocumentRepository extends JpaRepository<ProjectDocument
 
     /** Used for version bump calculation (includes soft-deleted siblings so versions stay monotonic). */
     List<ProjectDocument> findByProjectIdAndCompanyIdOrderByCreatedAtDesc(Long projectId, UUID companyId);
+
+    Optional<ProjectDocument> findFirstByFilePathAndCompanyIdAndDeletedFalse(String filePath, UUID companyId);
+
+    Optional<ProjectDocument> findBySourceTypeAndSourceUuidAndCompanyIdAndDeletedFalse(
+            String sourceType, UUID sourceUuid, UUID companyId);
 }
