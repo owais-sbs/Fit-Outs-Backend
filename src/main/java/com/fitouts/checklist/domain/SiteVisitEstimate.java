@@ -8,9 +8,11 @@ import java.util.List;
 import java.util.UUID;
 
 import com.fitouts.company.domain.Company;
+import com.fitouts.shared.persistence.StringListJsonConverter;
 
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -70,6 +72,18 @@ public class SiteVisitEstimate {
     @Column(name = "prepared_by", length = 200)
     private String preparedBy;
 
+    @Column(name = "include_stamp", nullable = false)
+    private boolean includeStamp = true;
+
+    @Column(name = "include_signature", nullable = false)
+    private boolean includeSignature = true;
+
+    @Column(name = "stamp_image_path", length = 512)
+    private String stampImagePath;
+
+    @Column(name = "signature_image_path", length = 512)
+    private String signatureImagePath;
+
     @Column(nullable = false, length = 8)
     private String currency = "AED";
 
@@ -90,6 +104,10 @@ public class SiteVisitEstimate {
     @OneToMany(mappedBy = "estimate", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("displayOrder ASC")
     private List<SiteVisitEstimateLine> lines = new ArrayList<>();
+
+    @Column(name = "excluded_scope_refs", nullable = false, columnDefinition = "TEXT")
+    @Convert(converter = StringListJsonConverter.class)
+    private List<String> excludedScopeRefs = new ArrayList<>();
 
     @Column(nullable = false, updatable = false)
     private OffsetDateTime createdAt;

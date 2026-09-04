@@ -5,12 +5,14 @@ import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import com.fitouts.account.application.ClientPortalInviteService;
 import com.fitouts.account.domain.Account;
 import com.fitouts.account.domain.AccountRepository;
 import com.fitouts.auth.domain.Role;
@@ -24,11 +26,10 @@ import com.fitouts.shared.context.CompanyContext;
 import com.fitouts.shared.error.BadRequestException;
 import com.fitouts.shared.error.ConflictException;
 import com.fitouts.shared.error.NotFoundException;
+import com.fitouts.shared.security.TemporaryPasswordGenerator;
 
 @Service
 public class EmployeeService {
-
-    private static final String DEFAULT_PASSWORD = "123456";
 
     private static final Set<Role> STAFF_CREATE_ROLES = EnumSet.of(
             Role.PROJECT_MANAGER,
@@ -44,15 +45,18 @@ public class EmployeeService {
     private final AccountRepository accountRepository;
     private final PasswordEncoder passwordEncoder;
     private final CompanyService companyService;
+    private final ClientPortalInviteService clientPortalInviteService;
 
     public EmployeeService(EmployeeRepository employeeRepository,
                            AccountRepository accountRepository,
                            PasswordEncoder passwordEncoder,
-                           CompanyService companyService) {
+                           CompanyService companyService,
+                           ClientPortalInviteService clientPortalInviteService) {
         this.employeeRepository = employeeRepository;
         this.accountRepository = accountRepository;
         this.passwordEncoder = passwordEncoder;
         this.companyService = companyService;
+        this.clientPortalInviteService = clientPortalInviteService;
     }
 
     @Transactional
@@ -69,7 +73,7 @@ public class EmployeeService {
 
         String designation = StringUtils.hasText(request.getDesignation())
                 ? request.getDesignation().trim()
-                : staffRoleLabel(role);
+                : role.displayLabel();
 
         Employee employee = new Employee();
         employee.setEmployeeName(request.getEmployeeName().trim());
@@ -94,7 +98,7 @@ public class EmployeeService {
         Account account = new Account();
         account.setFullName(request.getEmployeeName().trim());
         account.setEmail(email);
-        account.setPassword(passwordEncoder.encode(DEFAULT_PASSWORD));
+        account.setPassword(passwordEncoder.encode(TemporaryPasswordGenerator.generate()));
         account.setPhone(request.getPhone());
         account.setIsActive(true);
         account.setRoles(new HashSet<>(Set.of(role)));
@@ -108,7 +112,32 @@ public class EmployeeService {
         saved.setAccountId(savedAccount.getId());
         employeeRepository.save(saved);
 
-        return toResponse(saved, role);
+        boolean inviteEmailSent = clientPortalInviteService.sendStaffPortalInvite(
+                savedAccount.getId(),
+                saved.getEmployeeName(),
+                role.displayLabel());
+
+        return toResponse(saved, role, inviteEmailSent);
+    }
+
+    @Transactional
+    public boolean resendInvite(Long id) {
+        Employee employee = requireEmployeeInCompany(id);
+        if (employee.getAccountId() == null) {
+            throw new BadRequestException("Employee has no login account");
+        }
+        if (!StringUtils.hasText(employee.getEmail())) {
+            throw new BadRequestException("Employee has no email");
+        }
+
+        Role role = accountRepository.findById(employee.getAccountId())
+                .flatMap(account -> account.getRoles().stream().findFirst())
+                .orElse(null);
+
+        return clientPortalInviteService.sendStaffPortalInvite(
+                employee.getAccountId(),
+                employee.getEmployeeName(),
+                role != null ? role.displayLabel() : "team member");
     }
 
     @Transactional(readOnly = true)
@@ -194,25 +223,26 @@ public class EmployeeService {
         }
     }
 
+    private Employee requireEmployeeInCompany(Long id) {
+        Employee employee = employeeRepository.findById(id)
+                .filter(e -> !Boolean.TRUE.equals(e.getIsDeleted()))
+                .orElseThrow(() -> new NotFoundException("Employee not found"));
+
+        UUID companyId = CompanyContext.get();
+        if (companyId != null) {
+            if (employee.getCompany() == null || !companyId.equals(employee.getCompany().getUuid())) {
+                throw new NotFoundException("Employee not found");
+            }
+        }
+        return employee;
+    }
+
     private Role requireStaffRole(Role role) {
         if (role == null || !STAFF_CREATE_ROLES.contains(role)) {
             throw new BadRequestException(
                     "Role must be one of: PROJECT_MANAGER, BUSINESS_OWNER, QS, DESIGNER, SITE_ENGINEER, FINANCE, SALES");
         }
         return role;
-    }
-
-    private static String staffRoleLabel(Role role) {
-        return switch (role) {
-            case PROJECT_MANAGER -> "Project Manager";
-            case BUSINESS_OWNER -> "Project Director";
-            case QS -> "Quantity Surveyor";
-            case DESIGNER -> "Designer";
-            case SITE_ENGINEER -> "Site Engineer";
-            case FINANCE -> "Finance / Accounts";
-            case SALES -> "Sales";
-            default -> role.name();
-        };
     }
 
     private EmployeeResponse toResponse(Employee employee) {
@@ -226,6 +256,10 @@ public class EmployeeService {
     }
 
     private EmployeeResponse toResponse(Employee employee, Role role) {
+        return toResponse(employee, role, null);
+    }
+
+    private EmployeeResponse toResponse(Employee employee, Role role, Boolean inviteEmailSent) {
         return EmployeeResponse.builder()
                 .id(employee.getId())
                 .employeeName(employee.getEmployeeName())
@@ -236,6 +270,7 @@ public class EmployeeService {
                 .features(employee.getFeatures())
                 .active(employee.getIsActive())
                 .accountId(employee.getAccountId())
+                .inviteEmailSent(inviteEmailSent)
                 .createdAt(employee.getCreatedAt())
                 .build();
     }

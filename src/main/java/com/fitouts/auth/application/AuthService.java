@@ -168,6 +168,9 @@ public class AuthService {
         SecurityContext context = SecurityContextHolder.createEmptyContext();
         context.setAuthentication(authentication);
         SecurityContextHolder.setContext(context);
+        if (request.getSession(false) != null) {
+            request.getSession(false).invalidate();
+        }
         request.getSession(true);
         securityContextRepository.saveContext(context, request, response);
 

@@ -8,5 +8,6 @@ public enum BoqDocumentStatus {
     PENDING_CLIENT,
     APPROVED,
     /** @deprecated use APPROVED */
-    FINAL
+    FINAL,
+    OBSOLETE
 }
