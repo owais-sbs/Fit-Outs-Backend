@@ -27,6 +27,7 @@ import com.fitouts.account.application.AccountService;
 import com.fitouts.account.application.ClientAccountConversionResult;
 import com.fitouts.account.application.ClientPortalInviteService;
 import com.fitouts.project.application.ProjectService;
+import com.fitouts.project.application.ProjectQasSurveySeedService;
 
 @Service
 @Transactional
@@ -40,6 +41,7 @@ public class LeadService {
     private final AccountService accountService;
     private final ClientPortalInviteService clientPortalInviteService;
     private final ProjectService projectService;
+    private final ProjectQasSurveySeedService projectQasSurveySeedService;
 
     public LeadService(LeadRepository leadRepository,
                        LeadStatusHistoryRepository historyRepository,
@@ -48,7 +50,8 @@ public class LeadService {
                        PasswordEncoder passwordEncoder,
                        AccountService accountService,
                        ClientPortalInviteService clientPortalInviteService,
-                       ProjectService projectService) {
+                       ProjectService projectService,
+                       ProjectQasSurveySeedService projectQasSurveySeedService) {
 
         this.leadRepository = leadRepository;
         this.historyRepository = historyRepository;
@@ -58,6 +61,7 @@ public class LeadService {
         this.accountService = accountService;
         this.clientPortalInviteService = clientPortalInviteService;
         this.projectService = projectService;
+        this.projectQasSurveySeedService = projectQasSurveySeedService;
     }
 
     // CREATE LEAD
@@ -433,6 +437,7 @@ public class LeadService {
                     "Unable to create starter project for this lead. Ensure your account belongs to a company and try again."
             );
         }
+        projectQasSurveySeedService.seedFromLatestIssuedEstimate(project, lead.getId());
     }
 
     private void attachCompanyIfMissing(Lead lead) {
@@ -469,6 +474,11 @@ public class LeadService {
         leadRepository.save(lead);
 
         clientPortalInviteService.sendPortalInvite(conversion.clientAccountId(), lead.getClientName());
+
+        var project = projectService.ensureStarterProjectForClient(lead, conversion.clientAccountId());
+        if (project != null) {
+            projectQasSurveySeedService.seedFromLatestIssuedEstimate(project, lead.getId());
+        }
 
         return accountService.getById(conversion.clientAccountId());
     }

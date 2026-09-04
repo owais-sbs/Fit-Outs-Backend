@@ -30,10 +30,17 @@ public class SiteVisitEstimateMapper {
                 .locationLabel(estimate.getLocationLabel())
                 .subject(estimate.getSubject())
                 .preparedBy(estimate.getPreparedBy())
+                .includeStamp(estimate.isIncludeStamp())
+                .includeSignature(estimate.isIncludeSignature())
+                .stampImageUrl(toFileUrl(estimate.getStampImagePath()))
+                .signatureImageUrl(toFileUrl(estimate.getSignatureImagePath()))
                 .currency(estimate.getCurrency())
                 .notes(estimate.getNotes())
                 .subtotal(estimate.getSubtotal())
                 .status(estimate.getStatus())
+                .excludedScopeRefs(estimate.getExcludedScopeRefs() != null
+                        ? new ArrayList<>(estimate.getExcludedScopeRefs())
+                        : new ArrayList<>())
                 .lines(estimate.getLines() == null
                         ? new ArrayList<>()
                         : estimate.getLines().stream().map(this::toLineResponse).toList())
@@ -56,6 +63,8 @@ public class SiteVisitEstimateMapper {
                 .rate(line.getRate())
                 .amount(line.getAmount())
                 .displayOrder(line.getDisplayOrder())
+                .lineSource(line.getLineSource())
+                .scopeRef(line.getScopeRef())
                 .build();
     }
 
@@ -87,11 +96,20 @@ public class SiteVisitEstimateMapper {
         if (request.getPreparedBy() != null) {
             estimate.setPreparedBy(trimNullable(request.getPreparedBy()));
         }
+        if (request.getIncludeStamp() != null) {
+            estimate.setIncludeStamp(request.getIncludeStamp());
+        }
+        if (request.getIncludeSignature() != null) {
+            estimate.setIncludeSignature(request.getIncludeSignature());
+        }
         if (request.getCurrency() != null && !request.getCurrency().isBlank()) {
             estimate.setCurrency(request.getCurrency().trim());
         }
         if (request.getNotes() != null) {
             estimate.setNotes(trimNullable(request.getNotes()));
+        }
+        if (request.getExcludedScopeRefs() != null) {
+            estimate.setExcludedScopeRefs(new ArrayList<>(request.getExcludedScopeRefs()));
         }
 
         List<SiteVisitEstimateLine> lines = new ArrayList<>();
@@ -124,6 +142,8 @@ public class SiteVisitEstimateMapper {
             line.setRate(rate);
             line.setAmount(amount);
             line.setDisplayOrder(lineRequest.getDisplayOrder() != null ? lineRequest.getDisplayOrder() : order);
+            line.setLineSource(trimNullable(lineRequest.getLineSource()));
+            line.setScopeRef(trimNullable(lineRequest.getScopeRef()));
             lines.add(line);
             subtotal = subtotal.add(amount);
             order++;
@@ -141,5 +161,12 @@ public class SiteVisitEstimateMapper {
 
     private String trimNullable(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    public static String toFileUrl(String path) {
+        if (path == null || path.isBlank()) {
+            return null;
+        }
+        return "/api/files/" + path;
     }
 }

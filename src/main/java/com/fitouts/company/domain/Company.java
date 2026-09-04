@@ -1,5 +1,6 @@
 package com.fitouts.company.domain;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -27,6 +28,9 @@ import lombok.Setter;
 @Setter
 public class Company implements Serializable {
 
+    @Serial
+    private static final long serialVersionUID = -2862126059791512328L;
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID uuid;
@@ -35,6 +39,12 @@ public class Company implements Serializable {
     private String companyName;
 
     private String logo;
+
+    @Column(name = "stamp_image_path", length = 512)
+    private String stampImagePath;
+
+    @Column(name = "signature_image_path", length = 512)
+    private String signatureImagePath;
 
     @Column(nullable = true, unique = true, length = 100)
     private String domainSlug;

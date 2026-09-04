@@ -19,4 +19,6 @@ public class ScheduleActivityRequest {
     private Long assigneeAccountId;
     private Integer sortOrder;
     private String delayReason;
+    /** When true on update, clears projectRoomId and roomTaskId. */
+    private Boolean clearRoomLinks;
 }

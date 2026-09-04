@@ -1,6 +1,7 @@
 package com.fitouts.schedule.application;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -18,12 +19,19 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import com.fitouts.account.domain.Account;
+import com.fitouts.account.domain.AccountRepository;
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
+import com.fitouts.billing.application.BillingService;
 import com.fitouts.holdpoint.application.HoldPointGuardService;
 import com.fitouts.planning.application.PlanningService;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
+import com.fitouts.roomcollab.domain.ProjectRoom;
+import com.fitouts.roomcollab.domain.ProjectRoomRepository;
+import com.fitouts.roomcollab.domain.RoomTask;
+import com.fitouts.roomcollab.domain.RoomTaskRepository;
 import com.fitouts.schedule.api.ProgressUpdateRequest;
 import com.fitouts.schedule.api.ProgressUpdateResponse;
 import com.fitouts.schedule.api.ProjectScheduleResponse;
@@ -32,8 +40,10 @@ import com.fitouts.schedule.api.ScheduleActivityResponse;
 import com.fitouts.schedule.api.ScheduleBaselineDetailResponse;
 import com.fitouts.schedule.api.ScheduleBaselineRequest;
 import com.fitouts.schedule.api.ScheduleBaselineResponse;
+import com.fitouts.schedule.api.ScheduleCalendarEventResponse;
 import com.fitouts.schedule.api.ScheduleDependencyRequest;
 import com.fitouts.schedule.api.ScheduleDependencyResponse;
+import com.fitouts.schedule.api.ScheduleFromRoomTaskRequest;
 import com.fitouts.schedule.domain.ActivityProgressUpdate;
 import com.fitouts.schedule.domain.ActivityProgressUpdateRepository;
 import com.fitouts.schedule.domain.ScheduleActivity;
@@ -69,6 +79,10 @@ public class ScheduleService {
     private final ProgressValidationService progressValidationService;
     private final ProgressValidationRepository validationRepository;
     private final HoldPointGuardService holdPointGuardService;
+    private final BillingService billingService;
+    private final ProjectRoomRepository projectRoomRepository;
+    private final RoomTaskRepository roomTaskRepository;
+    private final AccountRepository accountRepository;
 
     @Transactional(readOnly = true)
     public ProjectScheduleResponse getSchedule(Long projectId) {
@@ -77,10 +91,11 @@ public class ScheduleService {
         List<ScheduleActivity> activities = activityRepository
                 .findByProjectIdAndCompanyIdOrderBySortOrderAscStartDateAsc(projectId, companyId);
         List<ScheduleDependency> dependencies = dependencyRepository.findByProjectIdAndCompanyId(projectId, companyId);
+        ActivityEnrichment enrichment = buildEnrichment(activities);
         return ProjectScheduleResponse.builder()
                 .projectId(project.getId())
                 .ganttPublishAllowed(planningService.get(projectId).isGanttPublishAllowed())
-                .activities(activities.stream().map(this::toActivity).toList())
+                .activities(activities.stream().map(a -> toActivity(a, enrichment)).toList())
                 .dependencies(dependencies.stream().map(this::toDependency).toList())
                 .baselines(baselineRepository
                         .findByProjectIdAndCompanyIdOrderByCreatedAtDesc(projectId, companyId)
@@ -219,9 +234,40 @@ public class ScheduleService {
         activity.setProjectId(project.getId());
         activity.setCompanyId(CompanyContext.get());
         applyRequest(activity, request, true);
+        validateAndApplyRoomLinks(activity, request, project.getId());
         activity.setPublishStatus(SchedulePublishStatus.DRAFT);
         activity.setCreatedBy(principal.getAccountId());
-        return toActivity(activityRepository.save(activity));
+        ScheduleActivity saved = activityRepository.save(activity);
+        return toActivity(saved, buildEnrichment(List.of(saved)));
+    }
+
+    @Transactional
+    public ScheduleActivityResponse createActivityFromRoomTask(Long projectId, ScheduleFromRoomTaskRequest request) {
+        if (request == null || request.getRoomTaskId() == null) {
+            throw new BadRequestException("roomTaskId is required");
+        }
+        RoomTask task = roomTaskRepository.findByUuidAndProjectId(request.getRoomTaskId(), projectId)
+                .orElseThrow(() -> new BadRequestException("Room task not found in this project"));
+        assertCompanyId(task.getCompanyId());
+
+        LocalDate start = LocalDate.now();
+        LocalDate end = task.getClientDeadline() != null
+                ? task.getClientDeadline().toLocalDate()
+                : start.plusDays(7);
+        if (end.isBefore(start)) {
+            end = start;
+        }
+
+        ScheduleActivityRequest activityRequest = new ScheduleActivityRequest();
+        activityRequest.setName(task.getTitle());
+        activityRequest.setStartDate(start);
+        activityRequest.setEndDate(end);
+        activityRequest.setRoomTaskId(task.getUuid());
+        activityRequest.setProjectRoomId(task.getProjectRoomId());
+        if (task.getAssigneeAccountId() != null) {
+            activityRequest.setAssigneeAccountId(task.getAssigneeAccountId());
+        }
+        return createActivity(projectId, activityRequest);
     }
 
     @Transactional
@@ -241,10 +287,12 @@ public class ScheduleService {
             throw new BadRequestException("endDate must be on or after startDate");
         }
         applyRequest(activity, request, false);
+        validateAndApplyRoomLinks(activity, request, activity.getProjectId());
         if (!StringUtils.hasText(activity.getName())) {
             throw new BadRequestException("name is required");
         }
-        return toActivity(activityRepository.save(activity));
+        ScheduleActivity saved = activityRepository.save(activity);
+        return toActivity(saved, buildEnrichment(List.of(saved)));
     }
 
     @Transactional
@@ -396,6 +444,9 @@ public class ScheduleService {
         // PM validation gate: activity % updates only after approve()
         progressValidationService.createPendingForProgress(update);
 
+        // UAT closeout: auto-trigger billing milestones linked to this activity
+        billingService.evaluateTriggersForActivity(activity.getUuid());
+
         return toProgress(update);
     }
 
@@ -407,15 +458,111 @@ public class ScheduleService {
     }
 
     @Transactional(readOnly = true)
+    public List<ScheduleCalendarEventResponse> calendarEvents(
+            LocalDate startDate, LocalDate endDate, Long projectId, Long assigneeAccountId) {
+        requireStaff();
+        if (startDate == null || endDate == null) {
+            throw new BadRequestException("startDate and endDate are required");
+        }
+        if (endDate.isBefore(startDate)) {
+            throw new BadRequestException("endDate must be on or after startDate");
+        }
+        UUID companyId = CompanyContext.get();
+        List<ScheduleActivity> activities = activityRepository.findPublishedInDateRange(
+                companyId, startDate, endDate, projectId, assigneeAccountId);
+        ActivityEnrichment enrichment = buildEnrichment(activities);
+        Map<Long, String> projectNames = loadProjectNames(activities);
+        return activities.stream()
+                .map(a -> toCalendarEvent(a, enrichment, projectNames.get(a.getProjectId())))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public List<ScheduleActivityResponse> myActivities() {
         AuthPrincipal principal = requireAuthenticated();
         UUID companyId = CompanyContext.get();
-        return activityRepository
+        List<ScheduleActivity> activities = activityRepository
                 .findByAssigneeAccountIdAndCompanyIdOrderByStartDateAsc(principal.getAccountId(), companyId)
                 .stream()
                 .filter(a -> a.getPublishStatus() == SchedulePublishStatus.PUBLISHED)
-                .map(this::toActivity)
                 .toList();
+        ActivityEnrichment enrichment = buildEnrichment(activities);
+        return activities.stream().map(a -> toActivity(a, enrichment)).toList();
+    }
+
+    private void validateAndApplyRoomLinks(ScheduleActivity activity, ScheduleActivityRequest request, Long projectId) {
+        if (Boolean.TRUE.equals(request.getClearRoomLinks())) {
+            activity.setProjectRoomId(null);
+            activity.setRoomTaskId(null);
+            return;
+        }
+        if (request.getRoomTaskId() != null) {
+            RoomTask task = roomTaskRepository.findByUuidAndProjectId(request.getRoomTaskId(), projectId)
+                    .orElseThrow(() -> new BadRequestException("Room task not found in this project"));
+            assertCompanyId(task.getCompanyId());
+            activity.setRoomTaskId(task.getUuid());
+            activity.setProjectRoomId(task.getProjectRoomId());
+            return;
+        }
+        if (request.getProjectRoomId() != null) {
+            ProjectRoom room = projectRoomRepository.findByUuidAndProjectId(request.getProjectRoomId(), projectId)
+                    .orElseThrow(() -> new BadRequestException("Project room not found in this project"));
+            assertCompanyId(room.getCompanyId());
+            activity.setProjectRoomId(room.getUuid());
+            activity.setRoomTaskId(null);
+        }
+    }
+
+    private ActivityEnrichment buildEnrichment(List<ScheduleActivity> activities) {
+        Map<UUID, ProjectRoom> roomsById = new HashMap<>();
+        Map<UUID, RoomTask> tasksById = new HashMap<>();
+        Map<Long, Account> accountsById = new HashMap<>();
+
+        for (ScheduleActivity a : activities) {
+            if (a.getProjectRoomId() != null) {
+                roomsById.putIfAbsent(a.getProjectRoomId(), null);
+            }
+            if (a.getRoomTaskId() != null) {
+                tasksById.putIfAbsent(a.getRoomTaskId(), null);
+            }
+            if (a.getAssigneeAccountId() != null) {
+                accountsById.putIfAbsent(a.getAssigneeAccountId(), null);
+            }
+        }
+
+        for (UUID roomId : roomsById.keySet()) {
+            projectRoomRepository.findById(roomId).ifPresent(r -> roomsById.put(roomId, r));
+        }
+        for (UUID taskId : tasksById.keySet()) {
+            roomTaskRepository.findById(taskId).ifPresent(t -> tasksById.put(taskId, t));
+        }
+        for (Long accountId : accountsById.keySet()) {
+            accountRepository.findById(accountId).ifPresent(acc -> accountsById.put(accountId, acc));
+        }
+
+        return new ActivityEnrichment(roomsById, tasksById, accountsById);
+    }
+
+    private Map<Long, String> loadProjectNames(List<ScheduleActivity> activities) {
+        Map<Long, String> names = new HashMap<>();
+        for (ScheduleActivity a : activities) {
+            if (names.containsKey(a.getProjectId())) {
+                continue;
+            }
+            try {
+                Project p = projectService.getById(a.getProjectId());
+                names.put(a.getProjectId(), p.getName());
+            } catch (Exception e) {
+                names.put(a.getProjectId(), "Project " + a.getProjectId());
+            }
+        }
+        return names;
+    }
+
+    private record ActivityEnrichment(
+            Map<UUID, ProjectRoom> roomsById,
+            Map<UUID, RoomTask> tasksById,
+            Map<Long, Account> accountsById) {
     }
 
     private void applyRequest(ScheduleActivity activity, ScheduleActivityRequest request, boolean allowPercentEdit) {
@@ -429,8 +576,6 @@ public class ScheduleService {
         }
         if (request.getWeight() != null) activity.setWeight(request.getWeight());
         if (request.getParentUuid() != null) activity.setParentUuid(request.getParentUuid());
-        if (request.getProjectRoomId() != null) activity.setProjectRoomId(request.getProjectRoomId());
-        if (request.getRoomTaskId() != null) activity.setRoomTaskId(request.getRoomTaskId());
         if (request.getAssigneeAccountId() != null) activity.setAssigneeAccountId(request.getAssigneeAccountId());
         if (request.getSortOrder() != null) activity.setSortOrder(request.getSortOrder());
         if (request.getDelayReason() != null) {
@@ -511,7 +656,23 @@ public class ScheduleService {
                 || principal.getRoles().contains(Role.PROJECT_MANAGER);
     }
 
-    private ScheduleActivityResponse toActivity(ScheduleActivity a) {
+    private ScheduleActivityResponse toActivity(ScheduleActivity a, ActivityEnrichment enrichment) {
+        ProjectRoom room = a.getProjectRoomId() != null
+                ? enrichment.roomsById().get(a.getProjectRoomId()) : null;
+        RoomTask task = a.getRoomTaskId() != null
+                ? enrichment.tasksById().get(a.getRoomTaskId()) : null;
+        Account assignee = a.getAssigneeAccountId() != null
+                ? enrichment.accountsById().get(a.getAssigneeAccountId()) : null;
+
+        String roomName = room != null ? room.getName() : null;
+        if (roomName == null && task != null && task.getProjectRoomId() != null) {
+            ProjectRoom taskRoom = enrichment.roomsById().get(task.getProjectRoomId());
+            if (taskRoom == null) {
+                taskRoom = projectRoomRepository.findById(task.getProjectRoomId()).orElse(null);
+            }
+            roomName = taskRoom != null ? taskRoom.getName() : null;
+        }
+
         return ScheduleActivityResponse.builder()
                 .uuid(a.getUuid())
                 .projectId(a.getProjectId())
@@ -528,7 +689,35 @@ public class ScheduleService {
                 .sortOrder(a.getSortOrder())
                 .delayReason(a.getDelayReason())
                 .updatedAt(a.getUpdatedAt())
+                .roomName(roomName)
+                .roomTaskTitle(task != null ? task.getTitle() : null)
+                .roomTaskStatus(task != null && task.getStatus() != null ? task.getStatus().name() : null)
+                .assigneeName(assignee != null ? assignee.getFullName() : null)
                 .build();
+    }
+
+    private ScheduleCalendarEventResponse toCalendarEvent(
+            ScheduleActivity a, ActivityEnrichment enrichment, String projectName) {
+        ScheduleActivityResponse base = toActivity(a, enrichment);
+        return ScheduleCalendarEventResponse.builder()
+                .uuid(base.getUuid())
+                .projectId(base.getProjectId())
+                .projectName(projectName)
+                .name(base.getName())
+                .startDate(base.getStartDate())
+                .endDate(base.getEndDate())
+                .percentComplete(base.getPercentComplete())
+                .assigneeAccountId(base.getAssigneeAccountId())
+                .assigneeName(base.getAssigneeName())
+                .projectRoomId(base.getProjectRoomId())
+                .roomName(base.getRoomName())
+                .roomTaskId(base.getRoomTaskId())
+                .roomTaskTitle(base.getRoomTaskTitle())
+                .build();
+    }
+
+    private ScheduleActivityResponse toActivity(ScheduleActivity a) {
+        return toActivity(a, buildEnrichment(List.of(a)));
     }
 
     private ScheduleDependencyResponse toDependency(ScheduleDependency d) {

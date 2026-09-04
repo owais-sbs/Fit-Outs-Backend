@@ -31,6 +31,10 @@ public class SiteVisitEstimateResponse {
     private String locationLabel;
     private String subject;
     private String preparedBy;
+    private Boolean includeStamp;
+    private Boolean includeSignature;
+    private String stampImageUrl;
+    private String signatureImageUrl;
     private String currency;
     private String notes;
     private BigDecimal subtotal;
@@ -41,6 +45,8 @@ public class SiteVisitEstimateResponse {
     private List<UUID> selectedAppendixIds = new ArrayList<>();
     @Builder.Default
     private List<AppendixMasterResponse> selectedAppendices = new ArrayList<>();
+    @Builder.Default
+    private List<String> excludedScopeRefs = new ArrayList<>();
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
 }
