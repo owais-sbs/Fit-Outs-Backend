@@ -19,6 +19,8 @@ public class ProjectDocumentResponse {
     private boolean publishedToClient;
     private Long uploadedBy;
     private UUID parentDocumentUuid;
+    private String sourceType;
+    private UUID sourceUuid;
     private boolean deleted;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;

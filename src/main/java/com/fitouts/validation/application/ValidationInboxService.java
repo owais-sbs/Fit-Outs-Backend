@@ -213,6 +213,7 @@ public class ValidationInboxService {
                 .progressNotes(progress != null ? progress.getNotes() : null)
                 .reportedByName(reporter != null ? displayName(reporter) : null)
                 .reportedAt(progress != null ? progress.getReportedAt() : null)
+                .photoPaths(progress != null ? progress.getPhotoPaths() : null)
                 .build();
     }
 
@@ -241,6 +242,7 @@ public class ValidationInboxService {
                 .reason(claim.getReason())
                 .createdAt(claim.getCreatedAt())
                 .updatedAt(claim.getUpdatedAt())
+                .attachmentPaths(claim.getAttachmentPaths())
                 .packageName(pkg != null ? pkg.getName() : null)
                 .projectName(project != null ? project.getName() : null)
                 .subcontractorName(pkg != null ? pkg.getAppointedCompanyName() : null)

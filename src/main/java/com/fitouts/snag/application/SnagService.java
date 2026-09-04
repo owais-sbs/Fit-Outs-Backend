@@ -1,5 +1,6 @@
 package com.fitouts.snag.application;
 
+import java.time.OffsetDateTime;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
@@ -12,11 +13,17 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.fitouts.account.domain.Account;
+import com.fitouts.account.domain.AccountRepository;
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.drawing.application.FileStorageService;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
+import com.fitouts.roomcollab.domain.ProjectRoom;
+import com.fitouts.roomcollab.domain.ProjectRoomRepository;
+import com.fitouts.schedule.domain.ScheduleActivity;
+import com.fitouts.schedule.domain.ScheduleActivityRepository;
 import com.fitouts.shared.context.CompanyContext;
 import com.fitouts.shared.error.BadRequestException;
 import com.fitouts.shared.error.ForbiddenException;
@@ -47,6 +54,9 @@ public class SnagService {
     private final SnagRepository snagRepository;
     private final ProjectService projectService;
     private final FileStorageService fileStorageService;
+    private final ProjectRoomRepository projectRoomRepository;
+    private final ScheduleActivityRepository scheduleActivityRepository;
+    private final AccountRepository accountRepository;
 
     @Transactional(readOnly = true)
     public List<SnagResponse> list(Long projectId) {
@@ -69,6 +79,20 @@ public class SnagService {
     @Transactional
     public SnagResponse create(Long projectId, SnagRequest request) {
         AuthPrincipal principal = requireStaff();
+        return createInternal(projectId, request, principal, false);
+    }
+
+    @Transactional
+    public SnagResponse createByClient(Long projectId, SnagRequest request) {
+        AuthPrincipal principal = requireClient();
+        if (request == null) {
+            request = new SnagRequest();
+        }
+        request.setClientVisible(true);
+        return createInternal(projectId, request, principal, true);
+    }
+
+    private SnagResponse createInternal(Long projectId, SnagRequest request, AuthPrincipal principal, boolean byClient) {
         Project project = requireProject(projectId);
         if (request == null || !StringUtils.hasText(request.getTitle())) {
             throw new BadRequestException("title is required");
@@ -80,13 +104,16 @@ public class SnagService {
         snag.setTitle(request.getTitle().trim());
         snag.setDescription(request.getDescription());
         snag.setLocation(request.getLocation());
+        applyRoomAndActivity(snag, project.getId(), request.getProjectRoomId(), request.getActivityUuid());
+        fillLocationFromLinks(snag);
         snag.setPhotoPaths(request.getPhotoPaths());
-        snag.setStatus(request.getStatus() != null ? request.getStatus() : SnagStatus.OPEN);
+        snag.setStatus(SnagStatus.OPEN);
         snag.setSeverity(request.getSeverity() != null ? request.getSeverity() : SnagSeverity.MEDIUM);
         snag.setDueDate(request.getDueDate());
         snag.setRaisedBy(principal.getAccountId());
+        snag.setRaisedByClient(byClient);
         snag.setAssigneeAccountId(request.getAssigneeAccountId());
-        snag.setClientVisible(Boolean.TRUE.equals(request.getClientVisible()));
+        snag.setClientVisible(byClient || Boolean.TRUE.equals(request.getClientVisible()));
         return toResponse(snagRepository.save(snag));
     }
 
@@ -107,6 +134,12 @@ public class SnagService {
         if (request.getLocation() != null) {
             snag.setLocation(request.getLocation());
         }
+        if (request.getProjectRoomId() != null || request.getActivityUuid() != null) {
+            applyRoomAndActivity(snag, projectId, request.getProjectRoomId(), request.getActivityUuid());
+            if (!StringUtils.hasText(request.getLocation())) {
+                fillLocationFromLinks(snag);
+            }
+        }
         if (request.getPhotoPaths() != null) {
             snag.setPhotoPaths(request.getPhotoPaths());
         }
@@ -117,7 +150,7 @@ public class SnagService {
             snag.setDueDate(request.getDueDate());
         }
         if (request.getAssigneeAccountId() != null) {
-            snag.setAssigneeAccountId(request.getAssigneeAccountId());
+            snag.setAssigneeAccountId(request.getAssigneeAccountId() <= 0 ? null : request.getAssigneeAccountId());
         }
         if (request.getClientVisible() != null) {
             snag.setClientVisible(request.getClientVisible());
@@ -145,13 +178,37 @@ public class SnagService {
     }
 
     @Transactional
+    public SnagResponse clientApprove(Long projectId, UUID uuid) {
+        AuthPrincipal principal = requireClient();
+        requireProject(projectId);
+        Snag snag = requireClientVisibleSnag(uuid, projectId);
+        if (snag.getStatus() != SnagStatus.READY_FOR_INSPECTION && snag.getStatus() != SnagStatus.RESOLVED) {
+            throw new BadRequestException("Only snags ready for inspection can be approved by the client");
+        }
+        assertTransition(snag.getStatus(), SnagStatus.CLOSED);
+        snag.setStatus(SnagStatus.CLOSED);
+        snag.setClientApprovedAt(OffsetDateTime.now());
+        snag.setClientApprovedBy(principal.getAccountId());
+        snag.setClientVisible(true);
+        return toResponse(snagRepository.save(snag));
+    }
+
+    @Transactional
     public SnagResponse uploadPhoto(Long projectId, UUID uuid, MultipartFile file) {
-        requireStaff();
+        AuthPrincipal principal = requireAuthenticated();
         Project project = requireProject(projectId);
         if (file == null || file.isEmpty()) {
             throw new BadRequestException("file is required");
         }
         Snag snag = requireSnag(uuid, projectId);
+        boolean isStaff = principal.getRoles() == null
+                || principal.getRoles().stream().anyMatch(r -> r != Role.CLIENT);
+        if (!isStaff) {
+            if (!snag.isClientVisible() || !snag.isRaisedByClient()
+                    || !principal.getAccountId().equals(snag.getRaisedBy())) {
+                throw new ForbiddenException("Not allowed to upload photos for this snag");
+            }
+        }
         String relativePath = fileStorageService.store(file, CompanyContext.get(), project.getId(), "snags");
         String existing = snag.getPhotoPaths();
         if (StringUtils.hasText(existing)) {
@@ -181,6 +238,54 @@ public class SnagService {
                 .toList();
     }
 
+    private void applyRoomAndActivity(Snag snag, Long projectId, UUID roomId, UUID activityUuid) {
+        if (roomId != null) {
+            ProjectRoom room = projectRoomRepository.findById(roomId)
+                    .orElseThrow(() -> new BadRequestException("Room not found"));
+            if (!projectId.equals(room.getProjectId()) || !CompanyContext.get().equals(room.getCompanyId())) {
+                throw new BadRequestException("Room does not belong to this project");
+            }
+            snag.setProjectRoomId(room.getUuid());
+        }
+        if (activityUuid != null) {
+            ScheduleActivity activity = scheduleActivityRepository.findById(activityUuid)
+                    .orElseThrow(() -> new BadRequestException("Activity not found"));
+            if (!projectId.equals(activity.getProjectId()) || !CompanyContext.get().equals(activity.getCompanyId())) {
+                throw new BadRequestException("Activity does not belong to this project");
+            }
+            snag.setActivityUuid(activity.getUuid());
+            if (activity.getProjectRoomId() != null && snag.getProjectRoomId() == null) {
+                snag.setProjectRoomId(activity.getProjectRoomId());
+            }
+        }
+    }
+
+    private void fillLocationFromLinks(Snag snag) {
+        if (StringUtils.hasText(snag.getLocation())) {
+            return;
+        }
+        StringBuilder sb = new StringBuilder();
+        if (snag.getProjectRoomId() != null) {
+            projectRoomRepository.findById(snag.getProjectRoomId()).ifPresent(room -> {
+                if (StringUtils.hasText(room.getFloorLabel())) {
+                    sb.append(room.getFloorLabel()).append(" / ");
+                }
+                sb.append(room.getName());
+            });
+        }
+        if (snag.getActivityUuid() != null) {
+            scheduleActivityRepository.findById(snag.getActivityUuid()).ifPresent(activity -> {
+                if (!sb.isEmpty()) {
+                    sb.append(" · ");
+                }
+                sb.append(activity.getName());
+            });
+        }
+        if (!sb.isEmpty()) {
+            snag.setLocation(sb.toString());
+        }
+    }
+
     private void assertTransition(SnagStatus from, SnagStatus to) {
         Set<SnagStatus> allowed = switch (from) {
             case OPEN -> OPEN_TO;
@@ -203,7 +308,32 @@ public class SnagService {
         return snag;
     }
 
+    private Snag requireClientVisibleSnag(UUID uuid, Long projectId) {
+        Snag snag = requireSnag(uuid, projectId);
+        if (!snag.isClientVisible()) {
+            throw new ForbiddenException("Snag is not visible to client");
+        }
+        return snag;
+    }
+
     private SnagResponse toResponse(Snag snag) {
+        String roomName = null;
+        if (snag.getProjectRoomId() != null) {
+            roomName = projectRoomRepository.findById(snag.getProjectRoomId())
+                    .map(r -> {
+                        if (StringUtils.hasText(r.getFloorLabel())) {
+                            return r.getFloorLabel() + " / " + r.getName();
+                        }
+                        return r.getName();
+                    })
+                    .orElse(null);
+        }
+        String activityName = null;
+        if (snag.getActivityUuid() != null) {
+            activityName = scheduleActivityRepository.findById(snag.getActivityUuid())
+                    .map(ScheduleActivity::getName)
+                    .orElse(null);
+        }
         return SnagResponse.builder()
                 .uuid(snag.getUuid())
                 .projectId(snag.getProjectId())
@@ -211,16 +341,42 @@ public class SnagService {
                 .title(snag.getTitle())
                 .description(snag.getDescription())
                 .location(snag.getLocation())
+                .projectRoomId(snag.getProjectRoomId())
+                .roomName(roomName)
+                .activityUuid(snag.getActivityUuid())
+                .activityName(activityName)
                 .photoPaths(snag.getPhotoPaths())
                 .status(snag.getStatus())
                 .severity(snag.getSeverity())
                 .dueDate(snag.getDueDate())
                 .raisedBy(snag.getRaisedBy())
+                .raisedByName(displayName(snag.getRaisedBy()))
+                .raisedByClient(snag.isRaisedByClient())
                 .assigneeAccountId(snag.getAssigneeAccountId())
+                .assigneeName(displayName(snag.getAssigneeAccountId()))
                 .clientVisible(snag.isClientVisible())
+                .clientApprovedAt(snag.getClientApprovedAt())
+                .clientApprovedBy(snag.getClientApprovedBy())
+                .clientApprovedByName(displayName(snag.getClientApprovedBy()))
                 .createdAt(snag.getCreatedAt())
                 .updatedAt(snag.getUpdatedAt())
                 .build();
+    }
+
+    private String displayName(Long accountId) {
+        if (accountId == null) {
+            return null;
+        }
+        return accountRepository.findById(accountId)
+                .map(this::accountLabel)
+                .orElse(null);
+    }
+
+    private String accountLabel(Account account) {
+        if (StringUtils.hasText(account.getFullName())) {
+            return account.getFullName().trim();
+        }
+        return account.getEmail();
     }
 
     private Project requireProject(Long projectId) {
@@ -252,6 +408,14 @@ public class SnagService {
         AuthPrincipal principal = requireAuthenticated();
         if (principal.getRoles() != null && principal.getRoles().stream().allMatch(r -> r == Role.CLIENT)) {
             throw new ForbiddenException("Staff access required");
+        }
+        return principal;
+    }
+
+    private AuthPrincipal requireClient() {
+        AuthPrincipal principal = requireAuthenticated();
+        if (principal.getRoles() == null || principal.getRoles().stream().noneMatch(r -> r == Role.CLIENT)) {
+            throw new ForbiddenException("Client access required");
         }
         return principal;
     }

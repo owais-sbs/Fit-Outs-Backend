@@ -16,6 +16,7 @@ import com.fitouts.drawing.domain.ProjectDrawing;
 import com.fitouts.drawing.domain.ProjectDrawingRepository;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
+import com.fitouts.projectdoc.application.ProjectDocumentService;
 import com.fitouts.shared.context.CompanyContext;
 import com.fitouts.shared.enums.DrawingCategory;
 import com.fitouts.shared.enums.DrawingStatus;
@@ -33,6 +34,7 @@ public class ProjectDrawingService {
     private final ProjectService projectService;
     private final FileStorageService fileStorageService;
     private final DwgConversionService dwgConversionService;
+    private final ProjectDocumentService projectDocumentService;
 
     public ProjectDrawingResponse upload(Long projectId, DrawingCategory category, MultipartFile file) {
         UUID companyId = CompanyContext.get();
@@ -64,20 +66,23 @@ public class ProjectDrawingService {
         if (isPdf) {
             drawing.setPreviewPdfPath(storedPath);
             drawing.setStatus(DrawingStatus.READY);
-        } else {
-            drawing.setStatus(DrawingStatus.CONVERTING);
             ProjectDrawing saved = drawingRepository.save(drawing);
-            String previewPath = dwgConversionService.convertToPreview(storedPath);
-            if (previewPath != null) {
-                saved.setPreviewPdfPath(previewPath);
-                saved.setStatus(DrawingStatus.READY);
-            } else {
-                saved.setStatus(DrawingStatus.FAILED);
-            }
-            return mapToResponse(drawingRepository.save(saved));
+            projectDocumentService.registerFromDrawing(saved);
+            return mapToResponse(saved);
         }
 
-        return mapToResponse(drawingRepository.save(drawing));
+        drawing.setStatus(DrawingStatus.CONVERTING);
+        ProjectDrawing saved = drawingRepository.save(drawing);
+        String previewPath = dwgConversionService.convertToPreview(storedPath);
+        if (previewPath != null) {
+            saved.setPreviewPdfPath(previewPath);
+            saved.setStatus(DrawingStatus.READY);
+        } else {
+            saved.setStatus(DrawingStatus.FAILED);
+        }
+        ProjectDrawing finalDrawing = drawingRepository.save(saved);
+        projectDocumentService.registerFromDrawing(finalDrawing);
+        return mapToResponse(finalDrawing);
     }
 
     public ProjectDrawingResponse reconvert(UUID id) {
@@ -148,6 +153,7 @@ public class ProjectDrawingService {
         drawing.setDeleted(true);
         drawing.setStatus(DrawingStatus.FAILED);
         drawingRepository.save(drawing);
+        projectDocumentService.softDeleteByDrawingSource(drawing.getId(), drawing.getCompanyId());
     }
 
     public ProjectDrawing find(UUID id) {

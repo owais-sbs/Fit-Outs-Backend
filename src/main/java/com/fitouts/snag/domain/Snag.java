@@ -39,6 +39,12 @@ public class Snag {
     @Column
     private String location;
 
+    @Column(name = "project_room_id")
+    private UUID projectRoomId;
+
+    @Column(name = "activity_uuid")
+    private UUID activityUuid;
+
     @Column(name = "photo_paths")
     private String photoPaths;
 
@@ -56,11 +62,20 @@ public class Snag {
     @Column(name = "raised_by")
     private Long raisedBy;
 
+    @Column(name = "raised_by_client", nullable = false)
+    private boolean raisedByClient;
+
     @Column(name = "assignee_account_id")
     private Long assigneeAccountId;
 
     @Column(name = "client_visible", nullable = false)
     private boolean clientVisible;
+
+    @Column(name = "client_approved_at")
+    private OffsetDateTime clientApprovedAt;
+
+    @Column(name = "client_approved_by")
+    private Long clientApprovedBy;
 
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;

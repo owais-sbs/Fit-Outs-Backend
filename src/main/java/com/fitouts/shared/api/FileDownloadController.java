@@ -3,7 +3,6 @@ package com.fitouts.shared.api;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -20,10 +19,12 @@ import lombok.RequiredArgsConstructor;
 public class FileDownloadController {
 
     private final FileStorageService fileStorageService;
+    private final FileAccessService fileAccessService;
 
     @GetMapping("/{*relativePath}")
     public ResponseEntity<Resource> download(@PathVariable("relativePath") String relativePath) {
         String path = relativePath.startsWith("/") ? relativePath.substring(1) : relativePath;
+        fileAccessService.assertCanDownload(path);
         Resource resource = fileStorageService.loadAsResource(path);
         String filename = path.contains("/") ? path.substring(path.lastIndexOf('/') + 1) : path;
         return ResponseEntity.ok()
@@ -42,6 +43,8 @@ public class FileDownloadController {
         if (lower.endsWith(".webm")) return MediaType.parseMediaType("video/webm");
         if (lower.endsWith(".mov")) return MediaType.parseMediaType("video/quicktime");
         if (lower.endsWith(".m4v")) return MediaType.parseMediaType("video/x-m4v");
+        if (lower.endsWith(".pdf")) return MediaType.APPLICATION_PDF;
+        if (lower.endsWith(".svg")) return MediaType.parseMediaType("image/svg+xml");
         return MediaType.APPLICATION_OCTET_STREAM;
     }
 }

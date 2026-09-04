@@ -28,6 +28,9 @@ public class SubcontractorClaimResponse {
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
 
+    /** Comma-separated stored file paths */
+    private String attachmentPaths;
+
     /** Enriched display fields */
     private String packageName;
     private String projectName;

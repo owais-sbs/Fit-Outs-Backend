@@ -48,6 +48,13 @@ public class ProjectDocument {
     @Column(name = "parent_document_uuid")
     private UUID parentDocumentUuid;
 
+    /** e.g. DRAWING — when this library row mirrors another module's file. */
+    @Column(name = "source_type", length = 40)
+    private String sourceType;
+
+    @Column(name = "source_uuid")
+    private UUID sourceUuid;
+
     @Column(nullable = false)
     private boolean deleted;
 

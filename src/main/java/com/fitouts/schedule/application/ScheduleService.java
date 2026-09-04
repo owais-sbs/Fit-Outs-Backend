@@ -18,6 +18,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.fitouts.account.domain.Account;
 import com.fitouts.account.domain.AccountRepository;
@@ -25,6 +26,7 @@ import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.billing.application.BillingService;
 import com.fitouts.holdpoint.application.HoldPointGuardService;
+import com.fitouts.drawing.application.FileStorageService;
 import com.fitouts.planning.application.PlanningService;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
@@ -83,6 +85,7 @@ public class ScheduleService {
     private final ProjectRoomRepository projectRoomRepository;
     private final RoomTaskRepository roomTaskRepository;
     private final AccountRepository accountRepository;
+    private final FileStorageService fileStorageService;
 
     @Transactional(readOnly = true)
     public ProjectScheduleResponse getSchedule(Long projectId) {
@@ -457,6 +460,28 @@ public class ScheduleService {
                 .stream().map(this::toProgress).toList();
     }
 
+    @Transactional
+    public ProgressUpdateResponse uploadProgressAttachment(UUID progressUuid, MultipartFile file) {
+        AuthPrincipal principal = requireAuthenticated();
+        if (file == null || file.isEmpty()) {
+            throw new BadRequestException("file is required");
+        }
+        ActivityProgressUpdate update = progressRepository.findById(progressUuid)
+                .orElseThrow(() -> new NotFoundException("Progress update not found"));
+        if (!update.getCompanyId().equals(CompanyContext.get())) {
+            throw new ForbiddenException("Progress update not in your company");
+        }
+        ScheduleActivity activity = requireActivity(update.getActivityUuid());
+        assertCanReportProgress(principal, activity);
+        if (!update.getReportedBy().equals(principal.getAccountId()) && !isPmOrAdmin(principal)) {
+            throw new ForbiddenException("Only the reporter or PM/Admin can add attachments");
+        }
+        String relativePath = fileStorageService.store(
+                file, update.getCompanyId(), update.getProjectId(), "progress-logs");
+        update.setPhotoPaths(appendPath(update.getPhotoPaths(), relativePath));
+        return toProgress(progressRepository.save(update));
+    }
+
     @Transactional(readOnly = true)
     public List<ScheduleCalendarEventResponse> calendarEvents(
             LocalDate startDate, LocalDate endDate, Long projectId, Long assigneeAccountId) {
@@ -629,6 +654,11 @@ public class ScheduleService {
                 && activity.getAssigneeAccountId().equals(principal.getAccountId())) {
             return;
         }
+        if (principal.getRoles() != null && principal.getRoles().contains(Role.SUBCONTRACTOR)
+                && activity.getAssigneeAccountId() != null
+                && activity.getAssigneeAccountId().equals(principal.getAccountId())) {
+            return;
+        }
         throw new ForbiddenException("Only the assignee or PM/Admin can post progress");
     }
 
@@ -746,11 +776,22 @@ public class ScheduleService {
                 .notes(u.getNotes())
                 .labourHours(u.getLabourHours())
                 .reportedBy(u.getReportedBy())
-                .reportedAt(u.getReportedAt());
+                .reportedAt(u.getReportedAt())
+                .photoPaths(u.getPhotoPaths());
         validationRepository.findByProgressUpdateUuid(u.getUuid()).ifPresent(v -> {
             builder.validationStatus(v.getStatus() != null ? v.getStatus().name() : null);
             builder.validationReason(v.getReason());
         });
         return builder.build();
+    }
+
+    private String appendPath(String existing, String path) {
+        if (!StringUtils.hasText(path)) {
+            return existing;
+        }
+        if (!StringUtils.hasText(existing)) {
+            return path.trim();
+        }
+        return existing + "," + path.trim();
     }
 }

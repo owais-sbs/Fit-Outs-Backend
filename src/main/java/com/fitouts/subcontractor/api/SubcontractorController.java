@@ -154,6 +154,17 @@ public class SubcontractorController extends BaseController {
         }
     }
 
+    @PostMapping(value = "/api/subcontractor/claims/{uuid}/attachments", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Object uploadClaimAttachment(
+            @PathVariable UUID uuid,
+            @org.springframework.web.bind.annotation.RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
+        try {
+            return successResponse(subcontractorService.uploadClaimAttachment(uuid, file));
+        } catch (Exception e) {
+            return failureResponse("Failed to upload claim attachment", e.getMessage());
+        }
+    }
+
     @PostMapping("/api/projects/{projectId}/sc-claims/{uuid}/approve")
     public Object approveClaim(@PathVariable Long projectId, @PathVariable UUID uuid) {
         try {

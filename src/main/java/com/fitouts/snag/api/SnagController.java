@@ -76,13 +76,18 @@ public class SnagController extends BaseController {
         }
     }
 
-    @PostMapping(value = "/api/projects/{projectId}/snags/{uuid}/photos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping(value = {
+            "/api/projects/{projectId}/snags/{uuid}/photos",
+            "/api/projects/{projectId}/snags/{uuid}/photo"
+    }, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Object uploadPhoto(
             @PathVariable Long projectId,
             @PathVariable UUID uuid,
-            @RequestParam("file") MultipartFile file) {
+            @RequestParam(value = "file", required = false) MultipartFile file,
+            @RequestParam(value = "photo", required = false) MultipartFile photo) {
         try {
-            return successResponse(snagService.uploadPhoto(projectId, uuid, file));
+            MultipartFile upload = file != null && !file.isEmpty() ? file : photo;
+            return successResponse(snagService.uploadPhoto(projectId, uuid, upload));
         } catch (Exception e) {
             return failureResponse("Failed to upload snag photo", e.getMessage());
         }
@@ -104,6 +109,41 @@ public class SnagController extends BaseController {
             return successResponse(snagService.listClientVisible(projectId));
         } catch (Exception e) {
             return failureResponse("Failed to list client snags", e.getMessage());
+        }
+    }
+
+    @PostMapping("/api/client/projects/{projectId}/snags")
+    public Object createByClient(@PathVariable Long projectId, @RequestBody SnagRequest request) {
+        try {
+            return successResponse(snagService.createByClient(projectId, request));
+        } catch (Exception e) {
+            return failureResponse("Failed to create client snag", e.getMessage());
+        }
+    }
+
+    @PostMapping("/api/client/projects/{projectId}/snags/{uuid}/approve")
+    public Object clientApprove(@PathVariable Long projectId, @PathVariable UUID uuid) {
+        try {
+            return successResponse(snagService.clientApprove(projectId, uuid));
+        } catch (Exception e) {
+            return failureResponse("Failed to approve snag", e.getMessage());
+        }
+    }
+
+    @PostMapping(value = {
+            "/api/client/projects/{projectId}/snags/{uuid}/photos",
+            "/api/client/projects/{projectId}/snags/{uuid}/photo"
+    }, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Object clientUploadPhoto(
+            @PathVariable Long projectId,
+            @PathVariable UUID uuid,
+            @RequestParam(value = "file", required = false) MultipartFile file,
+            @RequestParam(value = "photo", required = false) MultipartFile photo) {
+        try {
+            MultipartFile upload = file != null && !file.isEmpty() ? file : photo;
+            return successResponse(snagService.uploadPhoto(projectId, uuid, upload));
+        } catch (Exception e) {
+            return failureResponse("Failed to upload snag photo", e.getMessage());
         }
     }
 }

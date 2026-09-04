@@ -12,6 +12,7 @@ public class SubcontractorProjectSummary {
     private String status;
     private String projectType;
     private String assignedManager;
+    private Integer progress;
     private int packageCount;
     private int activePackageCount;
 }

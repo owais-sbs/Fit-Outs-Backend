@@ -1,5 +1,6 @@
 package com.fitouts.projectdoc.application;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -13,6 +14,8 @@ import org.springframework.web.multipart.MultipartFile;
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.drawing.application.FileStorageService;
+import com.fitouts.drawing.domain.ProjectDrawing;
+import com.fitouts.drawing.domain.ProjectDrawingRepository;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
 import com.fitouts.projectdoc.api.ProjectDocumentRequest;
@@ -30,7 +33,10 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class ProjectDocumentService {
 
+    public static final String SOURCE_DRAWING = "DRAWING";
+
     private final ProjectDocumentRepository documentRepository;
+    private final ProjectDrawingRepository drawingRepository;
     private final ProjectService projectService;
     private final FileStorageService fileStorageService;
 
@@ -51,6 +57,22 @@ public class ProjectDocumentService {
         requireStaff();
         requireProject(projectId);
         return toResponse(requireDocument(uuid, projectId));
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProjectDocumentResponse> listVersions(Long projectId, UUID uuid) {
+        requireStaff();
+        requireProject(projectId);
+        ProjectDocument doc = requireDocument(uuid, projectId);
+        UUID rootUuid = doc.getParentDocumentUuid() != null ? doc.getParentDocumentUuid() : doc.getUuid();
+        return documentRepository
+                .findByProjectIdAndCompanyIdAndDeletedFalseOrderByCreatedAtDesc(
+                        doc.getProjectId(), CompanyContext.get())
+                .stream()
+                .filter(d -> rootUuid.equals(d.getUuid()) || rootUuid.equals(d.getParentDocumentUuid()))
+                .sorted(Comparator.comparingInt(ProjectDocument::getVersion).reversed())
+                .map(this::toResponse)
+                .toList();
     }
 
     @Transactional
@@ -148,6 +170,15 @@ public class ProjectDocumentService {
         return toResponse(documentRepository.save(doc));
     }
 
+    @Transactional
+    public ProjectDocumentResponse unpublishFromClient(Long projectId, UUID uuid) {
+        requireStaff();
+        requireProject(projectId);
+        ProjectDocument doc = requireDocument(uuid, projectId);
+        doc.setPublishedToClient(false);
+        return toResponse(documentRepository.save(doc));
+    }
+
     @Transactional(readOnly = true)
     public List<ProjectDocumentResponse> listPublished(Long projectId) {
         requireAuthenticated();
@@ -158,6 +189,81 @@ public class ProjectDocumentService {
                 .stream()
                 .map(this::toResponse)
                 .toList();
+    }
+
+    /**
+     * Mirror a drawing into the project document library (idempotent by source).
+     * Called from drawing upload; does not require staff re-check (caller is staff flow).
+     */
+    @Transactional
+    public void registerFromDrawing(ProjectDrawing drawing) {
+        if (drawing == null || drawing.getId() == null || !StringUtils.hasText(drawing.getOriginalPath())) {
+            return;
+        }
+        UUID companyId = drawing.getCompanyId() != null ? drawing.getCompanyId() : CompanyContext.get();
+        if (companyId == null) {
+            return;
+        }
+        if (documentRepository
+                .findBySourceTypeAndSourceUuidAndCompanyIdAndDeletedFalse(SOURCE_DRAWING, drawing.getId(), companyId)
+                .isPresent()) {
+            return;
+        }
+
+        Long projectId = drawing.getProject() != null ? drawing.getProject().getId() : null;
+        if (projectId == null) {
+            return;
+        }
+
+        ProjectDocument doc = new ProjectDocument();
+        doc.setProjectId(projectId);
+        doc.setCompanyId(companyId);
+        doc.setTitle(StringUtils.hasText(drawing.getFileName()) ? drawing.getFileName() : "Drawing");
+        doc.setCategory("drawings");
+        doc.setFilePath(drawing.getOriginalPath().trim());
+        doc.setVersion(1);
+        doc.setPublishedToClient(false);
+        doc.setSourceType(SOURCE_DRAWING);
+        doc.setSourceUuid(drawing.getId());
+        if (drawing.getCreatedBy() == null) {
+            AuthPrincipal principal = tryPrincipal();
+            if (principal != null) {
+                doc.setUploadedBy(principal.getAccountId());
+            }
+        }
+        documentRepository.save(doc);
+    }
+
+    @Transactional
+    public void softDeleteByDrawingSource(UUID drawingId, UUID companyId) {
+        if (drawingId == null || companyId == null) {
+            return;
+        }
+        documentRepository
+                .findBySourceTypeAndSourceUuidAndCompanyIdAndDeletedFalse(SOURCE_DRAWING, drawingId, companyId)
+                .ifPresent(doc -> {
+                    doc.setDeleted(true);
+                    documentRepository.save(doc);
+                });
+    }
+
+    /** Backfill library rows for existing drawings that are not yet mirrored. */
+    @Transactional
+    public int syncDrawingsIntoLibrary(Long projectId) {
+        requireStaff();
+        requireProject(projectId);
+        int created = 0;
+        for (ProjectDrawing drawing : drawingRepository.findByProjectIdAndDeletedFalseOrderByCreatedAtDesc(projectId)) {
+            boolean existed = documentRepository
+                    .findBySourceTypeAndSourceUuidAndCompanyIdAndDeletedFalse(
+                            SOURCE_DRAWING, drawing.getId(), CompanyContext.get())
+                    .isPresent();
+            if (!existed) {
+                registerFromDrawing(drawing);
+                created++;
+            }
+        }
+        return created;
     }
 
     private void applyVersioning(ProjectDocument doc, Long projectId, UUID parentDocumentUuid) {
@@ -204,6 +310,8 @@ public class ProjectDocumentService {
                 .publishedToClient(doc.isPublishedToClient())
                 .uploadedBy(doc.getUploadedBy())
                 .parentDocumentUuid(doc.getParentDocumentUuid())
+                .sourceType(doc.getSourceType())
+                .sourceUuid(doc.getSourceUuid())
                 .deleted(doc.isDeleted())
                 .createdAt(doc.getCreatedAt())
                 .updatedAt(doc.getUpdatedAt())
@@ -228,9 +336,17 @@ public class ProjectDocumentService {
     }
 
     private AuthPrincipal requireAuthenticated() {
+        AuthPrincipal principal = tryPrincipal();
+        if (principal == null) {
+            throw new BadRequestException("Authentication required");
+        }
+        return principal;
+    }
+
+    private AuthPrincipal tryPrincipal() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !(auth.getPrincipal() instanceof AuthPrincipal principal)) {
-            throw new BadRequestException("Authentication required");
+            return null;
         }
         return principal;
     }

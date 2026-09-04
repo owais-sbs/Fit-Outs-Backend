@@ -15,6 +15,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.fitouts.account.application.ClientAccountConversionResult;
 import com.fitouts.account.application.ClientPortalInviteService;
@@ -25,6 +26,7 @@ import com.fitouts.boq.domain.BoqDocument;
 import com.fitouts.boq.domain.BoqDocumentRepository;
 import com.fitouts.boq.domain.BoqLine;
 import com.fitouts.boq.domain.BoqLineRepository;
+import com.fitouts.drawing.application.FileStorageService;
 import com.fitouts.planning.application.PlanningService;
 import com.fitouts.planning.domain.PlanAreaStatus;
 import com.fitouts.project.application.ProjectService;
@@ -67,6 +69,7 @@ public class SubcontractorService {
     private final ClientPortalInviteService clientPortalInviteService;
     private final HoldPointGuardService holdPointGuardService;
     private final ScheduleActivityRepository scheduleActivityRepository;
+    private final FileStorageService fileStorageService;
 
     @Transactional(readOnly = true)
     public List<SubcontractorPackageResponse> listPackages(Long projectId) {
@@ -222,6 +225,7 @@ public class SubcontractorService {
                     .status(project != null ? project.getStatus() : null)
                     .projectType(project != null ? project.getProjectType() : null)
                     .assignedManager(project != null ? project.getAssignedManager() : null)
+                    .progress(project != null && project.getProgress() != null ? project.getProgress() : 0)
                     .packageCount(projectPackages.size())
                     .activePackageCount((int) activeCount)
                     .build());
@@ -252,6 +256,7 @@ public class SubcontractorService {
                 .status(project != null ? project.getStatus() : null)
                 .projectType(project != null ? project.getProjectType() : null)
                 .assignedManager(project != null ? project.getAssignedManager() : null)
+                .progress(project != null && project.getProgress() != null ? project.getProgress() : 0)
                 .packageCount(packages.size())
                 .activePackageCount((int) activeCount)
                 .build();
@@ -333,6 +338,27 @@ public class SubcontractorService {
         claim.setDecidedBy(null);
         claim.setDecidedAt(null);
         claim.setReason(null);
+        return toClaimResponse(claimRepository.save(claim));
+    }
+
+    @Transactional
+    public SubcontractorClaimResponse uploadClaimAttachment(UUID claimUuid, MultipartFile file) {
+        AuthPrincipal principal = requireAuthenticated();
+        if (file == null || file.isEmpty()) {
+            throw new BadRequestException("file is required");
+        }
+        SubcontractorClaim claim = claimRepository.findByUuidAndCompanyId(claimUuid, requireCompany())
+                .orElseThrow(() -> new NotFoundException("Claim not found"));
+        SubcontractorPackage pkg = packageRepository.findByUuidAndCompanyId(claim.getPackageUuid(), claim.getCompanyId())
+                .orElseThrow(() -> new NotFoundException("Package not found"));
+        assertCanClaimOnPackage(principal, pkg);
+        if (claim.getStatus() != SubcontractorClaimStatus.DRAFT
+                && claim.getStatus() != SubcontractorClaimStatus.REJECTED) {
+            throw new BadRequestException("Attachments can only be added to DRAFT or REJECTED claims");
+        }
+        String relativePath = fileStorageService.store(
+                file, claim.getCompanyId(), claim.getProjectId(), "subcontractor-claims");
+        claim.setAttachmentPaths(appendPath(claim.getAttachmentPaths(), relativePath));
         return toClaimResponse(claimRepository.save(claim));
     }
 
@@ -650,7 +676,18 @@ public class SubcontractorService {
                 .reason(claim.getReason())
                 .createdAt(claim.getCreatedAt())
                 .updatedAt(claim.getUpdatedAt())
+                .attachmentPaths(claim.getAttachmentPaths())
                 .build();
+    }
+
+    private String appendPath(String existing, String path) {
+        if (!StringUtils.hasText(path)) {
+            return existing;
+        }
+        if (!StringUtils.hasText(existing)) {
+            return path.trim();
+        }
+        return existing + "," + path.trim();
     }
 
     private Project requireProject(Long projectId) {

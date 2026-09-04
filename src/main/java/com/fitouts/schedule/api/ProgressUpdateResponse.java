@@ -18,6 +18,9 @@ public class ProgressUpdateResponse {
     private Long reportedBy;
     private OffsetDateTime reportedAt;
 
+    /** Comma-separated stored file paths */
+    private String photoPaths;
+
     /** PENDING, APPROVED, REJECTED — from linked progress_validation */
     private String validationStatus;
     private String validationReason;

@@ -28,4 +28,5 @@ public class ProgressValidationResponse {
     private String progressNotes;
     private String reportedByName;
     private OffsetDateTime reportedAt;
+    private String photoPaths;
 }

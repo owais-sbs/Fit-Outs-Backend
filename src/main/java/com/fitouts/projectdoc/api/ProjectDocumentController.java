@@ -96,6 +96,34 @@ public class ProjectDocumentController extends BaseController {
         }
     }
 
+    @PostMapping("/api/projects/{projectId}/documents/{uuid}/unpublish-from-client")
+    public Object unpublishFromClient(@PathVariable Long projectId, @PathVariable UUID uuid) {
+        try {
+            return successResponse(projectDocumentService.unpublishFromClient(projectId, uuid));
+        } catch (Exception e) {
+            return failureResponse("Failed to unpublish document", e.getMessage());
+        }
+    }
+
+    @GetMapping("/api/projects/{projectId}/documents/{uuid}/versions")
+    public Object listVersions(@PathVariable Long projectId, @PathVariable UUID uuid) {
+        try {
+            return successResponse(projectDocumentService.listVersions(projectId, uuid));
+        } catch (Exception e) {
+            return failureResponse("Failed to list document versions", e.getMessage());
+        }
+    }
+
+    @PostMapping("/api/projects/{projectId}/documents/sync-drawings")
+    public Object syncDrawings(@PathVariable Long projectId) {
+        try {
+            int created = projectDocumentService.syncDrawingsIntoLibrary(projectId);
+            return successResponse("Synced " + created + " drawing(s) into the document library", created);
+        } catch (Exception e) {
+            return failureResponse("Failed to sync drawings", e.getMessage());
+        }
+    }
+
     @GetMapping("/api/client/projects/{projectId}/documents")
     public Object listPublished(@PathVariable Long projectId) {
         try {
