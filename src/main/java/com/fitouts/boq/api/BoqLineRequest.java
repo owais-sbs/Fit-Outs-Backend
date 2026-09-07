@@ -19,6 +19,7 @@ public class BoqLineRequest {
     private BigDecimal quantity;
     private BigDecimal rate;
     private UUID qtoLineId;
+    private UUID workItemId;
     private String floorLabel;
     private String roomLabel;
     private Integer sortOrder;
