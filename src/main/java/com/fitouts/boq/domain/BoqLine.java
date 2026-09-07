@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 import com.fitouts.qto.domain.QtoLine;
+import com.fitouts.workitemconfiguration.domain.WorkItem;
 
 import jakarta.persistence.*;
 import lombok.*;
@@ -53,6 +54,10 @@ public class BoqLine {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "qto_line_id")
     private QtoLine qtoLine;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "work_item_id")
+    private WorkItem workItem;
 
     @Column(name = "floor_label", length = 100)
     private String floorLabel;

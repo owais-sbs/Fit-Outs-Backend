@@ -29,6 +29,9 @@ public class ProjectMaterialPlanLine {
     @Column(name = "material_name", nullable = false)
     private String materialName;
 
+    @Column(name = "work_item_names", columnDefinition = "TEXT")
+    private String workItemNames;
+
     @Column(name = "planned_qty", nullable = false, precision = 14, scale = 4)
     private BigDecimal plannedQty = BigDecimal.ZERO;
 

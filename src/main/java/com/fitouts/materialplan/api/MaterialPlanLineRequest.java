@@ -1,6 +1,7 @@
 package com.fitouts.materialplan.api;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
 import lombok.Data;
@@ -9,6 +10,7 @@ import lombok.Data;
 public class MaterialPlanLineRequest {
     private UUID materialId;
     private String materialName;
+    private List<String> workItemNames;
     private BigDecimal plannedQty;
     private BigDecimal stockQtySnapshot;
     private String unit;
