@@ -2,8 +2,11 @@ package com.fitouts.workitemconfiguration.domain;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
+import com.fitouts.approvalconfig.domain.ApprovalScopeTag;
 import com.fitouts.company.domain.Company;
 import com.fitouts.shared.enums.QuantityFormulaType;
 import com.fitouts.shared.enums.UnitType;
@@ -94,6 +97,14 @@ public class WorkItem {
 
     @Column(name = "color_tag", length = 20)
     private String colorTag;
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "work_item_scope_tags",
+            joinColumns = @JoinColumn(name = "work_item_id"),
+            inverseJoinColumns = @JoinColumn(name = "scope_tag_id"))
+    @Builder.Default
+    private Set<ApprovalScopeTag> scopeTags = new HashSet<>();
 
     @Column(nullable = true)
     @Builder.Default

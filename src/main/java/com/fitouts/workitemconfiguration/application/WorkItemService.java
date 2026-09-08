@@ -3,8 +3,9 @@ package com.fitouts.workitemconfiguration.application;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -16,6 +17,8 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.fitouts.approvalconfig.domain.ApprovalScopeTag;
+import com.fitouts.approvalconfig.domain.ApprovalScopeTagRepository;
 import com.fitouts.company.application.CompanyService;
 import com.fitouts.procurement.domain.Material;
 import com.fitouts.procurement.domain.MaterialRepository;
@@ -36,6 +39,7 @@ public class WorkItemService {
     private final WorkItemMasterRepository workItemMasterRepository;
     private final WorkItemMaterialRepository workItemMaterialRepository;
     private final MaterialRepository materialRepository;
+    private final ApprovalScopeTagRepository scopeTagRepository;
 
     public WorkItemResponse create(WorkItemCreateRequest request) {
         UUID companyId = CompanyContext.get();
@@ -70,6 +74,7 @@ public class WorkItemService {
                 .build();
 
         WorkItem saved = workItemRepository.save(workItem);
+        applyScopeTags(saved, request.getScopeTagIds(), true);
         List<WorkItemMaterial> materialLines = saveMaterialLines(saved, request.getMaterialLines());
         applyPricing(saved, materialLines, request.getCostPrice(), costOverride,
                 request.getDefaultRate(), sellingOverride);
@@ -101,6 +106,7 @@ public class WorkItemService {
         if (request.getColorTag() != null) workItem.setColorTag(request.getColorTag());
         if (request.getCostPriceOverride() != null) workItem.setCostPriceOverride(request.getCostPriceOverride());
         if (request.getSellingPriceOverride() != null) workItem.setSellingPriceOverride(request.getSellingPriceOverride());
+        applyScopeTags(workItem, request.getScopeTagIds(), false);
 
         List<WorkItemMaterial> materialLines;
         if (request.getMaterialLines() != null) {
@@ -155,6 +161,11 @@ public class WorkItemService {
                 .build();
 
         WorkItem saved = workItemRepository.save(cloned);
+        Set<ApprovalScopeTag> originalTags = original.getScopeTags() != null
+                ? original.getScopeTags()
+                : Set.of();
+        saved.setScopeTags(new HashSet<>(originalTags));
+        saved = workItemRepository.save(saved);
         List<WorkItemMaterial> originalLines = workItemMaterialRepository.findByWorkItemId(original.getId());
         List<WorkItemMaterialLineRequest> lineRequests = originalLines.stream()
                 .map(line -> WorkItemMaterialLineRequest.builder()
@@ -211,6 +222,9 @@ public class WorkItemService {
             if (wi.getCompany() != null) {
                 wi.getCompany().getUuid();
             }
+            if (wi.getScopeTags() != null) {
+                wi.getScopeTags().size();
+            }
         }
     }
 
@@ -261,6 +275,30 @@ public class WorkItemService {
         return saved;
     }
 
+    private void applyScopeTags(WorkItem workItem, List<UUID> scopeTagIds, boolean creating) {
+        if (scopeTagIds == null) {
+            if (creating) {
+                workItem.setScopeTags(new HashSet<>());
+            }
+            return;
+        }
+        workItem.setScopeTags(resolveScopeTags(scopeTagIds));
+    }
+
+    private Set<ApprovalScopeTag> resolveScopeTags(List<UUID> scopeTagIds) {
+        if (scopeTagIds == null || scopeTagIds.isEmpty()) {
+            return new HashSet<>();
+        }
+        UUID companyId = CompanyContext.get();
+        List<UUID> distinctIds = scopeTagIds.stream().distinct().toList();
+        List<ApprovalScopeTag> found = scopeTagRepository.findByCompanyIdAndDeletedFalseAndIdIn(companyId, distinctIds);
+        List<ApprovalScopeTag> active = found.stream().filter(ApprovalScopeTag::isActive).toList();
+        if (active.size() != distinctIds.size()) {
+            throw new NotFoundException("One or more scope tags were not found");
+        }
+        return new HashSet<>(active);
+    }
+
     private void applyPricing(WorkItem workItem, List<WorkItemMaterial> materialLines,
             BigDecimal manualCost, boolean costOverride, BigDecimal manualSelling, boolean sellingOverride) {
         if (costOverride && manualCost != null) {
@@ -284,6 +322,16 @@ public class WorkItemService {
                 .map(this::mapMaterialLine)
                 .collect(Collectors.toList());
 
+        List<WorkItemScopeTagResponse> scopeTagResponses = workItem.getScopeTags() == null ? List.of()
+                : workItem.getScopeTags().stream()
+                        .sorted((a, b) -> String.valueOf(a.getName()).compareToIgnoreCase(String.valueOf(b.getName())))
+                        .map(tag -> WorkItemScopeTagResponse.builder()
+                                .id(tag.getId())
+                                .code(tag.getCode())
+                                .name(tag.getName())
+                                .build())
+                        .collect(Collectors.toList());
+
         return WorkItemResponse.builder()
                 .id(workItem.getId())
                 .companyId(workItem.getCompany() != null ? workItem.getCompany().getUuid() : null)
@@ -304,6 +352,8 @@ public class WorkItemService {
                 .sellingPriceOverride(workItem.getSellingPriceOverride())
                 .costPriceOverride(workItem.getCostPriceOverride())
                 .materialLines(lineResponses)
+                .scopeTagIds(scopeTagResponses.stream().map(WorkItemScopeTagResponse::getId).toList())
+                .scopeTags(scopeTagResponses)
                 .quantityFormulaType(workItem.getQuantityFormulaType())
                 .icon(workItem.getIcon())
                 .colorTag(workItem.getColorTag())
