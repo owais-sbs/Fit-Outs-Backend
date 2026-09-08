@@ -54,6 +54,8 @@ public class WorkItemUpdateRequest {
 
     private List<WorkItemMaterialLineRequest> materialLines;
 
+    private List<UUID> scopeTagIds;
+
     private QuantityFormulaType quantityFormulaType;
 
     // @Size(max = 50, message = "Icon must not exceed 50 characters")

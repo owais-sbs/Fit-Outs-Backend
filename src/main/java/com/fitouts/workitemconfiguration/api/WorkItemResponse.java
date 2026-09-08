@@ -37,6 +37,8 @@ public class WorkItemResponse {
     private Boolean sellingPriceOverride;
     private Boolean costPriceOverride;
     private List<WorkItemMaterialLineResponse> materialLines;
+    private List<UUID> scopeTagIds;
+    private List<WorkItemScopeTagResponse> scopeTags;
     private QuantityFormulaType quantityFormulaType;
     private String icon;
     private String colorTag;

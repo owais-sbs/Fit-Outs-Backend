@@ -2,7 +2,7 @@
 -- ("Aluminium and glazing"), and the apply cascade needs a stable code to hang package shells
 -- off, so the catalogue is the bridge between the two.
 
-CREATE TABLE trade_package (
+CREATE TABLE IF NOT EXISTS trade_package (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID,
     code VARCHAR(32) NOT NULL,
@@ -18,8 +18,8 @@ CREATE TABLE trade_package (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE UNIQUE INDEX uq_trade_package_global ON trade_package(code) WHERE company_id IS NULL;
-CREATE UNIQUE INDEX uq_trade_package_tenant ON trade_package(company_id, code) WHERE company_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_trade_package_global ON trade_package(code) WHERE company_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_trade_package_tenant ON trade_package(company_id, code) WHERE company_id IS NOT NULL;
 
 -- Retention and payment terms are copied onto a shell when the cascade creates it, so the
 -- commercial defaults do not have to be retyped per project.

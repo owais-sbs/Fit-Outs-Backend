@@ -25,11 +25,8 @@ public class ProjectScopeToggles {
     private boolean swimmingPool;
     private boolean landscape;
 
-    /** Applied to a fit-out or renovation when the caller sends nothing. */
+    /** Empty scope: only ALWAYS and location/building/new-build permits apply. */
     public static ProjectScopeToggles defaults() {
-        ProjectScopeToggles toggles = new ProjectScopeToggles();
-        toggles.demolition = true;
-        toggles.mepLoadChange = true;
-        return toggles;
+        return new ProjectScopeToggles();
     }
 }

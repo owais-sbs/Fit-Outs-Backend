@@ -64,6 +64,8 @@ public class WorkItemCreateRequest {
 
     private List<WorkItemMaterialLineRequest> materialLines;
 
+    private List<UUID> scopeTagIds;
+
     @Builder.Default
     private QuantityFormulaType quantityFormulaType = QuantityFormulaType.MANUAL;
 

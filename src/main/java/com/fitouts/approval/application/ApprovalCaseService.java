@@ -107,6 +107,7 @@ public class ApprovalCaseService {
     private final ProjectRepository projectRepository;
     private final AccountRepository accountRepository;
     private final ObjectMapper objectMapper;
+    private final ScopeFromWorkItems scopeFromWorkItems;
 
     // Resolve and generate
 
@@ -117,7 +118,8 @@ public class ApprovalCaseService {
         Project project = requireProject(projectId);
         UUID companyId = CompanyContext.get();
 
-        Location location = resolveLocation(project, request);
+        ScopeFromWorkItems.DerivedScope derived = scopeFromWorkItems.derive(projectId);
+        Location location = resolveLocation(project, request, derived.toggles());
         if (Boolean.TRUE.equals(request != null ? request.getSaveToProject() : null)) {
             persistLocation(project, location);
         }
@@ -136,12 +138,16 @@ public class ApprovalCaseService {
                 .emirate(location.emirate())
                 .communityName(location.community())
                 .buildingName(location.building())
+                .plotZone(location.plotZone())
                 .jurisdictionMatched(resolution.isJurisdictionMatched())
                 .jurisdictionUnverified(resolution.isJurisdictionUnverified())
                 .matchNote(resolution.getMatchNote())
                 .authorities(resolution.getAuthorities())
                 .cases(cases)
                 .warnings(resolution.getWarnings())
+                .derivedScopeTags(derived.tags())
+                .hasApprovedBoq(derived.hasApprovedBoq())
+                .scopeNote(derived.note())
                 .build();
     }
 
@@ -152,7 +158,8 @@ public class ApprovalCaseService {
         Project project = requireProject(projectId);
         UUID companyId = CompanyContext.get();
 
-        Location location = resolveLocation(project, request);
+        ScopeFromWorkItems.DerivedScope derived = scopeFromWorkItems.derive(projectId);
+        Location location = resolveLocation(project, request, derived.toggles());
         persistLocation(project, location);
 
         JurisdictionResolver.Resolution resolution = resolver.resolve(
@@ -1345,30 +1352,16 @@ public class ApprovalCaseService {
                             ProjectScopeToggles scope, boolean newBuild) {
     }
 
-    private Location resolveLocation(Project project, ApprovalResolveRequest request) {
+    private Location resolveLocation(Project project, ApprovalResolveRequest request,
+                                     ProjectScopeToggles derivedScope) {
         String emirate = firstNonBlank(request != null ? request.getEmirate() : null, project.getEmirate());
         String community = firstNonBlank(request != null ? request.getCommunityName() : null, project.getCommunityName());
         String building = firstNonBlank(request != null ? request.getBuildingName() : null, project.getBuildingName());
         String plotZone = firstNonBlank(request != null ? request.getPlotZone() : null, project.getPlotZone());
 
-        ProjectScopeToggles scope = request != null && request.getScope() != null
-                ? request.getScope()
-                : readScope(project);
-
         boolean newBuild = project.getProjectType() != null
                 && project.getProjectType().toLowerCase(Locale.ROOT).contains("new build");
-        return new Location(emirate, community, building, plotZone, scope, newBuild);
-    }
-
-    private ProjectScopeToggles readScope(Project project) {
-        if (!StringUtils.hasText(project.getScopeTogglesJson())) {
-            return ProjectScopeToggles.defaults();
-        }
-        try {
-            return objectMapper.readValue(project.getScopeTogglesJson(), ProjectScopeToggles.class);
-        } catch (Exception e) {
-            return ProjectScopeToggles.defaults();
-        }
+        return new Location(emirate, community, building, plotZone, derivedScope, newBuild);
     }
 
     private void persistLocation(Project project, Location location) {
