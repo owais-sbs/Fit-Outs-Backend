@@ -24,6 +24,8 @@ import com.fitouts.approvalconfig.domain.ApprovalAuthority;
 import com.fitouts.approvalconfig.domain.ApprovalAuthorityRepository;
 import com.fitouts.approvalconfig.domain.ApprovalDocumentType;
 import com.fitouts.approvalconfig.domain.ApprovalDocumentTypeRepository;
+import com.fitouts.approvalconfig.domain.ApprovalPermitScopeTag;
+import com.fitouts.approvalconfig.domain.ApprovalPermitScopeTagRepository;
 import com.fitouts.approvalconfig.domain.ApprovalPermitType;
 import com.fitouts.approvalconfig.domain.ApprovalPermitTypeRepository;
 import com.fitouts.approvalconfig.domain.ApprovalScopeTag;
@@ -73,10 +75,29 @@ public class ApprovalConfigSeedService {
             new ScopeTagDef("HOARDING", "Road hoarding / lifting",
                     "Hoarding, skip, crane, or lifting on public right of way."));
 
+    /** Catalogue triggers that are satisfied by any one of these scope tags (plain OR). */
+    private static final List<PermitTagLink> PERMIT_SCOPE_TAG_LINKS = List.of(
+            link("P-DEMO", "DEMOLITION"),
+            link("P-MOD", "LAYOUT"),
+            link("P-MOD", "STRUCTURAL"),
+            link("P-MOD", "FACADE"),
+            link("P-MOD", "MEP_LOAD"),
+            link("P-DCD-NOC", "FIRE_LIFE"),
+            link("P-DISCONNECT", "DEMOLITION"),
+            link("P-DISCONNECT", "MEP_LOAD"),
+            link("P-LOAD", "MEP_LOAD"),
+            link("P-SIRA", "SECURITY"),
+            link("P-RTA", "HOARDING"),
+            link("P-NIGHT", "NIGHT"),
+            link("P-HOT", "HOT_WORKS"),
+            link("P-SIGN", "SIGNAGE"),
+            link("P-KITCHEN", "KITCHEN"));
+
     private final ApprovalAuthorityRepository authorityRepository;
     private final ApprovalPermitTypeRepository permitTypeRepository;
     private final ApprovalDocumentTypeRepository documentTypeRepository;
     private final ApprovalScopeTagRepository scopeTagRepository;
+    private final ApprovalPermitScopeTagRepository permitScopeTagRepository;
     private final JurisdictionPackRepository packRepository;
     private final JurisdictionPackPermitRepository packPermitRepository;
     private final JurisdictionPackDocumentRepository packDocumentRepository;
@@ -106,6 +127,7 @@ public class ApprovalConfigSeedService {
                     }
                 }
                 seedScopeTags(companyId);
+                seedPermitScopeTags(companyId);
             });
         }
     }
@@ -122,6 +144,32 @@ public class ApprovalConfigSeedService {
                         created.setActive(true);
                         return scopeTagRepository.save(created);
                     });
+        }
+    }
+
+    private void seedPermitScopeTags(UUID companyId) {
+        if (permitScopeTagRepository.existsByCompanyId(companyId)) {
+            return;
+        }
+        for (PermitTagLink link : PERMIT_SCOPE_TAG_LINKS) {
+            ApprovalPermitType permit = permitTypeRepository
+                    .findByCompanyIdAndPermitCodeAndDeletedFalse(companyId, link.permitCode())
+                    .orElse(null);
+            ApprovalScopeTag tag = scopeTagRepository
+                    .findByCompanyIdAndCodeAndDeletedFalse(companyId, link.tagCode())
+                    .orElse(null);
+            if (permit == null || tag == null) {
+                continue;
+            }
+            if (permitScopeTagRepository.existsByPermitTypeIdAndScopeTagId(permit.getId(), tag.getId())) {
+                continue;
+            }
+            ApprovalPermitScopeTag row = new ApprovalPermitScopeTag();
+            row.setCompanyId(companyId);
+            row.setPermitTypeId(permit.getId());
+            row.setScopeTagId(tag.getId());
+            row.setCreatedByName("seed");
+            permitScopeTagRepository.save(row);
         }
     }
 
@@ -379,6 +427,13 @@ public class ApprovalConfigSeedService {
     }
 
     private record ScopeTagDef(String code, String name, String description) {
+    }
+
+    private record PermitTagLink(String permitCode, String tagCode) {
+    }
+
+    private static PermitTagLink link(String permitCode, String tagCode) {
+        return new PermitTagLink(permitCode, tagCode);
     }
 
     private record PackDef(

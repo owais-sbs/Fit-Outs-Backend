@@ -97,7 +97,7 @@ public class JurisdictionResolver {
     public Resolution resolve(UUID companyId, String emirate, String communityName,
                               String buildingName, ProjectScopeToggles scope) {
         Resolution resolution = new Resolution();
-        ProjectScopeToggles toggles = scope != null ? scope : ProjectScopeToggles.defaults();
+        ProjectScopeToggles toggles = scope != null ? scope : new ProjectScopeToggles();
         Map<String, Authority> authorities = authorityIndex(companyId);
         String resolvedEmirate = (emirate == null || emirate.isBlank()) ? "Dubai" : emirate.trim();
 

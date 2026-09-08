@@ -1,8 +1,6 @@
--- Module 52 Wave 2: approval cases, checklists, submissions, fees and deposits.
--- One project spawns many cases; the case is the atomic object that carries an owner,
--- a checklist, an SLA clock, a fee, an outcome document and an expiry date.
+-- Module 52 Wave 2: approval cases. Idempotent for databases that already ran V57 under the old name.
 
-CREATE TABLE approval_case (
+CREATE TABLE IF NOT EXISTS approval_case (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id BIGINT NOT NULL,
     company_id UUID NOT NULL,
@@ -37,17 +35,25 @@ CREATE TABLE approval_case (
     notes TEXT,
     created_by BIGINT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT uq_approval_case_number UNIQUE (company_id, case_number)
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_approval_case_project ON approval_case(project_id);
-CREATE INDEX idx_approval_case_company_status ON approval_case(company_id, status);
-CREATE INDEX idx_approval_case_expiry ON approval_case(expiry_date);
-CREATE INDEX idx_approval_case_sla ON approval_case(sla_due_date);
-CREATE INDEX idx_approval_case_deposit ON approval_case(company_id, deposit_status);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'uq_approval_case_number'
+    ) THEN
+        ALTER TABLE approval_case ADD CONSTRAINT uq_approval_case_number UNIQUE (company_id, case_number);
+    END IF;
+END $$;
 
-CREATE TABLE case_checklist_item (
+CREATE INDEX IF NOT EXISTS idx_approval_case_project ON approval_case(project_id);
+CREATE INDEX IF NOT EXISTS idx_approval_case_company_status ON approval_case(company_id, status);
+CREATE INDEX IF NOT EXISTS idx_approval_case_expiry ON approval_case(expiry_date);
+CREATE INDEX IF NOT EXISTS idx_approval_case_sla ON approval_case(sla_due_date);
+CREATE INDEX IF NOT EXISTS idx_approval_case_deposit ON approval_case(company_id, deposit_status);
+
+CREATE TABLE IF NOT EXISTS case_checklist_item (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     case_uuid UUID NOT NULL REFERENCES approval_case(uuid) ON DELETE CASCADE,
     document_type_code VARCHAR(32) NOT NULL,
@@ -60,15 +66,27 @@ CREATE TABLE case_checklist_item (
     waived_by BIGINT,
     waiver_reason TEXT,
     sort_order INT NOT NULL DEFAULT 0,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT uq_case_checklist_item UNIQUE (case_uuid, document_type_code),
-    CONSTRAINT chk_case_checklist_status CHECK (status IN
-        ('MISSING', 'EXPIRED', 'ATTACHED', 'NOT_APPLICABLE', 'WAIVED'))
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_case_checklist_case ON case_checklist_item(case_uuid);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'uq_case_checklist_item'
+    ) THEN
+        ALTER TABLE case_checklist_item ADD CONSTRAINT uq_case_checklist_item UNIQUE (case_uuid, document_type_code);
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'chk_case_checklist_status'
+    ) THEN
+        ALTER TABLE case_checklist_item ADD CONSTRAINT chk_case_checklist_status CHECK (status IN
+            ('MISSING', 'EXPIRED', 'ATTACHED', 'NOT_APPLICABLE', 'WAIVED'));
+    END IF;
+END $$;
 
-CREATE TABLE case_submission (
+CREATE INDEX IF NOT EXISTS idx_case_checklist_case ON case_checklist_item(case_uuid);
+
+CREATE TABLE IF NOT EXISTS case_submission (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     case_uuid UUID NOT NULL REFERENCES approval_case(uuid) ON DELETE CASCADE,
     version INT NOT NULL,
@@ -81,15 +99,27 @@ CREATE TABLE case_submission (
     outcome_date DATE,
     turnaround_days INT,
     notes TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT uq_case_submission_version UNIQUE (case_uuid, version),
-    CONSTRAINT chk_case_submission_outcome CHECK (outcome IN
-        ('PENDING', 'APPROVED', 'COMMENTS', 'REJECTED'))
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_case_submission_case ON case_submission(case_uuid);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'uq_case_submission_version'
+    ) THEN
+        ALTER TABLE case_submission ADD CONSTRAINT uq_case_submission_version UNIQUE (case_uuid, version);
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'chk_case_submission_outcome'
+    ) THEN
+        ALTER TABLE case_submission ADD CONSTRAINT chk_case_submission_outcome CHECK (outcome IN
+            ('PENDING', 'APPROVED', 'COMMENTS', 'REJECTED'));
+    END IF;
+END $$;
 
-CREATE TABLE case_comment (
+CREATE INDEX IF NOT EXISTS idx_case_submission_case ON case_submission(case_uuid);
+
+CREATE TABLE IF NOT EXISTS case_comment (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     case_uuid UUID NOT NULL REFERENCES approval_case(uuid) ON DELETE CASCADE,
     submission_uuid UUID REFERENCES case_submission(uuid) ON DELETE CASCADE,
@@ -103,11 +133,9 @@ CREATE TABLE case_comment (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_case_comment_case ON case_comment(case_uuid);
+CREATE INDEX IF NOT EXISTS idx_case_comment_case ON case_comment(case_uuid);
 
--- Deposits are receivables, not expenses. is_refundable plus the refund dates are what
--- keeps them on the finance dashboard until the money actually comes back.
-CREATE TABLE case_fee (
+CREATE TABLE IF NOT EXISTS case_fee (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     case_uuid UUID NOT NULL REFERENCES approval_case(uuid) ON DELETE CASCADE,
     project_id BIGINT NOT NULL,
@@ -126,14 +154,22 @@ CREATE TABLE case_fee (
     notes TEXT,
     created_by BIGINT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT chk_case_fee_type CHECK (type IN ('FEE', 'DEPOSIT', 'FINE', 'KNOWLEDGE_FEE'))
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_case_fee_case ON case_fee(case_uuid);
-CREATE INDEX idx_case_fee_refundable ON case_fee(company_id, is_refundable, refund_received_date);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'chk_case_fee_type'
+    ) THEN
+        ALTER TABLE case_fee ADD CONSTRAINT chk_case_fee_type CHECK (type IN ('FEE', 'DEPOSIT', 'FINE', 'KNOWLEDGE_FEE'));
+    END IF;
+END $$;
 
-CREATE TABLE approval_case_event (
+CREATE INDEX IF NOT EXISTS idx_case_fee_case ON case_fee(case_uuid);
+CREATE INDEX IF NOT EXISTS idx_case_fee_refundable ON case_fee(company_id, is_refundable, refund_received_date);
+
+CREATE TABLE IF NOT EXISTS approval_case_event (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     case_uuid UUID NOT NULL REFERENCES approval_case(uuid) ON DELETE CASCADE,
     from_status VARCHAR(32),
@@ -144,11 +180,9 @@ CREATE TABLE approval_case_event (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_approval_case_event_case ON approval_case_event(case_uuid, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_approval_case_event_case ON approval_case_event(case_uuid, created_at DESC);
 
--- The Notifications page is a stub today, so expiry and SLA alerts need somewhere to land
--- besides email.
-CREATE TABLE in_app_notification (
+CREATE TABLE IF NOT EXISTS in_app_notification (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL,
     account_id BIGINT,
@@ -164,12 +198,11 @@ CREATE TABLE in_app_notification (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE UNIQUE INDEX uq_in_app_notification_dedupe ON in_app_notification(dedupe_key)
+CREATE UNIQUE INDEX IF NOT EXISTS uq_in_app_notification_dedupe ON in_app_notification(dedupe_key)
     WHERE dedupe_key IS NOT NULL;
-CREATE INDEX idx_in_app_notification_account ON in_app_notification(account_id, read_at, created_at DESC);
-CREATE INDEX idx_in_app_notification_company ON in_app_notification(company_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_in_app_notification_account ON in_app_notification(account_id, read_at, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_in_app_notification_company ON in_app_notification(company_id, created_at DESC);
 
--- Structured project location and scope. The resolver cannot work from a free-text address.
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS emirate VARCHAR(64);
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS community_name VARCHAR(180);
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS building_name VARCHAR(180);

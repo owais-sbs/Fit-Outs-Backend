@@ -35,7 +35,7 @@ public class ApprovalCaseController extends BaseController {
     public Object generate(@PathVariable Long projectId,
                            @RequestBody(required = false) ApprovalResolveRequest request) {
         try {
-            return successResponse("Approval cases generated", caseService.generate(projectId, request));
+            return successResponse("Approval permits generated", caseService.generate(projectId, request));
         } catch (Exception e) {
             return failureResponse("Failed to generate approvals", e.getMessage());
         }
@@ -66,7 +66,7 @@ public class ApprovalCaseController extends BaseController {
         try {
             return successResponse(caseService.get(caseUuid));
         } catch (Exception e) {
-            return failureResponse("Failed to load approval case", e.getMessage());
+            return failureResponse("Failed to load permit", e.getMessage());
         }
     }
 
@@ -75,7 +75,7 @@ public class ApprovalCaseController extends BaseController {
         try {
             return successResponse(caseService.patch(caseUuid, request));
         } catch (Exception e) {
-            return failureResponse("Failed to update approval case", e.getMessage());
+            return failureResponse("Failed to update permit", e.getMessage());
         }
     }
 
@@ -138,7 +138,7 @@ public class ApprovalCaseController extends BaseController {
     @PostMapping("/api/approval-cases/{caseUuid}/renew")
     public Object renew(@PathVariable UUID caseUuid) {
         try {
-            return successResponse("Renewal case created", caseService.renew(caseUuid));
+            return successResponse("Renewal permit created", caseService.renew(caseUuid));
         } catch (Exception e) {
             return failureResponse("Failed to open renewal", e.getMessage());
         }

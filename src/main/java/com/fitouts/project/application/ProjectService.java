@@ -11,7 +11,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import com.fitouts.approvalconfig.application.ProjectPermitService;
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.lead.domain.Lead;
@@ -25,11 +24,9 @@ import com.fitouts.shared.error.NotFoundException;
 public class ProjectService {
 
     private final ProjectRepository projectRepository;
-    private final ProjectPermitService projectPermitService;
 
-    public ProjectService(ProjectRepository projectRepository, ProjectPermitService projectPermitService) {
+    public ProjectService(ProjectRepository projectRepository) {
         this.projectRepository = projectRepository;
-        this.projectPermitService = projectPermitService;
     }
 
     @Transactional
@@ -46,9 +43,7 @@ public class ProjectService {
         if (request.getProgress() == null) {
             request.setProgress(0);
         }
-        Project saved = projectRepository.save(request);
-        projectPermitService.instantiateForProject(saved);
-        return saved;
+        return projectRepository.save(request);
     }
 
     public List<Project> getAll() {
