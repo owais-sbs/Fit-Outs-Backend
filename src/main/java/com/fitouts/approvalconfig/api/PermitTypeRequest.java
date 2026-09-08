@@ -1,5 +1,8 @@
 package com.fitouts.approvalconfig.api;
 
+import java.util.List;
+import java.util.UUID;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -17,4 +20,5 @@ public class PermitTypeRequest {
     private String renewable;
     private String blocksActivities;
     private Boolean active;
+    private List<UUID> scopeTagIds;
 }

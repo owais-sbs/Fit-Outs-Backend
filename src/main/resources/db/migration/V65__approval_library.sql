@@ -1,8 +1,7 @@
 -- Module 52 Wave 1: UAE authority and community approval reference library.
--- Rows with company_id IS NULL are the global seed catalogue shared by every tenant.
--- Rows with company_id set are tenant additions (a community or building not in the seed).
+-- Idempotent: this database may already have these objects from the original V56 filename.
 
-CREATE TABLE authority (
+CREATE TABLE IF NOT EXISTS authority (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID,
     code VARCHAR(32) NOT NULL,
@@ -20,19 +19,25 @@ CREATE TABLE authority (
     verified_date DATE,
     source_url TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT chk_authority_type CHECK (type IN (
-        'REGULATOR', 'MASTER_DEVELOPER', 'BUILDING_MANAGEMENT', 'UTILITY', 'SPECIAL'))
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE UNIQUE INDEX uq_authority_code_global ON authority(code) WHERE company_id IS NULL;
-CREATE UNIQUE INDEX uq_authority_code_tenant ON authority(company_id, code) WHERE company_id IS NOT NULL;
-CREATE INDEX idx_authority_emirate ON authority(emirate);
-CREATE INDEX idx_authority_type ON authority(type);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'chk_authority_type'
+    ) THEN
+        ALTER TABLE authority ADD CONSTRAINT chk_authority_type CHECK (type IN (
+            'REGULATOR', 'MASTER_DEVELOPER', 'BUILDING_MANAGEMENT', 'UTILITY', 'SPECIAL'));
+    END IF;
+END $$;
 
--- The jurisdiction resolver lookup. The seed file has no jurisdiction table; these rows are
--- derived by splitting authority.jurisdiction_areas prose, so they land with is_verified = FALSE.
-CREATE TABLE jurisdiction (
+CREATE UNIQUE INDEX IF NOT EXISTS uq_authority_code_global ON authority(code) WHERE company_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_authority_code_tenant ON authority(company_id, code) WHERE company_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_authority_emirate ON authority(emirate);
+CREATE INDEX IF NOT EXISTS idx_authority_type ON authority(type);
+
+CREATE TABLE IF NOT EXISTS jurisdiction (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID,
     emirate VARCHAR(64) NOT NULL,
@@ -53,20 +58,18 @@ CREATE TABLE jurisdiction (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE UNIQUE INDEX uq_jurisdiction_global ON jurisdiction(community_key, COALESCE(building_name, ''))
+CREATE UNIQUE INDEX IF NOT EXISTS uq_jurisdiction_global ON jurisdiction(community_key, COALESCE(building_name, ''))
     WHERE company_id IS NULL;
-CREATE UNIQUE INDEX uq_jurisdiction_tenant ON jurisdiction(company_id, community_key, COALESCE(building_name, ''))
+CREATE UNIQUE INDEX IF NOT EXISTS uq_jurisdiction_tenant ON jurisdiction(company_id, community_key, COALESCE(building_name, ''))
     WHERE company_id IS NOT NULL;
-CREATE INDEX idx_jurisdiction_emirate ON jurisdiction(emirate);
-CREATE INDEX idx_jurisdiction_community_key ON jurisdiction(community_key);
+CREATE INDEX IF NOT EXISTS idx_jurisdiction_emirate ON jurisdiction(emirate);
+CREATE INDEX IF NOT EXISTS idx_jurisdiction_community_key ON jurisdiction(community_key);
 
-CREATE TABLE permit_type (
+CREATE TABLE IF NOT EXISTS permit_type (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID,
     code VARCHAR(32) NOT NULL,
     name VARCHAR(255) NOT NULL,
-    -- The seed names an issuing body type ("Master Developer") rather than a specific authority
-    -- for community permits, because which developer applies depends on the project's community.
     authority_code VARCHAR(32),
     authority_type VARCHAR(32),
     typical_trigger TEXT,
@@ -97,11 +100,11 @@ CREATE TABLE permit_type (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE UNIQUE INDEX uq_permit_type_global ON permit_type(code) WHERE company_id IS NULL;
-CREATE UNIQUE INDEX uq_permit_type_tenant ON permit_type(company_id, code) WHERE company_id IS NOT NULL;
-CREATE INDEX idx_permit_type_authority ON permit_type(authority_code);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_permit_type_global ON permit_type(code) WHERE company_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_permit_type_tenant ON permit_type(company_id, code) WHERE company_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_permit_type_authority ON permit_type(authority_code);
 
-CREATE TABLE document_type (
+CREATE TABLE IF NOT EXISTS document_type (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID,
     code VARCHAR(32) NOT NULL,
@@ -117,12 +120,10 @@ CREATE TABLE document_type (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE UNIQUE INDEX uq_document_type_global ON document_type(code) WHERE company_id IS NULL;
-CREATE UNIQUE INDEX uq_document_type_tenant ON document_type(company_id, code) WHERE company_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_document_type_global ON document_type(code) WHERE company_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_document_type_tenant ON document_type(company_id, code) WHERE company_id IS NOT NULL;
 
--- Company-level compliance documents (trade licence, insurances, specialist approvals).
--- These are what pack assembly auto-collects, and what the company gate checks before submission.
-CREATE TABLE company_compliance (
+CREATE TABLE IF NOT EXISTS company_compliance (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL,
     document_type_code VARCHAR(32) NOT NULL,
@@ -134,15 +135,27 @@ CREATE TABLE company_compliance (
     renewal_owner_account_id BIGINT,
     notes TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT uq_company_compliance UNIQUE (company_id, document_type_code),
-    CONSTRAINT chk_company_compliance_status CHECK (status IN ('MISSING', 'ATTACHED', 'EXPIRED', 'NOT_APPLICABLE'))
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_company_compliance_expiry ON company_compliance(company_id, expiry_date);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'uq_company_compliance'
+    ) THEN
+        ALTER TABLE company_compliance ADD CONSTRAINT uq_company_compliance UNIQUE (company_id, document_type_code);
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'chk_company_compliance_status'
+    ) THEN
+        ALTER TABLE company_compliance ADD CONSTRAINT chk_company_compliance_status
+            CHECK (status IN ('MISSING', 'ATTACHED', 'EXPIRED', 'NOT_APPLICABLE'));
+    END IF;
+END $$;
 
--- Tracks which seed file version was loaded, so re-import is idempotent and auditable.
-CREATE TABLE approval_seed_import (
+CREATE INDEX IF NOT EXISTS idx_company_compliance_expiry ON company_compliance(company_id, expiry_date);
+
+CREATE TABLE IF NOT EXISTS approval_seed_import (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     source VARCHAR(255) NOT NULL,
     seed_version VARCHAR(32),

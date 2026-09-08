@@ -1,8 +1,18 @@
 package com.fitouts.approvalconfig.application;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -12,6 +22,8 @@ import com.fitouts.approvalconfig.api.AuthorityRequest;
 import com.fitouts.approvalconfig.api.AuthorityResponse;
 import com.fitouts.approvalconfig.api.DocumentTypeRequest;
 import com.fitouts.approvalconfig.api.DocumentTypeResponse;
+import com.fitouts.approvalconfig.api.LinkedPermitTypeResponse;
+import com.fitouts.approvalconfig.api.LinkedScopeTagResponse;
 import com.fitouts.approvalconfig.api.PermitTypeRequest;
 import com.fitouts.approvalconfig.api.PermitTypeResponse;
 import com.fitouts.approvalconfig.api.ScopeTagRequest;
@@ -20,10 +32,13 @@ import com.fitouts.approvalconfig.domain.ApprovalAuthority;
 import com.fitouts.approvalconfig.domain.ApprovalAuthorityRepository;
 import com.fitouts.approvalconfig.domain.ApprovalDocumentType;
 import com.fitouts.approvalconfig.domain.ApprovalDocumentTypeRepository;
+import com.fitouts.approvalconfig.domain.ApprovalPermitScopeTag;
+import com.fitouts.approvalconfig.domain.ApprovalPermitScopeTagRepository;
 import com.fitouts.approvalconfig.domain.ApprovalPermitType;
 import com.fitouts.approvalconfig.domain.ApprovalPermitTypeRepository;
 import com.fitouts.approvalconfig.domain.ApprovalScopeTag;
 import com.fitouts.approvalconfig.domain.ApprovalScopeTagRepository;
+import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.shared.context.CompanyContext;
 import com.fitouts.shared.error.NotFoundException;
 
@@ -38,23 +53,26 @@ public class ApprovalCatalogService {
     private final ApprovalPermitTypeRepository permitTypeRepository;
     private final ApprovalDocumentTypeRepository documentTypeRepository;
     private final ApprovalScopeTagRepository scopeTagRepository;
+    private final ApprovalPermitScopeTagRepository permitScopeTagRepository;
     private final JurisdictionPackService packService;
 
+    @Transactional
     public ApprovalCatalogBundleResponse loadCatalog() {
         UUID companyId = requireCompany();
         seedService.ensureSeeded(companyId);
+        CatalogLinks links = loadLinks(companyId);
         return ApprovalCatalogBundleResponse.builder()
                 .authorities(authorityRepository.findByCompanyIdAndDeletedFalseOrderByNameAsc(companyId).stream()
                         .map(this::toAuthority)
                         .toList())
                 .permitTypes(permitTypeRepository.findByCompanyIdAndDeletedFalseOrderByPermitCodeAsc(companyId).stream()
-                        .map(this::toPermit)
+                        .map(p -> toPermit(p, links))
                         .toList())
                 .documentTypes(documentTypeRepository.findByCompanyIdAndDeletedFalseOrderByDocCodeAsc(companyId).stream()
                         .map(this::toDocument)
                         .toList())
                 .scopeTags(scopeTagRepository.findByCompanyIdAndDeletedFalseOrderByNameAsc(companyId).stream()
-                        .map(this::toScopeTag)
+                        .map(t -> toScopeTag(t, links))
                         .toList())
                 .packs(packService.list(false))
                 .build();
@@ -98,8 +116,9 @@ public class ApprovalCatalogService {
     public List<PermitTypeResponse> listPermitTypes() {
         UUID companyId = requireCompany();
         seedService.ensureSeeded(companyId);
+        CatalogLinks links = loadLinks(companyId);
         return permitTypeRepository.findByCompanyIdAndDeletedFalseOrderByPermitCodeAsc(companyId).stream()
-                .map(this::toPermit)
+                .map(p -> toPermit(p, links))
                 .toList();
     }
 
@@ -110,14 +129,18 @@ public class ApprovalCatalogService {
         ApprovalPermitType entity = new ApprovalPermitType();
         entity.setCompanyId(companyId);
         applyPermit(entity, request, true);
-        return toPermit(permitTypeRepository.save(entity));
+        entity = permitTypeRepository.save(entity);
+        replaceScopeTagsForPermit(entity, request.getScopeTagIds());
+        return toPermit(entity, loadLinks(companyId));
     }
 
     @Transactional
     public PermitTypeResponse updatePermitType(UUID id, PermitTypeRequest request) {
         ApprovalPermitType entity = permit(id);
         applyPermit(entity, request, false);
-        return toPermit(permitTypeRepository.save(entity));
+        entity = permitTypeRepository.save(entity);
+        replaceScopeTagsForPermit(entity, request.getScopeTagIds());
+        return toPermit(entity, loadLinks(entity.getCompanyId()));
     }
 
     @Transactional
@@ -166,8 +189,9 @@ public class ApprovalCatalogService {
     public List<ScopeTagResponse> listScopeTags() {
         UUID companyId = requireCompany();
         seedService.ensureSeeded(companyId);
+        CatalogLinks links = loadLinks(companyId);
         return scopeTagRepository.findByCompanyIdAndDeletedFalseOrderByNameAsc(companyId).stream()
-                .map(this::toScopeTag)
+                .map(t -> toScopeTag(t, links))
                 .toList();
     }
 
@@ -178,14 +202,18 @@ public class ApprovalCatalogService {
         ApprovalScopeTag entity = new ApprovalScopeTag();
         entity.setCompanyId(companyId);
         applyScopeTag(entity, request, true);
-        return toScopeTag(scopeTagRepository.save(entity));
+        entity = scopeTagRepository.save(entity);
+        replacePermitsForScopeTag(entity, request.getPermitTypeIds());
+        return toScopeTag(entity, loadLinks(companyId));
     }
 
     @Transactional
     public ScopeTagResponse updateScopeTag(UUID id, ScopeTagRequest request) {
         ApprovalScopeTag entity = scopeTag(id);
         applyScopeTag(entity, request, false);
-        return toScopeTag(scopeTagRepository.save(entity));
+        entity = scopeTagRepository.save(entity);
+        replacePermitsForScopeTag(entity, request.getPermitTypeIds());
+        return toScopeTag(entity, loadLinks(entity.getCompanyId()));
     }
 
     @Transactional
@@ -345,7 +373,25 @@ public class ApprovalCatalogService {
                 .build();
     }
 
-    private PermitTypeResponse toPermit(ApprovalPermitType entity) {
+    private PermitTypeResponse toPermit(ApprovalPermitType entity, CatalogLinks links) {
+        List<ApprovalPermitScopeTag> rows = links.byPermit.getOrDefault(entity.getId(), List.of());
+        List<LinkedScopeTagResponse> scopeTags = rows.stream()
+                .map(row -> {
+                    ApprovalScopeTag tag = links.tags.get(row.getScopeTagId());
+                    if (tag == null || tag.isDeleted()) {
+                        return null;
+                    }
+                    return LinkedScopeTagResponse.builder()
+                            .id(tag.getId())
+                            .code(tag.getCode())
+                            .name(tag.getName())
+                            .createdByName(row.getCreatedByName())
+                            .createdAt(row.getCreatedAt())
+                            .build();
+                })
+                .filter(item -> item != null)
+                .sorted(Comparator.comparing(LinkedScopeTagResponse::getName, String.CASE_INSENSITIVE_ORDER))
+                .toList();
         return PermitTypeResponse.builder()
                 .id(entity.getId())
                 .permitCode(entity.getPermitCode())
@@ -360,6 +406,8 @@ public class ApprovalCatalogService {
                 .blocksActivities(entity.getBlocksActivities())
                 .active(entity.isActive())
                 .updatedAt(entity.getUpdatedAt())
+                .scopeTagIds(scopeTags.stream().map(LinkedScopeTagResponse::getId).toList())
+                .scopeTags(scopeTags)
                 .build();
     }
 
@@ -377,7 +425,25 @@ public class ApprovalCatalogService {
                 .build();
     }
 
-    private ScopeTagResponse toScopeTag(ApprovalScopeTag entity) {
+    private ScopeTagResponse toScopeTag(ApprovalScopeTag entity, CatalogLinks links) {
+        List<ApprovalPermitScopeTag> rows = links.byTag.getOrDefault(entity.getId(), List.of());
+        List<LinkedPermitTypeResponse> triggered = rows.stream()
+                .map(row -> {
+                    ApprovalPermitType permit = links.permits.get(row.getPermitTypeId());
+                    if (permit == null || permit.isDeleted()) {
+                        return null;
+                    }
+                    return LinkedPermitTypeResponse.builder()
+                            .id(permit.getId())
+                            .permitCode(permit.getPermitCode())
+                            .name(permit.getName())
+                            .createdByName(row.getCreatedByName())
+                            .createdAt(row.getCreatedAt())
+                            .build();
+                })
+                .filter(item -> item != null)
+                .sorted(Comparator.comparing(LinkedPermitTypeResponse::getPermitCode, String.CASE_INSENSITIVE_ORDER))
+                .toList();
         return ScopeTagResponse.builder()
                 .id(entity.getId())
                 .code(entity.getCode())
@@ -385,7 +451,126 @@ public class ApprovalCatalogService {
                 .description(entity.getDescription())
                 .active(entity.isActive())
                 .updatedAt(entity.getUpdatedAt())
+                .permitTypeIds(triggered.stream().map(LinkedPermitTypeResponse::getId).toList())
+                .triggeredPermits(triggered)
                 .build();
+    }
+
+    private void replaceScopeTagsForPermit(ApprovalPermitType permit, List<UUID> scopeTagIds) {
+        if (scopeTagIds == null) {
+            return;
+        }
+        syncLinks(permit.getCompanyId(), permit.getId(), new LinkedHashSet<>(scopeTagIds), true);
+    }
+
+    private void replacePermitsForScopeTag(ApprovalScopeTag tag, List<UUID> permitTypeIds) {
+        if (permitTypeIds == null) {
+            return;
+        }
+        syncLinks(tag.getCompanyId(), tag.getId(), new LinkedHashSet<>(permitTypeIds), false);
+    }
+
+    /**
+     * Keeps existing rows (and their created_by trail) when the pair is still selected;
+     * only inserts newly added pairs and deletes removed ones.
+     */
+    private void syncLinks(UUID companyId, UUID anchorId, Set<UUID> desiredOtherIds, boolean anchorIsPermit) {
+        List<ApprovalPermitScopeTag> existing = anchorIsPermit
+                ? permitScopeTagRepository.findByPermitTypeId(anchorId)
+                : permitScopeTagRepository.findByScopeTagId(anchorId);
+
+        Set<UUID> desired = desiredOtherIds.stream().filter(id -> id != null).collect(Collectors.toCollection(LinkedHashSet::new));
+        if (anchorIsPermit) {
+            validateScopeTags(companyId, desired);
+        } else {
+            validatePermits(companyId, desired);
+        }
+
+        Set<UUID> keep = new HashSet<>();
+        for (ApprovalPermitScopeTag row : existing) {
+            UUID otherId = anchorIsPermit ? row.getScopeTagId() : row.getPermitTypeId();
+            if (desired.contains(otherId)) {
+                keep.add(otherId);
+            } else {
+                permitScopeTagRepository.delete(row);
+            }
+        }
+
+        Actor actor = currentActor();
+        for (UUID otherId : desired) {
+            if (keep.contains(otherId)) {
+                continue;
+            }
+            ApprovalPermitScopeTag row = new ApprovalPermitScopeTag();
+            row.setCompanyId(companyId);
+            if (anchorIsPermit) {
+                row.setPermitTypeId(anchorId);
+                row.setScopeTagId(otherId);
+            } else {
+                row.setPermitTypeId(otherId);
+                row.setScopeTagId(anchorId);
+            }
+            row.setCreatedBy(actor.accountId());
+            row.setCreatedByName(actor.name());
+            permitScopeTagRepository.save(row);
+        }
+    }
+
+    private void validateScopeTags(UUID companyId, Set<UUID> ids) {
+        if (ids.isEmpty()) {
+            return;
+        }
+        List<ApprovalScopeTag> found = scopeTagRepository.findByCompanyIdAndDeletedFalseAndIdIn(companyId, ids);
+        if (found.size() != ids.size()) {
+            throw new NotFoundException("One or more scope tags were not found");
+        }
+    }
+
+    private void validatePermits(UUID companyId, Set<UUID> ids) {
+        if (ids.isEmpty()) {
+            return;
+        }
+        List<ApprovalPermitType> found = permitTypeRepository.findByCompanyIdAndDeletedFalseAndIdIn(companyId, ids);
+        if (found.size() != ids.size()) {
+            throw new NotFoundException("One or more permit types were not found");
+        }
+    }
+
+    private CatalogLinks loadLinks(UUID companyId) {
+        List<ApprovalPermitType> permits = permitTypeRepository.findByCompanyIdAndDeletedFalseOrderByPermitCodeAsc(companyId);
+        List<ApprovalScopeTag> tags = scopeTagRepository.findByCompanyIdAndDeletedFalseOrderByNameAsc(companyId);
+        Map<UUID, ApprovalPermitType> permitMap = permits.stream()
+                .collect(Collectors.toMap(ApprovalPermitType::getId, p -> p));
+        Map<UUID, ApprovalScopeTag> tagMap = tags.stream()
+                .collect(Collectors.toMap(ApprovalScopeTag::getId, t -> t));
+        Map<UUID, List<ApprovalPermitScopeTag>> byPermit = new HashMap<>();
+        Map<UUID, List<ApprovalPermitScopeTag>> byTag = new HashMap<>();
+        for (ApprovalPermitScopeTag row : permitScopeTagRepository.findByCompanyId(companyId)) {
+            byPermit.computeIfAbsent(row.getPermitTypeId(), k -> new ArrayList<>()).add(row);
+            byTag.computeIfAbsent(row.getScopeTagId(), k -> new ArrayList<>()).add(row);
+        }
+        return new CatalogLinks(permitMap, tagMap, byPermit, byTag);
+    }
+
+    private Actor currentActor() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof AuthPrincipal principal) {
+            String name = StringUtils.hasText(principal.getFullName())
+                    ? principal.getFullName()
+                    : principal.getEmail();
+            return new Actor(principal.getAccountId(), name);
+        }
+        return new Actor(null, null);
+    }
+
+    private record CatalogLinks(
+            Map<UUID, ApprovalPermitType> permits,
+            Map<UUID, ApprovalScopeTag> tags,
+            Map<UUID, List<ApprovalPermitScopeTag>> byPermit,
+            Map<UUID, List<ApprovalPermitScopeTag>> byTag) {
+    }
+
+    private record Actor(Long accountId, String name) {
     }
 
     private UUID requireCompany() {
