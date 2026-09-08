@@ -45,6 +45,7 @@ public class BillingService {
 
     private final BillingMilestoneRepository milestoneRepository;
     private final PaymentRequestRepository paymentRequestRepository;
+    private final BillingApprovalEventService billingApprovalEventService;
     private final ProjectService projectService;
     private final ScheduleActivityRepository activityRepository;
     private final BillingPaymentEmailService billingPaymentEmailService;
@@ -164,6 +165,7 @@ public class BillingService {
 
         milestone.setStatus(BillingStatus.PENDING_PM);
         milestoneRepository.save(milestone);
+        recordEvent(pr, "SUBMITTED", "FINANCE", principal.getAccountId(), pr.getNotes());
 
         return toPaymentResponse(pr, milestone);
     }
@@ -201,7 +203,9 @@ public class BillingService {
         BillingMilestone milestone = requireMilestoneByUuid(pr.getMilestoneUuid());
         milestone.setStatus(BillingStatus.PENDING_PM);
         milestoneRepository.save(milestone);
-        return toPaymentResponse(paymentRequestRepository.save(pr), milestone);
+        PaymentRequest saved = paymentRequestRepository.save(pr);
+        recordEvent(saved, "SUBMITTED", "FINANCE", principal.getAccountId(), saved.getNotes());
+        return toPaymentResponse(saved, milestone);
     }
 
     @Transactional(readOnly = true)
@@ -239,12 +243,16 @@ public class BillingService {
             requireProjectManagerRole(principal);
             pr.setStatus(BillingStatus.PENDING_DIRECTOR);
             milestone.setStatus(BillingStatus.PENDING_DIRECTOR);
+            paymentRequestRepository.save(pr);
+            milestoneRepository.save(milestone);
+            recordEvent(pr, "APPROVED", "PM", principal.getAccountId(), comments);
         } else if (pr.getStatus() == BillingStatus.PENDING_DIRECTOR) {
             requireDirectorRole(principal);
             pr.setStatus(BillingStatus.ISSUED);
             milestone.setStatus(BillingStatus.ISSUED);
             paymentRequestRepository.save(pr);
             milestoneRepository.save(milestone);
+            recordEvent(pr, "APPROVED", "DIRECTOR", principal.getAccountId(), comments);
             BillingPaymentEmailService.SendResult email =
                     billingPaymentEmailService.notifyClient(project, milestone, pr);
             pr.setDecidedBy(principal.getAccountId());
@@ -279,6 +287,7 @@ public class BillingService {
         } else {
             throw new BadRequestException("Only pending payment requests can be rejected");
         }
+        String rejectStep = pr.getStatus() == BillingStatus.PENDING_PM ? "PM" : "DIRECTOR";
         pr.setStatus(BillingStatus.DRAFT);
         pr.setNotes(appendReason(pr.getNotes(), request.getReason().trim()));
         pr.setDecidedBy(principal.getAccountId());
@@ -286,7 +295,9 @@ public class BillingService {
         BillingMilestone milestone = requireMilestoneByUuid(pr.getMilestoneUuid());
         milestone.setStatus(BillingStatus.DRAFT);
         milestoneRepository.save(milestone);
-        return toPaymentResponse(paymentRequestRepository.save(pr), milestone);
+        PaymentRequest saved = paymentRequestRepository.save(pr);
+        recordEvent(saved, "REJECTED", rejectStep, principal.getAccountId(), request.getReason().trim());
+        return toPaymentResponse(saved, milestone);
     }
 
     @Transactional
@@ -302,7 +313,9 @@ public class BillingService {
         BillingMilestone milestone = requireMilestoneByUuid(pr.getMilestoneUuid());
         milestone.setStatus(BillingStatus.PAID);
         milestoneRepository.save(milestone);
-        return toPaymentResponse(paymentRequestRepository.save(pr), milestone);
+        PaymentRequest saved = paymentRequestRepository.save(pr);
+        recordEvent(saved, "APPROVED", "CLIENT", principal.getAccountId(), "Marked paid");
+        return toPaymentResponse(saved, milestone);
     }
 
     @Transactional(readOnly = true)
@@ -381,6 +394,7 @@ public class BillingService {
 
             milestone.setStatus(BillingStatus.PENDING_PM);
             milestoneRepository.save(milestone);
+            recordEvent(pr, "SUBMITTED", "FINANCE", null, pr.getNotes());
         }
     }
 
@@ -484,23 +498,39 @@ public class BillingService {
                 .dueDate(milestone != null ? milestone.getDueDate() : null)
                 .clientEmailSent(clientEmailSent)
                 .clientEmail(clientEmail)
+                .approvalLog(List.of())
                 .build();
+    }
+
+    private void recordEvent(PaymentRequest pr, String action, String step, Long actorId, String comments) {
+        if (pr == null || pr.getUuid() == null) {
+            return;
+        }
+        try {
+            billingApprovalEventService.record(pr.getUuid(), pr.getCompanyId(), action, step, actorId, comments);
+        } catch (RuntimeException ignored) {
+            // History is optional — never roll back Finance/PM/Director approval.
+        }
     }
 
     private EnumSet<BillingStatus> inboxStatusesFor(AuthPrincipal principal) {
         if (principal.getRoles() == null) {
             return EnumSet.noneOf(BillingStatus.class);
         }
-        EnumSet<BillingStatus> statuses = EnumSet.noneOf(BillingStatus.class);
-        boolean admin = principal.getRoles().contains(Role.ADMIN)
+        boolean staff = principal.getRoles().contains(Role.FINANCE)
+                || principal.getRoles().contains(Role.PROJECT_MANAGER)
+                || principal.getRoles().contains(Role.BUSINESS_OWNER)
+                || principal.getRoles().contains(Role.ADMIN)
                 || principal.getRoles().contains(Role.SUPER_ADMIN);
-        if (admin || principal.getRoles().contains(Role.PROJECT_MANAGER)) {
-            statuses.add(BillingStatus.PENDING_PM);
+        if (!staff) {
+            return EnumSet.noneOf(BillingStatus.class);
         }
-        if (admin || principal.getRoles().contains(Role.BUSINESS_OWNER)) {
-            statuses.add(BillingStatus.PENDING_DIRECTOR);
-        }
-        return statuses;
+        return EnumSet.of(
+                BillingStatus.PENDING_PM,
+                BillingStatus.PENDING_DIRECTOR,
+                BillingStatus.ISSUED,
+                BillingStatus.PAID,
+                BillingStatus.PART_PAID);
     }
 
     private String appendComment(String notes, String comment) {

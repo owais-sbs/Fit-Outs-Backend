@@ -20,4 +20,6 @@ public class AccountResponse {
     private UUID companyUuid;
     private Boolean active;
     private Set<Role> roles;
+    /** Present on create when a CLIENT portal invite was attempted. */
+    private Boolean inviteEmailSent;
 }
