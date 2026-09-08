@@ -11,7 +11,7 @@ public class FlywaySharedDatabaseConfig {
     /**
      * Shared RDS has migrations from other branches. Community Flyway validate fails when those
      * files are missing. Repair realigns checksums when an applied migration file was rewritten
-     * locally (e.g. after V55/V56/V57 were renamed or merged on another branch).
+     * locally (e.g. after main's V55–V59 were moved to V64–V68 on h-dev).
      */
     @Bean
     public FlywayConfigurationCustomizer flywaySharedDatabaseCustomizer() {
