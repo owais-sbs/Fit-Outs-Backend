@@ -31,6 +31,7 @@ public class AccountService {
     private final AccountRepository repository;
     private final PasswordEncoder passwordEncoder;
     private final CompanyService companyService;
+    private final ClientPortalInviteService clientPortalInviteService;
 
     @Transactional
     public AccountResponse create(AccountCreateRequest request) {
@@ -57,7 +58,14 @@ public class AccountService {
         account.setIsActive(true);
         account.setRoles(new HashSet<>(request.getRoles()));
 
-        return toResponse(repository.save(account));
+        Account saved = repository.save(account);
+        Boolean inviteEmailSent = null;
+        if (request.getRoles().contains(Role.CLIENT)) {
+            inviteEmailSent = clientPortalInviteService.sendPortalInvite(
+                    saved.getId(),
+                    saved.getFullName());
+        }
+        return toResponse(saved, inviteEmailSent);
     }
 
     @Transactional(readOnly = true)
@@ -259,6 +267,10 @@ public class AccountService {
     }
 
     public AccountResponse toResponse(Account account) {
+        return toResponse(account, null);
+    }
+
+    public AccountResponse toResponse(Account account, Boolean inviteEmailSent) {
         return AccountResponse.builder()
                 .id(account.getId())
                 .fullName(account.getFullName())
@@ -268,6 +280,7 @@ public class AccountService {
                 .companyUuid(account.getCompany() != null ? account.getCompany().getUuid() : null)
                 .active(account.getIsActive())
                 .roles(account.getRoles())
+                .inviteEmailSent(inviteEmailSent)
                 .build();
     }
 

@@ -3,6 +3,7 @@ package com.fitouts.billing.api;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import com.fitouts.billing.domain.BillingStatus;
@@ -32,4 +33,5 @@ public class PaymentRequestResponse {
     private LocalDate dueDate;
     private Boolean clientEmailSent;
     private String clientEmail;
+    private List<ApprovalLogEntry> approvalLog;
 }

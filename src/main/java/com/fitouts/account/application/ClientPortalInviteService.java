@@ -106,14 +106,19 @@ public class ClientPortalInviteService {
 
         String html = emailTemplateService.render(template, vars);
 
-        emailService.sendAsync(EmailMessage.builder()
-                .to(account.getEmail())
-                .subject(subject)
-                .body(html)
-                .html(true)
-                .build());
-
-        return true;
+        try {
+            emailService.send(EmailMessage.builder()
+                    .to(account.getEmail())
+                    .subject(subject)
+                    .body(html)
+                    .html(true)
+                    .build());
+            log.info("Portal invite email sent to {} (account {})", account.getEmail(), accountId);
+            return true;
+        } catch (Exception e) {
+            log.warn("Portal invite email to {} (account {}) failed: {}", account.getEmail(), accountId, e.getMessage());
+            return false;
+        }
     }
 
     /**
