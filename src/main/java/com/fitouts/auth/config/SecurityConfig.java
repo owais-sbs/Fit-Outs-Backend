@@ -56,6 +56,8 @@ public class SecurityConfig {
                                 "/api/auth/login",
                                 "/api/auth/verify-otp",
                                 "/api/auth/password-setup/**",
+                                "/api/v1/subcontractors/register",
+                                "/api/v1/subcontractors/register/verify-token",
                                 "/api/ws/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",

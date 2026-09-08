@@ -57,7 +57,7 @@ public class ClientPortalInviteService {
                 accountId,
                 displayName,
                 "subcontractor-portal-invite",
-                "Welcome — set up your subcontractor portal access");
+                "You have been invited to register as a subcontractor.");
     }
 
     @Transactional
