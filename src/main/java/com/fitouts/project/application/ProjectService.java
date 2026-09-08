@@ -8,6 +8,7 @@ import java.util.UUID;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import com.fitouts.auth.domain.Role;
@@ -28,6 +29,7 @@ public class ProjectService {
         this.projectRepository = projectRepository;
     }
 
+    @Transactional
     public Project create(Project request) {
         request.setId(null);
         request.setActive(true);
@@ -100,6 +102,9 @@ public class ProjectService {
         }
         if (request.getExpectedCompletionDate() != null) {
             project.setExpectedCompletionDate(request.getExpectedCompletionDate());
+        }
+        if (request.getJurisdictionPackId() != null) {
+            project.setJurisdictionPackId(request.getJurisdictionPackId());
         }
         if (request.isActive() != project.isActive()) {
             project.setActive(request.isActive());

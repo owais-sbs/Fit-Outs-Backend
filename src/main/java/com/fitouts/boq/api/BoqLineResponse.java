@@ -20,6 +20,7 @@ public class BoqLineResponse {
     private BigDecimal rate;
     private BigDecimal amount;
     private UUID qtoLineId;
+    private UUID workItemId;
     private String floorLabel;
     private String roomLabel;
     private Integer sortOrder;

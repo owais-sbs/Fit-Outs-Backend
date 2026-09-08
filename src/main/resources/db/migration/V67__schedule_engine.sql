@@ -2,7 +2,7 @@
 -- Adds the work calendar, template library, CPM columns on the live schedule, and the
 -- backward-scheduled procurement order-by rows.
 
-CREATE TABLE work_calendar (
+CREATE TABLE IF NOT EXISTS work_calendar (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID,
     name VARCHAR(120) NOT NULL,
@@ -20,9 +20,9 @@ CREATE TABLE work_calendar (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_work_calendar_company ON work_calendar(company_id);
+CREATE INDEX IF NOT EXISTS idx_work_calendar_company ON work_calendar(company_id);
 
-CREATE TABLE work_calendar_holiday (
+CREATE TABLE IF NOT EXISTS work_calendar_holiday (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     calendar_uuid UUID NOT NULL REFERENCES work_calendar(uuid) ON DELETE CASCADE,
     holiday_date DATE NOT NULL,
@@ -30,7 +30,7 @@ CREATE TABLE work_calendar_holiday (
     CONSTRAINT uq_work_calendar_holiday UNIQUE (calendar_uuid, holiday_date)
 );
 
-CREATE TABLE schedule_template (
+CREATE TABLE IF NOT EXISTS schedule_template (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID,
     code VARCHAR(32) NOT NULL,
@@ -54,10 +54,10 @@ CREATE TABLE schedule_template (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE UNIQUE INDEX uq_schedule_template_global ON schedule_template(code) WHERE company_id IS NULL;
-CREATE UNIQUE INDEX uq_schedule_template_tenant ON schedule_template(company_id, code) WHERE company_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_schedule_template_global ON schedule_template(code) WHERE company_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_schedule_template_tenant ON schedule_template(company_id, code) WHERE company_id IS NOT NULL;
 
-CREATE TABLE template_activity (
+CREATE TABLE IF NOT EXISTS template_activity (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     template_uuid UUID NOT NULL REFERENCES schedule_template(uuid) ON DELETE CASCADE,
     activity_code VARCHAR(32) NOT NULL,
@@ -82,9 +82,9 @@ CREATE TABLE template_activity (
     CONSTRAINT chk_template_scaling CHECK (scaling_method IN ('QUANTITY', 'PARAMETRIC', 'FIXED'))
 );
 
-CREATE INDEX idx_template_activity_template ON template_activity(template_uuid);
+CREATE INDEX IF NOT EXISTS idx_template_activity_template ON template_activity(template_uuid);
 
-CREATE TABLE template_dependency (
+CREATE TABLE IF NOT EXISTS template_dependency (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     template_uuid UUID NOT NULL REFERENCES schedule_template(uuid) ON DELETE CASCADE,
     predecessor_code VARCHAR(32) NOT NULL,
@@ -98,9 +98,9 @@ CREATE TABLE template_dependency (
     CONSTRAINT chk_template_dependency_type CHECK (type IN ('FS', 'SS', 'FF', 'SF'))
 );
 
-CREATE INDEX idx_template_dependency_template ON template_dependency(template_uuid);
+CREATE INDEX IF NOT EXISTS idx_template_dependency_template ON template_dependency(template_uuid);
 
-CREATE TABLE template_procurement_item (
+CREATE TABLE IF NOT EXISTS template_procurement_item (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     template_uuid UUID REFERENCES schedule_template(uuid) ON DELETE CASCADE,
     company_id UUID,
@@ -116,9 +116,9 @@ CREATE TABLE template_procurement_item (
     sort_order INT NOT NULL DEFAULT 0
 );
 
-CREATE INDEX idx_template_procurement_template ON template_procurement_item(template_uuid);
+CREATE INDEX IF NOT EXISTS idx_template_procurement_template ON template_procurement_item(template_uuid);
 
-CREATE TABLE locked_constraint_rule (
+CREATE TABLE IF NOT EXISTS locked_constraint_rule (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID,
     name VARCHAR(180) NOT NULL,
@@ -132,7 +132,7 @@ CREATE TABLE locked_constraint_rule (
     CONSTRAINT uq_locked_constraint_rule UNIQUE (company_id, name)
 );
 
-CREATE TABLE productivity_norm (
+CREATE TABLE IF NOT EXISTS productivity_norm (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID,
     work_item VARCHAR(180) NOT NULL,
@@ -146,7 +146,7 @@ CREATE TABLE productivity_norm (
     CONSTRAINT uq_productivity_norm UNIQUE (company_id, work_item)
 );
 
-CREATE TABLE scope_toggle (
+CREATE TABLE IF NOT EXISTS scope_toggle (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID,
     code VARCHAR(48) NOT NULL,
@@ -157,7 +157,7 @@ CREATE TABLE scope_toggle (
 );
 
 -- The applied instance: which template, with which parameters, produced this programme.
-CREATE TABLE project_schedule (
+CREATE TABLE IF NOT EXISTS project_schedule (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id BIGINT NOT NULL,
     company_id UUID NOT NULL,
@@ -181,11 +181,11 @@ CREATE TABLE project_schedule (
     CONSTRAINT uq_project_schedule UNIQUE (project_id)
 );
 
-CREATE INDEX idx_project_schedule_company ON project_schedule(company_id);
+CREATE INDEX IF NOT EXISTS idx_project_schedule_company ON project_schedule(company_id);
 
 -- Backward-scheduled procurement deadlines. Not a purchasing workflow; these are the dates
 -- that make the finish date achievable or not.
-CREATE TABLE schedule_order_by (
+CREATE TABLE IF NOT EXISTS schedule_order_by (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id BIGINT NOT NULL,
     company_id UUID NOT NULL,
@@ -202,7 +202,7 @@ CREATE TABLE schedule_order_by (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_schedule_order_by_project ON schedule_order_by(project_id);
+CREATE INDEX IF NOT EXISTS idx_schedule_order_by_project ON schedule_order_by(project_id);
 
 -- CPM columns on the live schedule.
 ALTER TABLE schedule_activity ADD COLUMN IF NOT EXISTS activity_code VARCHAR(32);
@@ -241,8 +241,23 @@ ALTER TABLE subcontractor_package ADD COLUMN IF NOT EXISTS planned_start DATE;
 ALTER TABLE subcontractor_package ADD COLUMN IF NOT EXISTS planned_finish DATE;
 ALTER TABLE subcontractor_package ADD COLUMN IF NOT EXISTS activity_codes TEXT;
 
-INSERT INTO work_calendar (name, working_days, is_default, ramadan_hours_note, community_restriction_note)
-SELECT 'UAE standard (Sat-Thu)', '6,7,1,2,3,4', TRUE,
+-- Hibernate may have created work_calendar first (ddl-auto=update) without a UUID default.
+-- CREATE TABLE IF NOT EXISTS above is then a no-op, so seed inserts must supply uuid.
+ALTER TABLE work_calendar ALTER COLUMN uuid SET DEFAULT gen_random_uuid();
+ALTER TABLE work_calendar ALTER COLUMN working_days SET DEFAULT '6,7,1,2,3,4';
+ALTER TABLE work_calendar ALTER COLUMN summer_break_enabled SET DEFAULT TRUE;
+ALTER TABLE work_calendar ALTER COLUMN is_default SET DEFAULT FALSE;
+ALTER TABLE work_calendar ALTER COLUMN created_at SET DEFAULT now();
+ALTER TABLE work_calendar ALTER COLUMN updated_at SET DEFAULT now();
+
+INSERT INTO work_calendar (
+    uuid, company_id, name, working_days,
+    summer_break_enabled, summer_break_start, summer_break_end, summer_break_window,
+    ramadan_hours_note, community_restriction_note, is_default, created_at, updated_at
+)
+SELECT gen_random_uuid(), NULL, 'UAE standard (Sat-Thu)', '6,7,1,2,3,4',
+       TRUE, '06-15', '09-15', '12:30-15:00',
        'Ramadan working hours are shortened by two hours; durations are not automatically extended.',
-       'Community working-hour restrictions attach here once the project community is known.'
+       'Community working-hour restrictions attach here once the project community is known.',
+       TRUE, now(), now()
 WHERE NOT EXISTS (SELECT 1 FROM work_calendar WHERE is_default = TRUE AND company_id IS NULL);

@@ -31,6 +31,8 @@ import com.fitouts.shared.error.BadRequestException;
 import com.fitouts.shared.error.ForbiddenException;
 import com.fitouts.shared.error.NotFoundException;
 import com.fitouts.shared.security.PortalAccessHelper;
+import com.fitouts.workitemconfiguration.domain.WorkItem;
+import com.fitouts.workitemconfiguration.domain.WorkItemRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -49,6 +51,7 @@ public class BoqService {
     private final RoomCollabService roomCollabService;
     private final PortalAccessHelper portalAccess;
     private final BoqProjectRules boqProjectRules;
+    private final WorkItemRepository workItemRepository;
 
     public BoqDocumentResponse generateFromQto(UUID sessionId) {
         QtoSession session = qtoService.findSession(sessionId);
@@ -181,6 +184,7 @@ public class BoqService {
                     .rate(ql.getRate() != null ? ql.getRate() : BigDecimal.ZERO)
                     .amount(amount)
                     .qtoLine(ql)
+                    .workItem(ql.getWorkItem())
                     .sortOrder(order++)
                     .source("QTO")
                     .build()));
@@ -215,6 +219,7 @@ public class BoqService {
             BigDecimal amount = qty.multiply(rate).setScale(2, RoundingMode.HALF_UP);
             String code = req.getCategoryCode() != null ? req.getCategoryCode() : "OTHER";
             String name = req.getCategoryName() != null ? req.getCategoryName() : BoqJctMapper.categoryName(code);
+            WorkItem workItem = resolveWorkItem(req.getWorkItemId());
             lines.add(boqLineRepository.save(BoqLine.builder()
                     .boq(doc)
                     .categoryCode(code)
@@ -224,6 +229,7 @@ public class BoqService {
                     .quantity(qty)
                     .rate(rate)
                     .amount(amount)
+                    .workItem(workItem)
                     .sortOrder(req.getSortOrder() != null ? req.getSortOrder() : order++)
                     .floorLabel(req.getFloorLabel())
                     .roomLabel(req.getRoomLabel())
@@ -231,6 +237,13 @@ public class BoqService {
                     .build()));
         }
         return lines;
+    }
+
+    private WorkItem resolveWorkItem(UUID workItemId) {
+        if (workItemId == null) {
+            return null;
+        }
+        return workItemRepository.findByIdAndDeletedFalse(workItemId).orElse(null);
     }
 
     private void recalcTotals(BoqDocument doc, List<BoqLine> lines) {
@@ -301,6 +314,7 @@ public class BoqService {
                 .rate(line.getRate())
                 .amount(line.getAmount())
                 .qtoLineId(line.getQtoLine() != null ? line.getQtoLine().getId() : null)
+                .workItemId(line.getWorkItem() != null ? line.getWorkItem().getId() : null)
                 .floorLabel(line.getFloorLabel())
                 .roomLabel(line.getRoomLabel())
                 .sortOrder(line.getSortOrder())
