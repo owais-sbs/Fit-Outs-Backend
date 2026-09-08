@@ -25,4 +25,5 @@ public class BillingMilestoneResponse {
     private Long createdBy;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
+    private PaymentRequestResponse latestPaymentRequest;
 }

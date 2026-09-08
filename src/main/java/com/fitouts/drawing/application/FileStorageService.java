@@ -123,6 +123,50 @@ public class FileStorageService {
     }
   }
 
+  /** Stores generated content (submission packs, exports) that never arrived as an upload. */
+  public String storeBytes(byte[] content, String filename, UUID companyId, Long projectId, String subfolder) {
+    if (content == null || content.length == 0) {
+      throw new BadRequestException("Nothing to store");
+    }
+    String safeName = (filename == null || filename.isBlank() ? "file" : filename)
+            .replaceAll("[^a-zA-Z0-9._-]", "_");
+    Path targetDir = root.resolve(companyId.toString()).resolve(String.valueOf(projectId)).resolve(subfolder);
+    try {
+      Files.createDirectories(targetDir);
+      Path target = targetDir.resolve(UUID.randomUUID() + "_" + safeName);
+      Files.write(target, content);
+      String relativePath = root.relativize(target).toString().replace('\\', '/');
+      uploadToS3(relativePath, target);
+      return relativePath;
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to store generated file", e);
+    }
+  }
+
+  /** Reads a stored file, returning empty when it is missing rather than throwing. */
+  public Optional<byte[]> readBytes(String relativePath) {
+    if (relativePath == null || relativePath.isBlank()) {
+      return Optional.empty();
+    }
+    try {
+      Path path = resolve(relativePath);
+      if (Files.exists(path)) {
+        return Optional.of(Files.readAllBytes(path));
+      }
+      if (s3Enabled() && existsOnS3(relativePath)) {
+        try (InputStream stream = s3Client.getObject(GetObjectRequest.builder()
+                .bucket(s3Properties.getBucket())
+                .key(s3Key(relativePath))
+                .build())) {
+          return Optional.of(stream.readAllBytes());
+        }
+      }
+    } catch (Exception e) {
+      log.warn("Could not read {}: {}", relativePath, e.getMessage());
+    }
+    return Optional.empty();
+  }
+
   public Path resolve(String relativePath) {
     Path resolved = root.resolve(relativePath).normalize();
     if (!resolved.startsWith(root)) {

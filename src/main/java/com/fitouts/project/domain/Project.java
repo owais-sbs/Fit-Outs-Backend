@@ -59,6 +59,26 @@ public class Project {
     @Column(name = "assigned_manager", length = 200)
     private String assignedManager;
 
+    /**
+     * Structured location for the approval jurisdiction resolver. The free-text
+     * {@link #location} above stays for display; the resolver cannot work from an address string.
+     */
+    @Column(length = 64)
+    private String emirate;
+
+    @Column(name = "community_name", length = 180)
+    private String communityName;
+
+    @Column(name = "building_name", length = 180)
+    private String buildingName;
+
+    @Column(name = "plot_zone", length = 180)
+    private String plotZone;
+
+    /** Scope switches (structural, MEP load, fire, facade, kitchen, signage, night work, hoarding, demolition). */
+    @Column(name = "scope_toggles_json", columnDefinition = "TEXT")
+    private String scopeTogglesJson;
+
     @Column(name = "start_date")
     private LocalDate startDate;
 
