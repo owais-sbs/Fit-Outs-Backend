@@ -70,6 +70,18 @@ public class BillingController extends BaseController {
         }
     }
 
+    @PostMapping("/api/projects/{projectId}/billing-milestones/{uuid}/submit-for-approval")
+    public Object submitForApproval(
+            @PathVariable Long projectId,
+            @PathVariable UUID uuid,
+            @RequestBody(required = false) RequestPaymentBody body) {
+        try {
+            return successResponse(billingService.submitForApproval(projectId, uuid, body));
+        } catch (Exception e) {
+            return failureResponse("Failed to submit milestone for approval", e.getMessage());
+        }
+    }
+
     @PostMapping("/api/projects/{projectId}/billing-milestones/{uuid}/request-payment")
     public Object requestPayment(
             @PathVariable Long projectId,
@@ -91,10 +103,21 @@ public class BillingController extends BaseController {
         }
     }
 
-    @PostMapping("/api/billing/payment-requests/{uuid}/approve")
-    public Object approve(@PathVariable UUID uuid) {
+    @GetMapping("/api/billing/payment-requests/inbox")
+    public Object listInbox() {
         try {
-            return successResponse(billingService.approve(uuid));
+            return successResponse(billingService.listInbox());
+        } catch (Exception e) {
+            return failureResponse("Failed to load billing milestone inbox", e.getMessage());
+        }
+    }
+
+    @PostMapping("/api/billing/payment-requests/{uuid}/approve")
+    public Object approve(
+            @PathVariable UUID uuid,
+            @RequestBody(required = false) PaymentApproveRequest request) {
+        try {
+            return successResponse(billingService.approve(uuid, request));
         } catch (Exception e) {
             return failureResponse("Failed to approve payment request", e.getMessage());
         }

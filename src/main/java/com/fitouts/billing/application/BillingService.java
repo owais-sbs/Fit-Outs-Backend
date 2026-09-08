@@ -12,11 +12,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import com.fitouts.account.domain.Account;
+import com.fitouts.account.domain.AccountRepository;
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.billing.api.BillingMilestoneRequest;
 import com.fitouts.billing.api.BillingMilestoneResponse;
 import com.fitouts.billing.api.ClientInvoiceResponse;
+import com.fitouts.billing.api.PaymentApproveRequest;
 import com.fitouts.billing.api.PaymentRejectRequest;
 import com.fitouts.billing.api.PaymentRequestResponse;
 import com.fitouts.billing.api.RequestPaymentBody;
@@ -44,6 +47,8 @@ public class BillingService {
     private final PaymentRequestRepository paymentRequestRepository;
     private final ProjectService projectService;
     private final ScheduleActivityRepository activityRepository;
+    private final BillingPaymentEmailService billingPaymentEmailService;
+    private final AccountRepository accountRepository;
 
     @Transactional(readOnly = true)
     public List<BillingMilestoneResponse> listMilestones(Long projectId) {
@@ -52,7 +57,7 @@ public class BillingService {
         return milestoneRepository
                 .findByProjectIdAndCompanyIdOrderByDueDateAscCreatedAtAsc(project.getId(), CompanyContext.get())
                 .stream()
-                .map(this::toMilestoneResponse)
+                .map(this::toMilestoneResponseWithPayment)
                 .toList();
     }
 
@@ -65,7 +70,7 @@ public class BillingService {
 
     @Transactional
     public BillingMilestoneResponse createMilestone(Long projectId, BillingMilestoneRequest request) {
-        AuthPrincipal principal = requireStaff();
+        AuthPrincipal principal = requireFinanceOrAdmin();
         Project project = requireProject(projectId);
         if (request == null || !StringUtils.hasText(request.getName())) {
             throw new BadRequestException("name is required");
@@ -77,7 +82,7 @@ public class BillingService {
         milestone.setName(request.getName().trim());
         milestone.setAmount(request.getAmount() != null ? request.getAmount() : BigDecimal.ZERO);
         milestone.setDueDate(request.getDueDate());
-        milestone.setLinkedActivityUuid(request.getLinkedActivityUuid());
+        milestone.setLinkedActivityUuid(parseOptionalUuid(request.getLinkedActivityUuid(), "linkedActivityUuid"));
         milestone.setStatus(request.getStatus() != null ? request.getStatus() : BillingStatus.DRAFT);
         milestone.setPercentCompleteRequired(request.getPercentCompleteRequired());
         milestone.setCreatedBy(principal.getAccountId());
@@ -86,9 +91,12 @@ public class BillingService {
 
     @Transactional
     public BillingMilestoneResponse updateMilestone(Long projectId, UUID uuid, BillingMilestoneRequest request) {
-        requireStaff();
+        requireFinanceOrAdmin();
         requireProject(projectId);
         BillingMilestone milestone = requireMilestone(uuid, projectId);
+        if (milestone.getStatus() != BillingStatus.DRAFT) {
+            throw new BadRequestException("Only DRAFT milestones can be edited");
+        }
         if (request == null) {
             return toMilestoneResponse(milestone);
         }
@@ -102,7 +110,7 @@ public class BillingService {
             milestone.setDueDate(request.getDueDate());
         }
         if (request.getLinkedActivityUuid() != null) {
-            milestone.setLinkedActivityUuid(request.getLinkedActivityUuid());
+            milestone.setLinkedActivityUuid(parseOptionalUuid(request.getLinkedActivityUuid(), "linkedActivityUuid"));
         }
         if (request.getStatus() != null) {
             milestone.setStatus(request.getStatus());
@@ -115,14 +123,54 @@ public class BillingService {
 
     @Transactional
     public void deleteMilestone(Long projectId, UUID uuid) {
-        requireStaff();
+        requireFinanceOrAdmin();
         requireProject(projectId);
-        milestoneRepository.delete(requireMilestone(uuid, projectId));
+        BillingMilestone milestone = requireMilestone(uuid, projectId);
+        if (milestone.getStatus() != BillingStatus.DRAFT) {
+            throw new BadRequestException("Only DRAFT milestones can be deleted");
+        }
+        milestoneRepository.delete(milestone);
+    }
+
+    /**
+     * Finance submits a manually created milestone into the approval chain (PM, then Director).
+     * Client notification is sent only after Director approval.
+     */
+    @Transactional
+    public PaymentRequestResponse submitForApproval(Long projectId, UUID milestoneUuid, RequestPaymentBody body) {
+        AuthPrincipal principal = requireFinanceOrAdmin();
+        requireProject(projectId);
+        BillingMilestone milestone = requireMilestone(milestoneUuid, projectId);
+        if (milestone.getStatus() != BillingStatus.DRAFT) {
+            throw new BadRequestException("Only DRAFT milestones can be submitted for approval");
+        }
+
+        UUID companyId = requireCompany();
+        PaymentRequest pr = paymentRequestRepository
+                .findByMilestoneUuidAndCompanyIdOrderByCreatedAtDesc(milestone.getUuid(), companyId)
+                .stream()
+                .filter(existing -> existing.getStatus() == BillingStatus.DRAFT)
+                .findFirst()
+                .orElseGet(PaymentRequest::new);
+
+        pr.setMilestoneUuid(milestone.getUuid());
+        pr.setProjectId(milestone.getProjectId());
+        pr.setCompanyId(milestone.getCompanyId());
+        pr.setAmount(body != null && body.getAmount() != null ? body.getAmount() : milestone.getAmount());
+        pr.setNotes(body != null ? body.getNotes() : null);
+        pr.setStatus(BillingStatus.PENDING_PM);
+        pr.setRequestedBy(principal.getAccountId());
+        pr = paymentRequestRepository.save(pr);
+
+        milestone.setStatus(BillingStatus.PENDING_PM);
+        milestoneRepository.save(milestone);
+
+        return toPaymentResponse(pr, milestone);
     }
 
     @Transactional
     public PaymentRequestResponse requestPayment(Long projectId, UUID milestoneUuid, RequestPaymentBody body) {
-        AuthPrincipal principal = requireStaff();
+        AuthPrincipal principal = requireFinanceOrAdmin();
         requireProject(projectId);
         BillingMilestone milestone = requireMilestone(milestoneUuid, projectId);
 
@@ -135,12 +183,13 @@ public class BillingService {
         pr.setStatus(BillingStatus.DRAFT);
         pr.setRequestedBy(principal.getAccountId());
         pr = paymentRequestRepository.save(pr);
-        return toPaymentResponse(pr, milestone.getName());
+
+        return toPaymentResponse(pr, milestone);
     }
 
     @Transactional
     public PaymentRequestResponse submit(UUID paymentRequestUuid) {
-        AuthPrincipal principal = requireStaff();
+        AuthPrincipal principal = requireFinanceOrAdmin();
         PaymentRequest pr = requirePayment(paymentRequestUuid);
         if (pr.getStatus() != BillingStatus.DRAFT) {
             throw new BadRequestException("Only DRAFT payment requests can be submitted");
@@ -152,34 +201,83 @@ public class BillingService {
         BillingMilestone milestone = requireMilestoneByUuid(pr.getMilestoneUuid());
         milestone.setStatus(BillingStatus.PENDING_PM);
         milestoneRepository.save(milestone);
-        return toPaymentResponse(paymentRequestRepository.save(pr), milestone.getName());
+        return toPaymentResponse(paymentRequestRepository.save(pr), milestone);
+    }
+
+    @Transactional(readOnly = true)
+    public List<PaymentRequestResponse> listInbox() {
+        AuthPrincipal principal = requireAuthenticated();
+        EnumSet<BillingStatus> statuses = inboxStatusesFor(principal);
+        if (statuses.isEmpty()) {
+            throw new ForbiddenException("No billing milestone inbox for this role");
+        }
+        UUID companyId = requireCompany();
+        return paymentRequestRepository
+                .findByCompanyIdAndStatusInOrderByCreatedAtDesc(companyId, statuses)
+                .stream()
+                .map(pr -> {
+                    BillingMilestone milestone = milestoneRepository
+                            .findByUuidAndCompanyId(pr.getMilestoneUuid(), companyId)
+                            .orElse(null);
+                    return toPaymentResponse(pr, milestone);
+                })
+                .toList();
     }
 
     @Transactional
-    public PaymentRequestResponse approve(UUID paymentRequestUuid) {
-        AuthPrincipal principal = requirePmOrAdmin();
+    public PaymentRequestResponse approve(UUID paymentRequestUuid, PaymentApproveRequest request) {
+        AuthPrincipal principal = requireAuthenticated();
         PaymentRequest pr = requirePayment(paymentRequestUuid);
-        if (pr.getStatus() != BillingStatus.PENDING_PM) {
-            throw new BadRequestException("Only PENDING_PM payment requests can be approved");
+        BillingMilestone milestone = requireMilestoneByUuid(pr.getMilestoneUuid());
+        Project project = requireProject(milestone.getProjectId());
+        String comments = request != null ? request.getComments() : null;
+        if (StringUtils.hasText(comments)) {
+            pr.setNotes(appendComment(pr.getNotes(), "Approved: " + comments.trim()));
         }
-        pr.setStatus(BillingStatus.ISSUED);
+
+        if (pr.getStatus() == BillingStatus.PENDING_PM) {
+            requireProjectManagerRole(principal);
+            pr.setStatus(BillingStatus.PENDING_DIRECTOR);
+            milestone.setStatus(BillingStatus.PENDING_DIRECTOR);
+        } else if (pr.getStatus() == BillingStatus.PENDING_DIRECTOR) {
+            requireDirectorRole(principal);
+            pr.setStatus(BillingStatus.ISSUED);
+            milestone.setStatus(BillingStatus.ISSUED);
+            paymentRequestRepository.save(pr);
+            milestoneRepository.save(milestone);
+            BillingPaymentEmailService.SendResult email =
+                    billingPaymentEmailService.notifyClient(project, milestone, pr);
+            pr.setDecidedBy(principal.getAccountId());
+            pr.setDecidedAt(OffsetDateTime.now());
+            return toPaymentResponse(
+                    paymentRequestRepository.save(pr),
+                    milestone,
+                    email.sent(),
+                    email.clientEmail());
+        } else {
+            throw new BadRequestException("Payment request is not awaiting approval");
+        }
+
         pr.setDecidedBy(principal.getAccountId());
         pr.setDecidedAt(OffsetDateTime.now());
-        BillingMilestone milestone = requireMilestoneByUuid(pr.getMilestoneUuid());
-        milestone.setStatus(BillingStatus.ISSUED);
+        paymentRequestRepository.save(pr);
         milestoneRepository.save(milestone);
-        return toPaymentResponse(paymentRequestRepository.save(pr), milestone.getName());
+        return toPaymentResponse(pr, milestone);
     }
 
     @Transactional
     public PaymentRequestResponse reject(UUID paymentRequestUuid, PaymentRejectRequest request) {
-        AuthPrincipal principal = requirePmOrAdmin();
+        AuthPrincipal principal = requireAuthenticated();
         if (request == null || !StringUtils.hasText(request.getReason())) {
             throw new BadRequestException("reason is required");
         }
         PaymentRequest pr = requirePayment(paymentRequestUuid);
-        if (pr.getStatus() != BillingStatus.PENDING_PM) {
-            throw new BadRequestException("Only PENDING_PM payment requests can be rejected");
+        if (pr.getStatus() == BillingStatus.PENDING_PM) {
+            requireProjectManagerRole(principal);
+        } else if (pr.getStatus() == BillingStatus.PENDING_DIRECTOR) {
+            requireDirectorRole(principal);
+        } else {
+            throw new BadRequestException("Only pending payment requests can be rejected");
         }
         pr.setStatus(BillingStatus.DRAFT);
         pr.setNotes(appendReason(pr.getNotes(), request.getReason().trim()));
@@ -188,12 +286,12 @@ public class BillingService {
         BillingMilestone milestone = requireMilestoneByUuid(pr.getMilestoneUuid());
         milestone.setStatus(BillingStatus.DRAFT);
         milestoneRepository.save(milestone);
-        return toPaymentResponse(paymentRequestRepository.save(pr), milestone.getName());
+        return toPaymentResponse(paymentRequestRepository.save(pr), milestone);
     }
 
     @Transactional
     public PaymentRequestResponse markPaid(UUID paymentRequestUuid) {
-        AuthPrincipal principal = requirePmOrAdmin();
+        AuthPrincipal principal = requireFinanceOrAdmin();
         PaymentRequest pr = requirePayment(paymentRequestUuid);
         if (pr.getStatus() != BillingStatus.ISSUED && pr.getStatus() != BillingStatus.PART_PAID) {
             throw new BadRequestException("Only ISSUED or PART_PAID payment requests can be marked paid");
@@ -204,7 +302,7 @@ public class BillingService {
         BillingMilestone milestone = requireMilestoneByUuid(pr.getMilestoneUuid());
         milestone.setStatus(BillingStatus.PAID);
         milestoneRepository.save(milestone);
-        return toPaymentResponse(paymentRequestRepository.save(pr), milestone.getName());
+        return toPaymentResponse(paymentRequestRepository.save(pr), milestone);
     }
 
     @Transactional(readOnly = true)
@@ -286,6 +384,17 @@ public class BillingService {
         }
     }
 
+    private UUID parseOptionalUuid(String raw, String fieldName) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        try {
+            return UUID.fromString(raw.trim());
+        } catch (IllegalArgumentException ex) {
+            throw new BadRequestException(fieldName + " must be a valid UUID");
+        }
+    }
+
     private String appendReason(String notes, String reason) {
         if (!StringUtils.hasText(notes)) {
             return "Rejected: " + reason;
@@ -311,6 +420,16 @@ public class BillingService {
                 .orElseThrow(() -> new NotFoundException("Payment request not found"));
     }
 
+    private BillingMilestoneResponse toMilestoneResponseWithPayment(BillingMilestone m) {
+        BillingMilestoneResponse response = toMilestoneResponse(m);
+        paymentRequestRepository
+                .findByMilestoneUuidAndCompanyIdOrderByCreatedAtDesc(m.getUuid(), m.getCompanyId())
+                .stream()
+                .findFirst()
+                .ifPresent(pr -> response.setLatestPaymentRequest(toPaymentResponse(pr, m)));
+        return response;
+    }
+
     private BillingMilestoneResponse toMilestoneResponse(BillingMilestone m) {
         return BillingMilestoneResponse.builder()
                 .uuid(m.getUuid())
@@ -328,7 +447,23 @@ public class BillingService {
                 .build();
     }
 
-    private PaymentRequestResponse toPaymentResponse(PaymentRequest pr, String milestoneName) {
+    private PaymentRequestResponse toPaymentResponse(PaymentRequest pr, BillingMilestone milestone) {
+        return toPaymentResponse(pr, milestone, null, null);
+    }
+
+    private PaymentRequestResponse toPaymentResponse(
+            PaymentRequest pr, BillingMilestone milestone, Boolean clientEmailSent, String clientEmail) {
+        Account requester = pr.getRequestedBy() != null
+                ? accountRepository.findById(pr.getRequestedBy()).orElse(null)
+                : null;
+        String projectName = null;
+        if (pr.getProjectId() != null) {
+            try {
+                projectName = requireProject(pr.getProjectId()).getName();
+            } catch (RuntimeException ignored) {
+                projectName = null;
+            }
+        }
         return PaymentRequestResponse.builder()
                 .uuid(pr.getUuid())
                 .milestoneUuid(pr.getMilestoneUuid())
@@ -338,12 +473,41 @@ public class BillingService {
                 .status(pr.getStatus())
                 .notes(pr.getNotes())
                 .requestedBy(pr.getRequestedBy())
+                .requestedByName(requester != null ? requester.getFullName() : null)
+                .requestedByEmail(requester != null ? requester.getEmail() : null)
                 .decidedBy(pr.getDecidedBy())
                 .decidedAt(pr.getDecidedAt())
                 .createdAt(pr.getCreatedAt())
                 .updatedAt(pr.getUpdatedAt())
-                .milestoneName(milestoneName)
+                .milestoneName(milestone != null ? milestone.getName() : null)
+                .projectName(projectName)
+                .dueDate(milestone != null ? milestone.getDueDate() : null)
+                .clientEmailSent(clientEmailSent)
+                .clientEmail(clientEmail)
                 .build();
+    }
+
+    private EnumSet<BillingStatus> inboxStatusesFor(AuthPrincipal principal) {
+        if (principal.getRoles() == null) {
+            return EnumSet.noneOf(BillingStatus.class);
+        }
+        EnumSet<BillingStatus> statuses = EnumSet.noneOf(BillingStatus.class);
+        boolean admin = principal.getRoles().contains(Role.ADMIN)
+                || principal.getRoles().contains(Role.SUPER_ADMIN);
+        if (admin || principal.getRoles().contains(Role.PROJECT_MANAGER)) {
+            statuses.add(BillingStatus.PENDING_PM);
+        }
+        if (admin || principal.getRoles().contains(Role.BUSINESS_OWNER)) {
+            statuses.add(BillingStatus.PENDING_DIRECTOR);
+        }
+        return statuses;
+    }
+
+    private String appendComment(String notes, String comment) {
+        if (!StringUtils.hasText(notes)) {
+            return comment;
+        }
+        return notes + "\n" + comment;
     }
 
     private Project requireProject(Long projectId) {
@@ -379,18 +543,42 @@ public class BillingService {
         return principal;
     }
 
-    private AuthPrincipal requirePmOrAdmin() {
-        AuthPrincipal principal = requireAuthenticated();
+    private AuthPrincipal requireFinanceOrAdmin() {
+        AuthPrincipal principal = requireStaff();
         if (principal.getRoles() == null) {
-            throw new ForbiddenException("PM/Admin access required");
+            throw new ForbiddenException("Finance access required");
         }
-        boolean allowed = principal.getRoles().contains(Role.ADMIN)
-                || principal.getRoles().contains(Role.SUPER_ADMIN)
-                || principal.getRoles().contains(Role.BUSINESS_OWNER)
-                || principal.getRoles().contains(Role.PROJECT_MANAGER)
-                || principal.getRoles().contains(Role.FINANCE);
+        boolean allowed = principal.getRoles().contains(Role.FINANCE)
+                || principal.getRoles().contains(Role.ADMIN)
+                || principal.getRoles().contains(Role.SUPER_ADMIN);
         if (!allowed) {
-            throw new ForbiddenException("PM/Admin access required");
+            throw new ForbiddenException("Finance access required");
+        }
+        return principal;
+    }
+
+    private AuthPrincipal requireProjectManagerRole(AuthPrincipal principal) {
+        if (principal.getRoles() == null) {
+            throw new ForbiddenException("Project manager access required");
+        }
+        boolean allowed = principal.getRoles().contains(Role.PROJECT_MANAGER)
+                || principal.getRoles().contains(Role.ADMIN)
+                || principal.getRoles().contains(Role.SUPER_ADMIN);
+        if (!allowed) {
+            throw new ForbiddenException("Project manager access required");
+        }
+        return principal;
+    }
+
+    private AuthPrincipal requireDirectorRole(AuthPrincipal principal) {
+        if (principal.getRoles() == null) {
+            throw new ForbiddenException("Director access required");
+        }
+        boolean allowed = principal.getRoles().contains(Role.BUSINESS_OWNER)
+                || principal.getRoles().contains(Role.ADMIN)
+                || principal.getRoles().contains(Role.SUPER_ADMIN);
+        if (!allowed) {
+            throw new ForbiddenException("Director access required");
         }
         return principal;
     }

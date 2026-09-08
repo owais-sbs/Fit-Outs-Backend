@@ -32,8 +32,22 @@ public class ScheduleDependency {
     @Column(name = "successor_uuid", nullable = false)
     private UUID successorUuid;
 
+    /** FS, SS, FF or SF. */
     @Column(name = "dependency_type", nullable = false)
     private String dependencyType = "FS";
+
+    @Column(name = "lag_working_days", nullable = false)
+    private int lagWorkingDays;
+
+    /**
+     * A cure, test or strength-gain period. Compression and bar dragging must not reduce it,
+     * so the engine treats the lag as a hard minimum.
+     */
+    @Column(name = "is_locked", nullable = false)
+    private boolean locked;
+
+    @Column(name = "lock_reason", columnDefinition = "text")
+    private String lockReason;
 
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;

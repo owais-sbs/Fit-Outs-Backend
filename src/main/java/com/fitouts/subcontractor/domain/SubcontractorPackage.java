@@ -45,6 +45,23 @@ public class SubcontractorPackage {
     @Column(name = "appointed_company_name")
     private String appointedCompanyName;
 
+    // --- Populated by the schedule apply cascade (Module 43) ----------------
+
+    /** Links the shell back to the template trade it came from, e.g. TP-MEP. */
+    @Column(name = "trade_package_code", length = 32)
+    private String tradePackageCode;
+
+    /** Earliest start across the trade's activities. Moves when the programme moves. */
+    @Column(name = "planned_start")
+    private java.time.LocalDate plannedStart;
+
+    @Column(name = "planned_finish")
+    private java.time.LocalDate plannedFinish;
+
+    /** Comma-separated activity codes covered by this package. */
+    @Column(name = "activity_codes", columnDefinition = "text")
+    private String activityCodes;
+
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 

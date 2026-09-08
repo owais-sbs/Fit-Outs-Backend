@@ -15,4 +15,7 @@ public interface PaymentRequestRepository extends JpaRepository<PaymentRequest, 
 
     List<PaymentRequest> findByProjectIdAndCompanyIdAndStatusInOrderByCreatedAtDesc(
             Long projectId, UUID companyId, Collection<BillingStatus> statuses);
+
+    List<PaymentRequest> findByCompanyIdAndStatusInOrderByCreatedAtDesc(
+            UUID companyId, Collection<BillingStatus> statuses);
 }

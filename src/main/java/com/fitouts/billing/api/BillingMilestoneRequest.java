@@ -2,7 +2,6 @@ package com.fitouts.billing.api;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.UUID;
 
 import com.fitouts.billing.domain.BillingStatus;
 
@@ -13,7 +12,8 @@ public class BillingMilestoneRequest {
     private String name;
     private BigDecimal amount;
     private LocalDate dueDate;
-    private UUID linkedActivityUuid;
+    /** Optional schedule activity UUID as plain text; validated in service layer. */
+    private String linkedActivityUuid;
     private BillingStatus status;
     private BigDecimal percentCompleteRequired;
 }
