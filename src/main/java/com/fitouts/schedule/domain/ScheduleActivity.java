@@ -68,6 +68,65 @@ public class ScheduleActivity {
     @Column(name = "delay_reason", length = 64)
     private String delayReason;
 
+    // --- CPM engine columns (Module 43) -------------------------------------
+
+    /** Stable code from the template, e.g. G120. How dependencies, packages and permits find it. */
+    @Column(name = "activity_code", length = 32)
+    private String activityCode;
+
+    @Column(name = "wbs_phase", length = 120)
+    private String wbsPhase;
+
+    /**
+     * Duration in working days. {@code startDate}/{@code endDate} are derived from this by the
+     * engine, so this is the value to change when a duration changes, not the dates.
+     */
+    @Column(name = "duration_working_days")
+    private Integer durationWorkingDays;
+
+    @Column(name = "scaling_method", length = 16)
+    private String scalingMethod;
+
+    @Column(name = "trade_package_code", length = 32)
+    private String tradePackageCode;
+
+    @Column(name = "is_milestone", nullable = false)
+    private boolean milestone;
+
+    @Column(name = "is_locked_duration", nullable = false)
+    private boolean lockedDuration;
+
+    @Column(name = "constraint_note", columnDefinition = "text")
+    private String constraintNote;
+
+    @Column(name = "early_start")
+    private LocalDate earlyStart;
+
+    @Column(name = "early_finish")
+    private LocalDate earlyFinish;
+
+    @Column(name = "late_start")
+    private LocalDate lateStart;
+
+    @Column(name = "late_finish")
+    private LocalDate lateFinish;
+
+    @Column(name = "total_float")
+    private Integer totalFloat;
+
+    @Column(name = "free_float")
+    private Integer freeFloat;
+
+    @Column(name = "is_critical", nullable = false)
+    private boolean critical;
+
+    /** Set when an unapproved or expired blocking permit is holding this activity back. */
+    @Column(name = "constrained_by_case_uuid")
+    private UUID constrainedByCaseUuid;
+
+    @Column(name = "constraint_start_date")
+    private LocalDate constraintStartDate;
+
     @Column(name = "created_by")
     private Long createdBy;
 

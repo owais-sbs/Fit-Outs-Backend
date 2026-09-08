@@ -1,6 +1,7 @@
 package com.fitouts.billing.api;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -20,9 +21,15 @@ public class PaymentRequestResponse {
     private BillingStatus status;
     private String notes;
     private Long requestedBy;
+    private String requestedByName;
+    private String requestedByEmail;
     private Long decidedBy;
     private OffsetDateTime decidedAt;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
     private String milestoneName;
+    private String projectName;
+    private LocalDate dueDate;
+    private Boolean clientEmailSent;
+    private String clientEmail;
 }

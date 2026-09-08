@@ -723,6 +723,15 @@ public class ScheduleService {
                 .roomTaskTitle(task != null ? task.getTitle() : null)
                 .roomTaskStatus(task != null && task.getStatus() != null ? task.getStatus().name() : null)
                 .assigneeName(assignee != null ? assignee.getFullName() : null)
+                .activityCode(a.getActivityCode())
+                .wbsPhase(a.getWbsPhase())
+                .durationWorkingDays(a.getDurationWorkingDays())
+                .milestone(a.isMilestone())
+                .lockedDuration(a.isLockedDuration())
+                .constraintNote(a.getConstraintNote())
+                .critical(a.isCritical())
+                .totalFloat(a.getTotalFloat())
+                .freeFloat(a.getFreeFloat())
                 .build();
     }
 
@@ -756,6 +765,9 @@ public class ScheduleService {
                 .predecessorUuid(d.getPredecessorUuid())
                 .successorUuid(d.getSuccessorUuid())
                 .dependencyType(d.getDependencyType())
+                .lagWorkingDays(d.getLagWorkingDays())
+                .locked(d.isLocked())
+                .lockReason(d.getLockReason())
                 .build();
     }
 
