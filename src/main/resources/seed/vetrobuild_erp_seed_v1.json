@@ -1,0 +1,3547 @@
+{
+  "meta": {
+    "version": "1.0",
+    "source": "VetroBuild ERP functional spec v1.0",
+    "warning": "Fees, SLAs and jurisdictions are indicative. Verify against each authority before go-live.",
+    "schedule_units": "working days, six day week"
+  },
+  "authorities": [
+    {
+      "code": "DM",
+      "authority__body": "Dubai Municipality - Building Permits",
+      "type": "Regulator",
+      "emirate": "Dubai",
+      "jurisdiction__areas_covered": "Mainland and freehold plots outside special development zones (Jumeirah, Umm Suqeim, Al Barsha, Mirdif, Al Safa, Nad Al Sheba etc.)",
+      "permits_issued_typical": "Building permit, Modification / renovation permit, Demolition permit, Building Completion Certificate (BCC), Waste transfer",
+      "submission_channel": "DM Building Permit System / Invest in Dubai portal (via licensed consultant)",
+      "notes_for_configuration": "Structural modification requires a licensed consultant and structural assessment. Consultant is the submitting party - system must record consultant as agent."
+    },
+    {
+      "code": "DDA",
+      "authority__body": "Dubai Development Authority",
+      "type": "Regulator",
+      "emirate": "Dubai",
+      "jurisdiction__areas_covered": "TECOM zones: Dubai Internet City, Media City, Knowledge Park, Barsha Heights, Dubai Design District, Production City, Studio City, Science Park, International Academic City, Al Barsha South",
+      "permits_issued_typical": "Fit-out permit, Building modification permit, Completion certificate, Signage permit",
+      "submission_channel": "DDA e-services portal",
+      "notes_for_configuration": "Fit-out permits usually issued to a DDA-registered contractor. Contractor registration renewal is annual - track as a company-level compliance item."
+    },
+    {
+      "code": "TRK",
+      "authority__body": "Trakhees - PCFC (EHS Department)",
+      "type": "Regulator",
+      "emirate": "Dubai",
+      "jurisdiction__areas_covered": "Palm Jumeirah, Jumeirah Islands / Park / Heights, Discovery Gardens, International City, Jebel Ali, Dubai Waterfront, Nakheel master developments, Dragon Mart",
+      "permits_issued_typical": "Building modification / fit-out permit, EHS approval, NOC, Completion certificate",
+      "submission_channel": "Trakhees e-services",
+      "notes_for_configuration": "Trakhees requires contractor registration and classification. Do not allow award to a subcontractor without valid Trakhees registration - hard gate."
+    },
+    {
+      "code": "DMCC",
+      "authority__body": "DMCC Authority",
+      "type": "Regulator",
+      "emirate": "Dubai",
+      "jurisdiction__areas_covered": "Jumeirah Lakes Towers, Uptown Tower",
+      "permits_issued_typical": "Fit-out permit, Work permit, Completion / handover approval",
+      "submission_channel": "DMCC member portal",
+      "notes_for_configuration": "Building management NOC usually required in parallel with authority permit."
+    },
+    {
+      "code": "DIFC",
+      "authority__body": "DIFC Building Control",
+      "type": "Regulator",
+      "emirate": "Dubai",
+      "jurisdiction__areas_covered": "DIFC district",
+      "permits_issued_typical": "Fit-out permit, Building modification, Completion certificate",
+      "submission_channel": "DIFC portal",
+      "notes_for_configuration": "Strict working-hours and noise rules in occupied towers - map to calendar constraints."
+    },
+    {
+      "code": "DSO",
+      "authority__body": "DIEZ / Dubai Silicon Oasis Authority",
+      "type": "Regulator",
+      "emirate": "Dubai",
+      "jurisdiction__areas_covered": "Dubai Silicon Oasis, DTEC",
+      "permits_issued_typical": "Fit-out permit, Modification permit, Completion",
+      "submission_channel": "DSOA / DIEZ portal",
+      "notes_for_configuration": "Separate approvals for civil, electrical and mechanical scopes."
+    },
+    {
+      "code": "DXBS",
+      "authority__body": "Dubai South",
+      "type": "Regulator",
+      "emirate": "Dubai",
+      "jurisdiction__areas_covered": "Dubai South districts, Expo City vicinity",
+      "permits_issued_typical": "Fit-out permit, Building permit, Completion",
+      "submission_channel": "Dubai South portal",
+      "notes_for_configuration": "Aviation-district height and access restrictions may apply."
+    },
+    {
+      "code": "JAFZA",
+      "authority__body": "JAFZA Authority",
+      "type": "Regulator",
+      "emirate": "Dubai",
+      "jurisdiction__areas_covered": "Jebel Ali Free Zone",
+      "permits_issued_typical": "Fit-out / modification permit, Completion",
+      "submission_channel": "JAFZA Dubai Trade portal",
+      "notes_for_configuration": "Industrial units - additional EHS approvals."
+    },
+    {
+      "code": "DCD",
+      "authority__body": "Dubai Civil Defence",
+      "type": "Regulator",
+      "emirate": "Dubai",
+      "jurisdiction__areas_covered": "All of Dubai - fire and life safety",
+      "permits_issued_typical": "Fire and life safety design NOC, Modification NOC, Final inspection / completion NOC",
+      "submission_channel": "DCD e-services via approved consultant / contractor",
+      "notes_for_configuration": "Any change to sprinklers, detection, fire-rated construction, gas or emergency lighting triggers a DCD NOC. Fire contractors must hold DCD approval - hard gate on subcontractor award."
+    },
+    {
+      "code": "DEWA",
+      "authority__body": "Dubai Electricity & Water Authority",
+      "type": "Utility",
+      "emirate": "Dubai",
+      "jurisdiction__areas_covered": "All of Dubai",
+      "permits_issued_typical": "Temporary supply, Load increase / meter application, Disconnection and reconnection, NOC for excavation or demolition, Solar (Shams Dubai) connection",
+      "submission_channel": "DEWA smart app / portal",
+      "notes_for_configuration": "Electrical contractor must be DEWA-enrolled. Disconnection before demolition and reconnection before handover are separate cases - both must appear on the programme."
+    },
+    {
+      "code": "RTA",
+      "authority__body": "Roads & Transport Authority",
+      "type": "Regulator",
+      "emirate": "Dubai",
+      "jurisdiction__areas_covered": "Public roads, right of way, metro corridors",
+      "permits_issued_typical": "Hoarding on right of way, Road opening, Crane and lifting permit, Heavy vehicle movement, NOC near metro",
+      "submission_channel": "RTA e-services",
+      "notes_for_configuration": "Villa projects usually need this only for skips, hoarding or crane lifts on the road. Trigger by scope toggle."
+    },
+    {
+      "code": "SIRA",
+      "authority__body": "Security Industry Regulatory Agency",
+      "type": "Regulator",
+      "emirate": "Dubai",
+      "jurisdiction__areas_covered": "All of Dubai - security systems",
+      "permits_issued_typical": "CCTV and access control design approval, Installation NOC, Final inspection",
+      "submission_channel": "SIRA portal",
+      "notes_for_configuration": "CCTV / access control installer must hold a SIRA licence - hard gate on subcontractor award."
+    },
+    {
+      "code": "DMW",
+      "authority__body": "Dubai Municipality - Waste Management",
+      "type": "Regulator",
+      "emirate": "Dubai",
+      "jurisdiction__areas_covered": "All of Dubai",
+      "permits_issued_typical": "Construction and demolition waste transfer permit, Tipping tickets",
+      "submission_channel": "DM waste system / approved hauler",
+      "notes_for_configuration": "Tipping receipts are often required as evidence to release community deposits - store against the deposit refund case."
+    },
+    {
+      "code": "DMFS",
+      "authority__body": "Dubai Municipality - Food Safety",
+      "type": "Regulator",
+      "emirate": "Dubai",
+      "jurisdiction__areas_covered": "F&B outlets",
+      "permits_issued_typical": "Kitchen layout approval, Food establishment permit",
+      "submission_channel": "DM portal",
+      "notes_for_configuration": "Triggered only when the project scope includes a commercial kitchen."
+    },
+    {
+      "code": "DET",
+      "authority__body": "Dubai Economy & Tourism",
+      "type": "Regulator",
+      "emirate": "Dubai",
+      "jurisdiction__areas_covered": "Commercial premises",
+      "permits_issued_typical": "Signage / fascia permit, Trade licence activity",
+      "submission_channel": "Invest in Dubai",
+      "notes_for_configuration": "Retail and office fit-out - external signage is a separate permit."
+    },
+    {
+      "code": "DHA",
+      "authority__body": "Dubai Health Authority",
+      "type": "Regulator",
+      "emirate": "Dubai",
+      "jurisdiction__areas_covered": "Clinics and healthcare",
+      "permits_issued_typical": "Healthcare facility layout approval, Licensing inspection",
+      "submission_channel": "DHA Sheryan",
+      "notes_for_configuration": "Clinic fit-out only."
+    },
+    {
+      "code": "KHDA",
+      "authority__body": "Knowledge & Human Development Authority",
+      "type": "Regulator",
+      "emirate": "Dubai",
+      "jurisdiction__areas_covered": "Schools and nurseries",
+      "permits_issued_typical": "Educational facility approval",
+      "submission_channel": "KHDA portal",
+      "notes_for_configuration": "Nursery and school fit-out only."
+    },
+    {
+      "code": "EMR",
+      "authority__body": "Emaar Community Management / LOAMS",
+      "type": "Master Developer",
+      "emirate": "Dubai",
+      "jurisdiction__areas_covered": "Arabian Ranches 1-3, Dubai Hills Estate, Emirates Living (Springs, Meadows, Lakes), The Greens and Views, Downtown, Dubai Creek Harbour, Emaar Beachfront, Emaar South",
+      "permits_issued_typical": "Community NOC, Works permit, Contractor registration, Access cards",
+      "submission_channel": "Emaar / LOAMS community portal or e-mail submission",
+      "notes_for_configuration": "Refundable security deposit and a works permit with a fixed validity window. Working-hours and Friday / public-holiday restrictions must map to the project calendar."
+    },
+    {
+      "code": "NAK",
+      "authority__body": "Nakheel Community Management",
+      "type": "Master Developer",
+      "emirate": "Dubai",
+      "jurisdiction__areas_covered": "Palm Jumeirah, Jumeirah Park, Jumeirah Islands, Jumeirah Heights, Al Furjan, The Gardens, Nad Al Sheba, Warsan",
+      "permits_issued_typical": "Community NOC, Modification approval, Contractor registration, Access and gate passes",
+      "submission_channel": "Nakheel community portal",
+      "notes_for_configuration": "Usually runs in parallel with Trakhees - configure as a dependent pair."
+    },
+    {
+      "code": "MRS",
+      "authority__body": "Meraas / Dubai Holding Community Management",
+      "type": "Master Developer",
+      "emirate": "Dubai",
+      "jurisdiction__areas_covered": "City Walk, La Mer, Bluewaters, Port de La Mer, Jumeirah Bay, Madinat Jumeirah Living",
+      "permits_issued_typical": "Community NOC, Fit-out permit, Access approval",
+      "submission_channel": "Community management office",
+      "notes_for_configuration": "Tight delivery and access windows in mixed-use districts."
+    },
+    {
+      "code": "DAM",
+      "authority__body": "DAMAC Community Management",
+      "type": "Master Developer",
+      "emirate": "Dubai",
+      "jurisdiction__areas_covered": "DAMAC Hills 1 and 2, AKOYA, DAMAC Lagoons",
+      "permits_issued_typical": "Community NOC, Works permit, Contractor registration",
+      "submission_channel": "DAMAC OA portal",
+      "notes_for_configuration": "Deposit refund tied to common-area condition sign-off."
+    },
+    {
+      "code": "SOB",
+      "authority__body": "Sobha Community Management",
+      "type": "Master Developer",
+      "emirate": "Dubai",
+      "jurisdiction__areas_covered": "Sobha Hartland, Hartland Greens",
+      "permits_issued_typical": "Community NOC, Works permit",
+      "submission_channel": "Sobha OA",
+      "notes_for_configuration": "Landscape and facade change restrictions are strict."
+    },
+    {
+      "code": "DP",
+      "authority__body": "Dubai Properties / Wasl",
+      "type": "Master Developer",
+      "emirate": "Dubai",
+      "jurisdiction__areas_covered": "Mudon, Villanova, Serena, Remraam, JBR, Business Bay, Wasl communities",
+      "permits_issued_typical": "Community NOC, Fit-out approval",
+      "submission_channel": "Community management office",
+      "notes_for_configuration": "Several communities are managed by third-party OA companies - keep OA as a separate linked record."
+    },
+    {
+      "code": "TAG",
+      "authority__body": "Tilal Al Ghaf / Majid Al Futtaim",
+      "type": "Master Developer",
+      "emirate": "Dubai",
+      "jurisdiction__areas_covered": "Tilal Al Ghaf",
+      "permits_issued_typical": "Community NOC, Works permit",
+      "submission_channel": "Community management",
+      "notes_for_configuration": "Design review of any external change."
+    },
+    {
+      "code": "JGE",
+      "authority__body": "Jumeirah Golf Estates",
+      "type": "Master Developer",
+      "emirate": "Dubai",
+      "jurisdiction__areas_covered": "Jumeirah Golf Estates",
+      "permits_issued_typical": "Community NOC, Design review approval, Works permit",
+      "submission_channel": "JGE community management",
+      "notes_for_configuration": "Architectural design review board approval required for facade or extension changes - adds 2-4 weeks."
+    },
+    {
+      "code": "ALB",
+      "authority__body": "Al Barari",
+      "type": "Master Developer",
+      "emirate": "Dubai",
+      "jurisdiction__areas_covered": "Al Barari, The Nest",
+      "permits_issued_typical": "Community NOC, Design approval",
+      "submission_channel": "Community management",
+      "notes_for_configuration": "Landscape-sensitive - restrictions on tree removal."
+    },
+    {
+      "code": "OAFM",
+      "authority__body": "Owners Association / FM Manager (generic)",
+      "type": "Building Management",
+      "emirate": "Dubai",
+      "jurisdiction__areas_covered": "Apartment towers and mixed-use buildings (LOAMS, Kaizen, Deyaar FM, Farnek, Concordia, Idama, Savills and similar)",
+      "permits_issued_typical": "Building NOC, Fit-out approval, Access cards, Lift booking, Refundable deposit",
+      "submission_channel": "Building management office",
+      "notes_for_configuration": "Create one record per managed building. Lift booking and material movement windows are scheduling constraints - push to the programme."
+    },
+    {
+      "code": "ADM",
+      "authority__body": "Abu Dhabi - DMT / Abu Dhabi City Municipality",
+      "type": "Regulator",
+      "emirate": "Abu Dhabi",
+      "jurisdiction__areas_covered": "Abu Dhabi mainland",
+      "permits_issued_typical": "Building permit, Fit-out / modification permit, Completion certificate, Estidama Pearl compliance",
+      "submission_channel": "TAMM portal",
+      "notes_for_configuration": "Estidama Pearl rating requirements apply to many project types."
+    },
+    {
+      "code": "ADDC",
+      "authority__body": "Abu Dhabi Distribution Company",
+      "type": "Utility",
+      "emirate": "Abu Dhabi",
+      "jurisdiction__areas_covered": "Abu Dhabi",
+      "permits_issued_typical": "Temporary supply, Meter, Disconnection and reconnection",
+      "submission_channel": "ADDC portal",
+      "notes_for_configuration": "Mirror of the DEWA workflow."
+    },
+    {
+      "code": "ADCD",
+      "authority__body": "Abu Dhabi Civil Defence",
+      "type": "Regulator",
+      "emirate": "Abu Dhabi",
+      "jurisdiction__areas_covered": "Abu Dhabi",
+      "permits_issued_typical": "Fire and life safety NOC, Final inspection",
+      "submission_channel": "ADCD portal",
+      "notes_for_configuration": "UAE Fire and Life Safety Code applies."
+    },
+    {
+      "code": "ALDR",
+      "authority__body": "Aldar / Provis Community Management",
+      "type": "Master Developer",
+      "emirate": "Abu Dhabi",
+      "jurisdiction__areas_covered": "Yas Island, Al Raha, Reem Island, Saadiyat, Noya, Alreeman",
+      "permits_issued_typical": "Community NOC, Fit-out permit, Contractor registration",
+      "submission_channel": "Aldar / Provis portal",
+      "notes_for_configuration": "Mall units (for example Yas Mall) follow a separate retail-delivery fit-out manual with night-work windows."
+    },
+    {
+      "code": "SHJM",
+      "authority__body": "Sharjah Municipality",
+      "type": "Regulator",
+      "emirate": "Sharjah",
+      "jurisdiction__areas_covered": "Sharjah",
+      "permits_issued_typical": "Building permit, Modification permit, Completion",
+      "submission_channel": "Sharjah Municipality portal",
+      "notes_for_configuration": "Different fee structure and approval flow to Dubai."
+    },
+    {
+      "code": "SEWA",
+      "authority__body": "Sharjah Electricity, Water & Gas",
+      "type": "Utility",
+      "emirate": "Sharjah",
+      "jurisdiction__areas_covered": "Sharjah",
+      "permits_issued_typical": "Supply, meter, disconnection and reconnection",
+      "submission_channel": "SEWA portal",
+      "notes_for_configuration": "-"
+    },
+    {
+      "code": "GHMC",
+      "authority__body": "GHMC / TG-RERA (India)",
+      "type": "Regulator",
+      "emirate": "Hyderabad",
+      "jurisdiction__areas_covered": "Greater Hyderabad Municipal Corporation area",
+      "permits_issued_typical": "Building permit, Occupancy certificate, RERA registration",
+      "submission_channel": "TS-bPASS / RERA portal",
+      "notes_for_configuration": "For VetroBuild Contracting India. Keep the same data model, different jurisdiction pack."
+    }
+  ],
+  "permit_types": [
+    {
+      "permit_code": "P-COMM-REG",
+      "permit__case_type": "Contractor registration with community / master developer",
+      "issuing_body": "Master Developer",
+      "typical_trigger": "Company level - before first project in that community",
+      "prerequisite_cases": "-",
+      "indicative_sla_working_days": "5-15",
+      "typical_validity": "12 months",
+      "deposit": "No",
+      "renewable": "Yes",
+      "blocks_which_activities": "All works in that community"
+    },
+    {
+      "permit_code": "P-COMM-NOC",
+      "permit__case_type": "Community NOC / works permit",
+      "issuing_body": "Master Developer",
+      "typical_trigger": "Any construction, renovation or fit-out in a managed community",
+      "prerequisite_cases": "P-COMM-REG",
+      "indicative_sla_working_days": "5-15",
+      "typical_validity": "30-90 days",
+      "deposit": "Yes - refundable",
+      "renewable": "Yes",
+      "blocks_which_activities": "Demolition, all site works"
+    },
+    {
+      "permit_code": "P-BLDG-NOC",
+      "permit__case_type": "Building / OA fit-out NOC",
+      "issuing_body": "Building Management",
+      "typical_trigger": "Apartment or tower unit fit-out",
+      "prerequisite_cases": "P-COMM-REG",
+      "indicative_sla_working_days": "3-10",
+      "typical_validity": "30-60 days",
+      "deposit": "Yes - refundable",
+      "renewable": "Yes",
+      "blocks_which_activities": "Site mobilisation, demolition"
+    },
+    {
+      "permit_code": "P-ACCESS",
+      "permit__case_type": "Access cards, gate passes and vehicle permits",
+      "issuing_body": "Master Developer / Building Management",
+      "typical_trigger": "Before any worker or vehicle enters",
+      "prerequisite_cases": "P-COMM-NOC",
+      "indicative_sla_working_days": "1-5",
+      "typical_validity": "Duration of works",
+      "deposit": "Sometimes",
+      "renewable": "Yes",
+      "blocks_which_activities": "Worker mobilisation"
+    },
+    {
+      "permit_code": "P-DEMO",
+      "permit__case_type": "Demolition permit",
+      "issuing_body": "Regulator (DM / DDA / Trakhees)",
+      "typical_trigger": "Structural or full strip-out demolition",
+      "prerequisite_cases": "P-DISCONNECT",
+      "indicative_sla_working_days": "5-15",
+      "typical_validity": "60-90 days",
+      "deposit": "No",
+      "renewable": "Yes",
+      "blocks_which_activities": "Demolition"
+    },
+    {
+      "permit_code": "P-MOD",
+      "permit__case_type": "Building modification / renovation permit",
+      "issuing_body": "Regulator",
+      "typical_trigger": "Any change to layout, structure, facade or MEP capacity",
+      "prerequisite_cases": "Consultant drawings, P-COMM-NOC",
+      "indicative_sla_working_days": "10-25",
+      "typical_validity": "6-12 months",
+      "deposit": "No",
+      "renewable": "Yes",
+      "blocks_which_activities": "Structural works, blockwork"
+    },
+    {
+      "permit_code": "P-FITOUT",
+      "permit__case_type": "Fit-out permit",
+      "issuing_body": "Regulator (DDA / DMCC / DIFC / Trakhees / Free zone)",
+      "typical_trigger": "Commercial or retail fit-out inside a shell",
+      "prerequisite_cases": "P-BLDG-NOC",
+      "indicative_sla_working_days": "7-20",
+      "typical_validity": "90 days",
+      "deposit": "Sometimes",
+      "renewable": "Yes",
+      "blocks_which_activities": "All fit-out works"
+    },
+    {
+      "permit_code": "P-DCD-NOC",
+      "permit__case_type": "Civil Defence design NOC",
+      "issuing_body": "Civil Defence",
+      "typical_trigger": "Change to fire detection, suppression, fire-rated construction, gas or emergency lighting",
+      "prerequisite_cases": "Approved fire drawings",
+      "indicative_sla_working_days": "10-25",
+      "typical_validity": "Project duration",
+      "deposit": "No",
+      "renewable": "No",
+      "blocks_which_activities": "Fire system installation, ceiling close-up"
+    },
+    {
+      "permit_code": "P-DCD-FINAL",
+      "permit__case_type": "Civil Defence final inspection and completion NOC",
+      "issuing_body": "Civil Defence",
+      "typical_trigger": "Before handover / completion certificate",
+      "prerequisite_cases": "P-DCD-NOC, installation complete",
+      "indicative_sla_working_days": "5-15",
+      "typical_validity": "-",
+      "deposit": "No",
+      "renewable": "No",
+      "blocks_which_activities": "Completion certificate, handover"
+    },
+    {
+      "permit_code": "P-DEWA-TEMP",
+      "permit__case_type": "DEWA / ADDC temporary supply",
+      "issuing_body": "Utility",
+      "typical_trigger": "Site power for new build or major works",
+      "prerequisite_cases": "Site establishment",
+      "indicative_sla_working_days": "5-15",
+      "typical_validity": "Project duration",
+      "deposit": "Yes - refundable",
+      "renewable": "Yes",
+      "blocks_which_activities": "Site works requiring power"
+    },
+    {
+      "permit_code": "P-DISCONNECT",
+      "permit__case_type": "Utility disconnection NOC",
+      "issuing_body": "Utility",
+      "typical_trigger": "Before demolition or major MEP works",
+      "prerequisite_cases": "Owner authorisation",
+      "indicative_sla_working_days": "3-10",
+      "typical_validity": "-",
+      "deposit": "No",
+      "renewable": "No",
+      "blocks_which_activities": "Demolition"
+    },
+    {
+      "permit_code": "P-RECONNECT",
+      "permit__case_type": "Utility reconnection / meter energisation",
+      "issuing_body": "Utility",
+      "typical_trigger": "Before testing, commissioning and handover",
+      "prerequisite_cases": "Internal electrical inspection passed",
+      "indicative_sla_working_days": "5-15",
+      "typical_validity": "-",
+      "deposit": "No",
+      "renewable": "No",
+      "blocks_which_activities": "Commissioning, handover"
+    },
+    {
+      "permit_code": "P-LOAD",
+      "permit__case_type": "Load increase / meter upgrade",
+      "issuing_body": "Utility",
+      "typical_trigger": "Where connected load exceeds existing capacity",
+      "prerequisite_cases": "Approved electrical drawings",
+      "indicative_sla_working_days": "10-25",
+      "typical_validity": "-",
+      "deposit": "Yes",
+      "renewable": "No",
+      "blocks_which_activities": "Second fix electrical, commissioning"
+    },
+    {
+      "permit_code": "P-SIRA",
+      "permit__case_type": "SIRA design approval and installation NOC",
+      "issuing_body": "SIRA",
+      "typical_trigger": "CCTV or access control installation",
+      "prerequisite_cases": "SIRA-licensed installer appointed",
+      "indicative_sla_working_days": "7-15",
+      "typical_validity": "Project duration",
+      "deposit": "No",
+      "renewable": "No",
+      "blocks_which_activities": "Security system installation, handover"
+    },
+    {
+      "permit_code": "P-RTA",
+      "permit__case_type": "RTA hoarding / road opening / lifting permit",
+      "issuing_body": "RTA",
+      "typical_trigger": "Hoarding, skip, crane or lifting on public right of way",
+      "prerequisite_cases": "Traffic drawings",
+      "indicative_sla_working_days": "7-20",
+      "typical_validity": "30-90 days",
+      "deposit": "Yes - refundable",
+      "renewable": "Yes",
+      "blocks_which_activities": "Hoarding, deliveries, lifting"
+    },
+    {
+      "permit_code": "P-WASTE",
+      "permit__case_type": "Construction and demolition waste transfer permit",
+      "issuing_body": "Regulator",
+      "typical_trigger": "Any waste leaving site",
+      "prerequisite_cases": "Approved hauler appointed",
+      "indicative_sla_working_days": "1-5",
+      "typical_validity": "Project duration",
+      "deposit": "No",
+      "renewable": "Yes",
+      "blocks_which_activities": "Debris removal"
+    },
+    {
+      "permit_code": "P-NIGHT",
+      "permit__case_type": "Out-of-hours / night works permit",
+      "issuing_body": "Master Developer / Building Management / Regulator",
+      "typical_trigger": "Work outside standard permitted hours",
+      "prerequisite_cases": "P-COMM-NOC",
+      "indicative_sla_working_days": "3-10",
+      "typical_validity": "Per event or per month",
+      "deposit": "No",
+      "renewable": "Yes",
+      "blocks_which_activities": "Extended-shift acceleration"
+    },
+    {
+      "permit_code": "P-HOT",
+      "permit__case_type": "Hot works permit",
+      "issuing_body": "Building Management / internal HSE",
+      "typical_trigger": "Welding, grinding, cutting, torch work",
+      "prerequisite_cases": "HSE method statement",
+      "indicative_sla_working_days": "1-2",
+      "typical_validity": "Per shift",
+      "deposit": "No",
+      "renewable": "Yes",
+      "blocks_which_activities": "Welding, cutting, metal works"
+    },
+    {
+      "permit_code": "P-LIFT",
+      "permit__case_type": "Service lift booking / material movement window",
+      "issuing_body": "Building Management",
+      "typical_trigger": "Material delivery in an occupied tower",
+      "prerequisite_cases": "P-BLDG-NOC",
+      "indicative_sla_working_days": "1-3",
+      "typical_validity": "Per booking",
+      "deposit": "No",
+      "renewable": "Yes",
+      "blocks_which_activities": "Material delivery"
+    },
+    {
+      "permit_code": "P-SIGN",
+      "permit__case_type": "Signage / fascia permit",
+      "issuing_body": "Regulator (DET / free zone)",
+      "typical_trigger": "External signage or fascia change",
+      "prerequisite_cases": "Signage drawings",
+      "indicative_sla_working_days": "10-20",
+      "typical_validity": "1-3 years",
+      "deposit": "No",
+      "renewable": "Yes",
+      "blocks_which_activities": "Signage installation"
+    },
+    {
+      "permit_code": "P-KITCHEN",
+      "permit__case_type": "Food safety kitchen layout approval",
+      "issuing_body": "DM Food Safety",
+      "typical_trigger": "Commercial kitchen fit-out",
+      "prerequisite_cases": "Approved kitchen drawings",
+      "indicative_sla_working_days": "10-20",
+      "typical_validity": "-",
+      "deposit": "No",
+      "renewable": "No",
+      "blocks_which_activities": "Kitchen installation, handover"
+    },
+    {
+      "permit_code": "P-GREEN",
+      "permit__case_type": "Green building / Al Safat or Estidama compliance",
+      "issuing_body": "Regulator",
+      "typical_trigger": "New build and major refurbishment",
+      "prerequisite_cases": "Design compliance report",
+      "indicative_sla_working_days": "10-25",
+      "typical_validity": "-",
+      "deposit": "No",
+      "renewable": "No",
+      "blocks_which_activities": "Building permit issue"
+    },
+    {
+      "permit_code": "P-COMPLETE",
+      "permit__case_type": "Completion certificate / BCC",
+      "issuing_body": "Regulator",
+      "typical_trigger": "End of works",
+      "prerequisite_cases": "All inspections passed, P-DCD-FINAL",
+      "indicative_sla_working_days": "10-30",
+      "typical_validity": "-",
+      "deposit": "No",
+      "renewable": "No",
+      "blocks_which_activities": "Legal handover, utility permanent connection"
+    },
+    {
+      "permit_code": "P-DEPOSIT",
+      "permit__case_type": "Security deposit refund claim",
+      "issuing_body": "Master Developer / Building Management",
+      "typical_trigger": "After completion and common-area clearance",
+      "prerequisite_cases": "P-COMPLETE, site clearance sign-off",
+      "indicative_sla_working_days": "15-45",
+      "typical_validity": "-",
+      "deposit": "-",
+      "renewable": "No",
+      "blocks_which_activities": "Financial close-out"
+    }
+  ],
+  "document_types": [
+    {
+      "doc_code": "D01",
+      "document": "Contractor trade licence",
+      "category": "Company",
+      "typically_required_for": "All permits",
+      "expiry_tracked": "Yes",
+      "source__owner": "Contractor"
+    },
+    {
+      "doc_code": "D02",
+      "document": "Establishment card / immigration card",
+      "category": "Company",
+      "typically_required_for": "Community registration, access cards",
+      "expiry_tracked": "Yes",
+      "source__owner": "Contractor"
+    },
+    {
+      "doc_code": "D03",
+      "document": "VAT registration certificate (TRN)",
+      "category": "Company",
+      "typically_required_for": "Registration, invoicing",
+      "expiry_tracked": "No",
+      "source__owner": "Contractor"
+    },
+    {
+      "doc_code": "D04",
+      "document": "Contractors all risk (CAR) insurance",
+      "category": "Insurance",
+      "typically_required_for": "Community NOC, fit-out permit",
+      "expiry_tracked": "Yes",
+      "source__owner": "Contractor"
+    },
+    {
+      "doc_code": "D05",
+      "document": "Third party liability insurance",
+      "category": "Insurance",
+      "typically_required_for": "Community NOC, fit-out permit",
+      "expiry_tracked": "Yes",
+      "source__owner": "Contractor"
+    },
+    {
+      "doc_code": "D06",
+      "document": "Workmen compensation insurance",
+      "category": "Insurance",
+      "typically_required_for": "Community NOC, access cards",
+      "expiry_tracked": "Yes",
+      "source__owner": "Contractor"
+    },
+    {
+      "doc_code": "D07",
+      "document": "Municipality / authority contractor classification",
+      "category": "Company",
+      "typically_required_for": "Building and modification permits",
+      "expiry_tracked": "Yes",
+      "source__owner": "Contractor"
+    },
+    {
+      "doc_code": "D08",
+      "document": "Community / master developer contractor registration",
+      "category": "Company",
+      "typically_required_for": "Community NOC",
+      "expiry_tracked": "Yes",
+      "source__owner": "Master developer"
+    },
+    {
+      "doc_code": "D09",
+      "document": "Civil Defence approved contractor certificate",
+      "category": "Company",
+      "typically_required_for": "Fire system works",
+      "expiry_tracked": "Yes",
+      "source__owner": "Fire subcontractor"
+    },
+    {
+      "doc_code": "D10",
+      "document": "SIRA installer licence",
+      "category": "Company",
+      "typically_required_for": "CCTV and access control works",
+      "expiry_tracked": "Yes",
+      "source__owner": "Security subcontractor"
+    },
+    {
+      "doc_code": "D11",
+      "document": "DEWA enrolled electrical contractor certificate",
+      "category": "Company",
+      "typically_required_for": "Electrical works, energisation",
+      "expiry_tracked": "Yes",
+      "source__owner": "Electrical subcontractor"
+    },
+    {
+      "doc_code": "D12",
+      "document": "Title deed / Oqood",
+      "category": "Property",
+      "typically_required_for": "Building and modification permits",
+      "expiry_tracked": "No",
+      "source__owner": "Client"
+    },
+    {
+      "doc_code": "D13",
+      "document": "Affection plan / site plan",
+      "category": "Property",
+      "typically_required_for": "Building and modification permits",
+      "expiry_tracked": "No",
+      "source__owner": "Client / consultant"
+    },
+    {
+      "doc_code": "D14",
+      "document": "Owner NOC / authorisation letter",
+      "category": "Property",
+      "typically_required_for": "All permits where contractor acts for the owner",
+      "expiry_tracked": "No",
+      "source__owner": "Client"
+    },
+    {
+      "doc_code": "D15",
+      "document": "Tenancy contract and Ejari",
+      "category": "Property",
+      "typically_required_for": "Commercial fit-out permits",
+      "expiry_tracked": "Yes",
+      "source__owner": "Client"
+    },
+    {
+      "doc_code": "D16",
+      "document": "Architectural drawings - stamped by consultant",
+      "category": "Drawings",
+      "typically_required_for": "Modification and fit-out permits",
+      "expiry_tracked": "No",
+      "source__owner": "Consultant"
+    },
+    {
+      "doc_code": "D17",
+      "document": "Structural drawings and structural assessment report",
+      "category": "Drawings",
+      "typically_required_for": "Structural modification permit",
+      "expiry_tracked": "No",
+      "source__owner": "Consultant"
+    },
+    {
+      "doc_code": "D18",
+      "document": "MEP drawings - electrical, plumbing, HVAC",
+      "category": "Drawings",
+      "typically_required_for": "Modification permit, DEWA, DCD",
+      "expiry_tracked": "No",
+      "source__owner": "Consultant / contractor"
+    },
+    {
+      "doc_code": "D19",
+      "document": "Fire and life safety drawings",
+      "category": "Drawings",
+      "typically_required_for": "Civil Defence NOC",
+      "expiry_tracked": "No",
+      "source__owner": "Fire consultant"
+    },
+    {
+      "doc_code": "D20",
+      "document": "Method statement and risk assessment (MSRA)",
+      "category": "HSE",
+      "typically_required_for": "Community NOC, hot works, high-risk activity",
+      "expiry_tracked": "No",
+      "source__owner": "Contractor"
+    },
+    {
+      "doc_code": "D21",
+      "document": "HSE plan and emergency response plan",
+      "category": "HSE",
+      "typically_required_for": "Community NOC, fit-out permit",
+      "expiry_tracked": "No",
+      "source__owner": "Contractor"
+    },
+    {
+      "doc_code": "D22",
+      "document": "Waste management plan and approved hauler details",
+      "category": "HSE",
+      "typically_required_for": "Waste transfer permit, community NOC",
+      "expiry_tracked": "No",
+      "source__owner": "Contractor"
+    },
+    {
+      "doc_code": "D23",
+      "document": "Worker list with passport, visa, Emirates ID copies",
+      "category": "Workforce",
+      "typically_required_for": "Access cards, gate passes",
+      "expiry_tracked": "Yes",
+      "source__owner": "Contractor / subcontractor"
+    },
+    {
+      "doc_code": "D24",
+      "document": "Worker medical fitness and insurance",
+      "category": "Workforce",
+      "typically_required_for": "Access cards",
+      "expiry_tracked": "Yes",
+      "source__owner": "Contractor / subcontractor"
+    },
+    {
+      "doc_code": "D25",
+      "document": "Third party trade certificates (scaffolding, electrical, height)",
+      "category": "Workforce",
+      "typically_required_for": "High-risk activity permits",
+      "expiry_tracked": "Yes",
+      "source__owner": "Contractor / subcontractor"
+    },
+    {
+      "doc_code": "D26",
+      "document": "Site supervisor CV and contact details",
+      "category": "Workforce",
+      "typically_required_for": "Community NOC",
+      "expiry_tracked": "No",
+      "source__owner": "Contractor"
+    },
+    {
+      "doc_code": "D27",
+      "document": "Programme of works / schedule",
+      "category": "Project",
+      "typically_required_for": "Community NOC, fit-out permit",
+      "expiry_tracked": "No",
+      "source__owner": "Contractor"
+    },
+    {
+      "doc_code": "D28",
+      "document": "Undertaking letter - common area protection and reinstatement",
+      "category": "Project",
+      "typically_required_for": "Community NOC, building NOC",
+      "expiry_tracked": "No",
+      "source__owner": "Contractor"
+    },
+    {
+      "doc_code": "D29",
+      "document": "Security deposit cheque or transfer receipt",
+      "category": "Financial",
+      "typically_required_for": "Community NOC, building NOC",
+      "expiry_tracked": "No",
+      "source__owner": "Contractor"
+    },
+    {
+      "doc_code": "D30",
+      "document": "Permit fee payment receipt",
+      "category": "Financial",
+      "typically_required_for": "All paid permits",
+      "expiry_tracked": "No",
+      "source__owner": "Contractor"
+    },
+    {
+      "doc_code": "D31",
+      "document": "Material and finish specification / sample board",
+      "category": "Project",
+      "typically_required_for": "Design review communities",
+      "expiry_tracked": "No",
+      "source__owner": "Contractor / designer"
+    },
+    {
+      "doc_code": "D32",
+      "document": "As-built drawings",
+      "category": "Closeout",
+      "typically_required_for": "Completion certificate",
+      "expiry_tracked": "No",
+      "source__owner": "Contractor"
+    },
+    {
+      "doc_code": "D33",
+      "document": "Testing and commissioning reports",
+      "category": "Closeout",
+      "typically_required_for": "Completion certificate, DCD final",
+      "expiry_tracked": "No",
+      "source__owner": "Contractor"
+    },
+    {
+      "doc_code": "D34",
+      "document": "Site clearance and common-area condition sign-off",
+      "category": "Closeout",
+      "typically_required_for": "Deposit refund",
+      "expiry_tracked": "No",
+      "source__owner": "Master developer"
+    },
+    {
+      "doc_code": "D35",
+      "document": "Waste tipping receipts",
+      "category": "Closeout",
+      "typically_required_for": "Deposit refund, waste compliance",
+      "expiry_tracked": "No",
+      "source__owner": "Contractor"
+    }
+  ],
+  "schedule_templates": [
+    {
+      "code": "TPL-RENO-90",
+      "name": "Turnkey villa renovation - 90 calendar day baseline",
+      "total_working_days": 77,
+      "calendar_days": 90,
+      "work_week": 6,
+      "activities": [
+        {
+          "id": "R010",
+          "wbs_phase": "1 Pre-Construction",
+          "activity": "Contract award, advance payment and kick-off meeting",
+          "dur_wd": 1,
+          "start_wd": 1,
+          "finish_wd": 1,
+          "predecessor": "-",
+          "critical": "Y",
+          "trade__package": "Main contractor",
+          "constraint__note": "Trigger for template application"
+        },
+        {
+          "id": "R020",
+          "wbs_phase": "1 Pre-Construction",
+          "activity": "As-built survey and dimensional verification",
+          "dur_wd": 2,
+          "start_wd": 2,
+          "finish_wd": 3,
+          "predecessor": "R010",
+          "critical": "Y",
+          "trade__package": "Main contractor",
+          "constraint__note": "Laser survey - feeds aluminium and joinery sizes"
+        },
+        {
+          "id": "R030",
+          "wbs_phase": "1 Pre-Construction",
+          "activity": "Construction drawings, MEP layouts and setting out",
+          "dur_wd": 5,
+          "start_wd": 4,
+          "finish_wd": 8,
+          "predecessor": "R020",
+          "critical": "N",
+          "trade__package": "Design",
+          "constraint__note": "-"
+        },
+        {
+          "id": "R040",
+          "wbs_phase": "1 Pre-Construction",
+          "activity": "Client finish selection freeze (tiles, sanitary, paint, joinery)",
+          "dur_wd": 5,
+          "start_wd": 4,
+          "finish_wd": 8,
+          "predecessor": "R020 SS",
+          "critical": "N",
+          "trade__package": "Design / client",
+          "constraint__note": "MILESTONE M1 at WD8 - no changes after without a variation"
+        },
+        {
+          "id": "R050",
+          "wbs_phase": "2 Approvals",
+          "activity": "Authority and community permit pack preparation",
+          "dur_wd": 2,
+          "start_wd": 4,
+          "finish_wd": 5,
+          "predecessor": "R020",
+          "critical": "N",
+          "trade__package": "PRO",
+          "constraint__note": "Auto-assembled by the Authority Engine"
+        },
+        {
+          "id": "R060",
+          "wbs_phase": "2 Approvals",
+          "activity": "Community NOC / works permit approval",
+          "dur_wd": 6,
+          "start_wd": 6,
+          "finish_wd": 11,
+          "predecessor": "R050",
+          "critical": "N",
+          "trade__package": "PRO",
+          "constraint__note": "MILESTONE M2 - gate for demolition start"
+        },
+        {
+          "id": "R070",
+          "wbs_phase": "2 Approvals",
+          "activity": "Site mobilisation, protection, hoarding and temporary services",
+          "dur_wd": 3,
+          "start_wd": 9,
+          "finish_wd": 11,
+          "predecessor": "R060 SS+3",
+          "critical": "N",
+          "trade__package": "Main contractor",
+          "constraint__note": "-"
+        },
+        {
+          "id": "R080",
+          "wbs_phase": "2 Approvals",
+          "activity": "HSE plan, insurances, worker induction and access cards",
+          "dur_wd": 2,
+          "start_wd": 10,
+          "finish_wd": 11,
+          "predecessor": "R060 SS+4",
+          "critical": "N",
+          "trade__package": "HSE",
+          "constraint__note": "Workers with expired documents are blocked from the site register"
+        },
+        {
+          "id": "R100",
+          "wbs_phase": "3 Long Lead",
+          "activity": "Aluminium site measure and shop drawing approval",
+          "dur_wd": 3,
+          "start_wd": 4,
+          "finish_wd": 6,
+          "predecessor": "R020",
+          "critical": "Y",
+          "trade__package": "Aluminium and glazing",
+          "constraint__note": "-"
+        },
+        {
+          "id": "R110",
+          "wbs_phase": "3 Long Lead",
+          "activity": "ALUMINIUM LPO ISSUED - order-by milestone",
+          "dur_wd": 1,
+          "start_wd": 7,
+          "finish_wd": 7,
+          "predecessor": "R100",
+          "critical": "Y",
+          "trade__package": "Procurement",
+          "constraint__note": "MILESTONE M3 - the single most schedule-critical decision in the project"
+        },
+        {
+          "id": "R120",
+          "wbs_phase": "3 Long Lead",
+          "activity": "Aluminium fabrication, finishing and delivery",
+          "dur_wd": 39,
+          "start_wd": 8,
+          "finish_wd": 46,
+          "predecessor": "R110",
+          "critical": "Y",
+          "trade__package": "Aluminium and glazing",
+          "constraint__note": "45 calendar days lead - drives the critical path"
+        },
+        {
+          "id": "R130",
+          "wbs_phase": "3 Long Lead",
+          "activity": "Tile and stone LPO and delivery",
+          "dur_wd": 20,
+          "start_wd": 9,
+          "finish_wd": 28,
+          "predecessor": "R040",
+          "critical": "N",
+          "trade__package": "Tiling",
+          "constraint__note": "Imported natural stone extends to 45-60 CD - flag at selection"
+        },
+        {
+          "id": "R140",
+          "wbs_phase": "3 Long Lead",
+          "activity": "Sanitaryware and brassware LPO and delivery",
+          "dur_wd": 22,
+          "start_wd": 9,
+          "finish_wd": 30,
+          "predecessor": "R040",
+          "critical": "N",
+          "trade__package": "Plumbing",
+          "constraint__note": "-"
+        },
+        {
+          "id": "R150",
+          "wbs_phase": "3 Long Lead",
+          "activity": "Joinery shop drawings and client approval",
+          "dur_wd": 6,
+          "start_wd": 9,
+          "finish_wd": 14,
+          "predecessor": "R040",
+          "critical": "N",
+          "trade__package": "Joinery",
+          "constraint__note": "-"
+        },
+        {
+          "id": "R160",
+          "wbs_phase": "3 Long Lead",
+          "activity": "JOINERY LPO ISSUED - order-by milestone",
+          "dur_wd": 1,
+          "start_wd": 15,
+          "finish_wd": 15,
+          "predecessor": "R150",
+          "critical": "N",
+          "trade__package": "Procurement",
+          "constraint__note": "MILESTONE M4"
+        },
+        {
+          "id": "R170",
+          "wbs_phase": "3 Long Lead",
+          "activity": "Joinery production stage 1 - materials and carcass",
+          "dur_wd": 20,
+          "start_wd": 16,
+          "finish_wd": 35,
+          "predecessor": "R160",
+          "critical": "N",
+          "trade__package": "Joinery",
+          "constraint__note": "-"
+        },
+        {
+          "id": "R175",
+          "wbs_phase": "3 Long Lead",
+          "activity": "Joinery site dimension verification after plaster",
+          "dur_wd": 1,
+          "start_wd": 38,
+          "finish_wd": 38,
+          "predecessor": "R370",
+          "critical": "N",
+          "trade__package": "Joinery",
+          "constraint__note": "Hold point - release to final production"
+        },
+        {
+          "id": "R180",
+          "wbs_phase": "3 Long Lead",
+          "activity": "Joinery production stage 2, finishing and delivery",
+          "dur_wd": 20,
+          "start_wd": 39,
+          "finish_wd": 58,
+          "predecessor": "R175",
+          "critical": "Y",
+          "trade__package": "Joinery",
+          "constraint__note": "Second critical path"
+        },
+        {
+          "id": "R190",
+          "wbs_phase": "3 Long Lead",
+          "activity": "Internal doors LPO and delivery",
+          "dur_wd": 25,
+          "start_wd": 15,
+          "finish_wd": 39,
+          "predecessor": "R040",
+          "critical": "N",
+          "trade__package": "Doors and ironmongery",
+          "constraint__note": "-"
+        },
+        {
+          "id": "R200",
+          "wbs_phase": "3 Long Lead",
+          "activity": "Light fittings, switches and smart home LPO and delivery",
+          "dur_wd": 22,
+          "start_wd": 16,
+          "finish_wd": 37,
+          "predecessor": "R040",
+          "critical": "N",
+          "trade__package": "Electrical",
+          "constraint__note": "-"
+        },
+        {
+          "id": "R210",
+          "wbs_phase": "3 Long Lead",
+          "activity": "Shower screens and mirrors site measure",
+          "dur_wd": 1,
+          "start_wd": 52,
+          "finish_wd": 52,
+          "predecessor": "R410",
+          "critical": "N",
+          "trade__package": "Glass and mirrors",
+          "constraint__note": "Cannot be measured before tiling is complete"
+        },
+        {
+          "id": "R220",
+          "wbs_phase": "3 Long Lead",
+          "activity": "Shower screens and mirrors fabrication and delivery",
+          "dur_wd": 14,
+          "start_wd": 53,
+          "finish_wd": 66,
+          "predecessor": "R210",
+          "critical": "N",
+          "trade__package": "Glass and mirrors",
+          "constraint__note": "-"
+        },
+        {
+          "id": "R300",
+          "wbs_phase": "4 Enabling",
+          "activity": "Demolition and strip-out - all zones",
+          "dur_wd": 8,
+          "start_wd": 12,
+          "finish_wd": 19,
+          "predecessor": "R060, R070",
+          "critical": "N",
+          "trade__package": "Demolition",
+          "constraint__note": "Requires community works permit and utility disconnection"
+        },
+        {
+          "id": "R310",
+          "wbs_phase": "4 Enabling",
+          "activity": "Debris removal and waste transfer to approved tip",
+          "dur_wd": 2,
+          "start_wd": 18,
+          "finish_wd": 19,
+          "predecessor": "R300 SS+6",
+          "critical": "N",
+          "trade__package": "Demolition",
+          "constraint__note": "Keep tipping receipts - required for deposit refund"
+        },
+        {
+          "id": "R320",
+          "wbs_phase": "4 Enabling",
+          "activity": "Structural openings and lintel works (if in scope)",
+          "dur_wd": 4,
+          "start_wd": 20,
+          "finish_wd": 23,
+          "predecessor": "R300",
+          "critical": "N",
+          "trade__package": "Civil",
+          "constraint__note": "Requires approved structural permit"
+        },
+        {
+          "id": "R330",
+          "wbs_phase": "5 First Fix",
+          "activity": "MEP first fix - plumbing and drainage",
+          "dur_wd": 8,
+          "start_wd": 20,
+          "finish_wd": 27,
+          "predecessor": "R300",
+          "critical": "N",
+          "trade__package": "Plumbing",
+          "constraint__note": "-"
+        },
+        {
+          "id": "R340",
+          "wbs_phase": "5 First Fix",
+          "activity": "MEP first fix - electrical conduits, DB and low current",
+          "dur_wd": 10,
+          "start_wd": 21,
+          "finish_wd": 30,
+          "predecessor": "R300",
+          "critical": "N",
+          "trade__package": "Electrical",
+          "constraint__note": "-"
+        },
+        {
+          "id": "R350",
+          "wbs_phase": "5 First Fix",
+          "activity": "HVAC modification - ducts, FCU relocation and drain lines",
+          "dur_wd": 8,
+          "start_wd": 22,
+          "finish_wd": 29,
+          "predecessor": "R300",
+          "critical": "N",
+          "trade__package": "HVAC",
+          "constraint__note": "-"
+        },
+        {
+          "id": "R360",
+          "wbs_phase": "5 First Fix",
+          "activity": "Blockwork and gypsum partitions",
+          "dur_wd": 6,
+          "start_wd": 24,
+          "finish_wd": 29,
+          "predecessor": "R320",
+          "critical": "N",
+          "trade__package": "Civil",
+          "constraint__note": "-"
+        },
+        {
+          "id": "R370",
+          "wbs_phase": "6 Wet Works",
+          "activity": "Plastering and skim coat",
+          "dur_wd": 8,
+          "start_wd": 30,
+          "finish_wd": 37,
+          "predecessor": "R330, R340, R360",
+          "critical": "N",
+          "trade__package": "Civil",
+          "constraint__note": "-"
+        },
+        {
+          "id": "R380",
+          "wbs_phase": "6 Wet Works",
+          "activity": "Waterproofing to wet areas, terrace and roof",
+          "dur_wd": 4,
+          "start_wd": 34,
+          "finish_wd": 37,
+          "predecessor": "R370 SS+4",
+          "critical": "N",
+          "trade__package": "Waterproofing",
+          "constraint__note": "24h cure between coats - locked lag"
+        },
+        {
+          "id": "R390",
+          "wbs_phase": "6 Wet Works",
+          "activity": "Flood / ponding test 48h and rectification",
+          "dur_wd": 2,
+          "start_wd": 38,
+          "finish_wd": 39,
+          "predecessor": "R380",
+          "critical": "N",
+          "trade__package": "Waterproofing",
+          "constraint__note": "NON-COMPRESSIBLE - 48h minimum hold"
+        },
+        {
+          "id": "R400",
+          "wbs_phase": "6 Wet Works",
+          "activity": "Screed and floor levelling",
+          "dur_wd": 5,
+          "start_wd": 38,
+          "finish_wd": 42,
+          "predecessor": "R370",
+          "critical": "N",
+          "trade__package": "Civil",
+          "constraint__note": "7 day cure before tiling - locked lag"
+        },
+        {
+          "id": "R410",
+          "wbs_phase": "7 Finishes",
+          "activity": "Tiling - bathrooms, kitchen and wet areas",
+          "dur_wd": 12,
+          "start_wd": 40,
+          "finish_wd": 51,
+          "predecessor": "R390, R130",
+          "critical": "N",
+          "trade__package": "Tiling",
+          "constraint__note": "-"
+        },
+        {
+          "id": "R420",
+          "wbs_phase": "7 Finishes",
+          "activity": "Tiling and stone - general floors and staircase",
+          "dur_wd": 8,
+          "start_wd": 44,
+          "finish_wd": 51,
+          "predecessor": "R400, R130",
+          "critical": "N",
+          "trade__package": "Tiling",
+          "constraint__note": "-"
+        },
+        {
+          "id": "R430",
+          "wbs_phase": "7 Finishes",
+          "activity": "Aluminium windows and doors installation",
+          "dur_wd": 6,
+          "start_wd": 47,
+          "finish_wd": 52,
+          "predecessor": "R120, R370",
+          "critical": "Y",
+          "trade__package": "Aluminium and glazing",
+          "constraint__note": "-"
+        },
+        {
+          "id": "R440",
+          "wbs_phase": "7 Finishes",
+          "activity": "Glazing, sealant and water tightness test",
+          "dur_wd": 3,
+          "start_wd": 53,
+          "finish_wd": 55,
+          "predecessor": "R430",
+          "critical": "Y",
+          "trade__package": "Aluminium and glazing",
+          "constraint__note": "MILESTONE M5 - building watertight at WD55"
+        },
+        {
+          "id": "R450",
+          "wbs_phase": "7 Finishes",
+          "activity": "Gypsum ceilings, bulkheads and cove details",
+          "dur_wd": 10,
+          "start_wd": 46,
+          "finish_wd": 55,
+          "predecessor": "R340, R350",
+          "critical": "N",
+          "trade__package": "Gypsum",
+          "constraint__note": "-"
+        },
+        {
+          "id": "R460",
+          "wbs_phase": "8 Second Fix",
+          "activity": "MEP second fix - wiring, sanitary fixing, grilles and FCU",
+          "dur_wd": 10,
+          "start_wd": 56,
+          "finish_wd": 65,
+          "predecessor": "R440, R450, R410, R140",
+          "critical": "Y",
+          "trade__package": "MEP",
+          "constraint__note": "-"
+        },
+        {
+          "id": "R470",
+          "wbs_phase": "8 Second Fix",
+          "activity": "Internal doors and ironmongery installation",
+          "dur_wd": 5,
+          "start_wd": 56,
+          "finish_wd": 60,
+          "predecessor": "R190, R450",
+          "critical": "N",
+          "trade__package": "Doors and ironmongery",
+          "constraint__note": "-"
+        },
+        {
+          "id": "R480",
+          "wbs_phase": "8 Second Fix",
+          "activity": "Painting - primer, putty and first coat",
+          "dur_wd": 8,
+          "start_wd": 56,
+          "finish_wd": 63,
+          "predecessor": "R450, R440",
+          "critical": "N",
+          "trade__package": "Painting",
+          "constraint__note": "-"
+        },
+        {
+          "id": "R490",
+          "wbs_phase": "9 Fit-Out",
+          "activity": "Joinery installation - kitchen, wardrobes and vanities",
+          "dur_wd": 8,
+          "start_wd": 59,
+          "finish_wd": 66,
+          "predecessor": "R180, R480 SS+3",
+          "critical": "Y",
+          "trade__package": "Joinery",
+          "constraint__note": "-"
+        },
+        {
+          "id": "R500",
+          "wbs_phase": "9 Fit-Out",
+          "activity": "Countertop template, fabrication and installation",
+          "dur_wd": 6,
+          "start_wd": 65,
+          "finish_wd": 70,
+          "predecessor": "R490",
+          "critical": "Y",
+          "trade__package": "Stone / solid surface",
+          "constraint__note": "Template only after base units are fixed"
+        },
+        {
+          "id": "R510",
+          "wbs_phase": "9 Fit-Out",
+          "activity": "Wood or vinyl flooring and skirting",
+          "dur_wd": 5,
+          "start_wd": 64,
+          "finish_wd": 68,
+          "predecessor": "R400, R480",
+          "critical": "N",
+          "trade__package": "Flooring",
+          "constraint__note": "Screed moisture test required before laying"
+        },
+        {
+          "id": "R520",
+          "wbs_phase": "10 Completion",
+          "activity": "Painting - final coats and touch-up",
+          "dur_wd": 6,
+          "start_wd": 68,
+          "finish_wd": 73,
+          "predecessor": "R490, R510",
+          "critical": "Y",
+          "trade__package": "Painting",
+          "constraint__note": "-"
+        },
+        {
+          "id": "R530",
+          "wbs_phase": "10 Completion",
+          "activity": "Shower screens, mirrors, glass and balustrades",
+          "dur_wd": 3,
+          "start_wd": 69,
+          "finish_wd": 71,
+          "predecessor": "R220, R410",
+          "critical": "N",
+          "trade__package": "Glass and mirrors",
+          "constraint__note": "-"
+        },
+        {
+          "id": "R540",
+          "wbs_phase": "10 Completion",
+          "activity": "Sanitary accessories, light fittings, switch plates and appliances",
+          "dur_wd": 4,
+          "start_wd": 70,
+          "finish_wd": 73,
+          "predecessor": "R460, R500, R200",
+          "critical": "Y",
+          "trade__package": "MEP / fit-out",
+          "constraint__note": "-"
+        },
+        {
+          "id": "R550",
+          "wbs_phase": "10 Completion",
+          "activity": "Landscape, hardscape and external works (optional scope)",
+          "dur_wd": 15,
+          "start_wd": 55,
+          "finish_wd": 69,
+          "predecessor": "R430",
+          "critical": "N",
+          "trade__package": "Landscape",
+          "constraint__note": "Scope toggle - excluded by default"
+        },
+        {
+          "id": "R560",
+          "wbs_phase": "10 Completion",
+          "activity": "MEP testing, commissioning and authority inspections",
+          "dur_wd": 4,
+          "start_wd": 71,
+          "finish_wd": 74,
+          "predecessor": "R540 SS+1",
+          "critical": "Y",
+          "trade__package": "MEP",
+          "constraint__note": "Utility reconnection case must be approved by WD70"
+        },
+        {
+          "id": "R570",
+          "wbs_phase": "10 Completion",
+          "activity": "Deep cleaning",
+          "dur_wd": 2,
+          "start_wd": 73,
+          "finish_wd": 74,
+          "predecessor": "R520 SS+5",
+          "critical": "N",
+          "trade__package": "Cleaning",
+          "constraint__note": "-"
+        },
+        {
+          "id": "R580",
+          "wbs_phase": "10 Completion",
+          "activity": "Internal snagging and de-snagging",
+          "dur_wd": 4,
+          "start_wd": 72,
+          "finish_wd": 75,
+          "predecessor": "R520 SS+4",
+          "critical": "Y",
+          "trade__package": "Main contractor",
+          "constraint__note": "-"
+        },
+        {
+          "id": "R590",
+          "wbs_phase": "10 Completion",
+          "activity": "Client inspection and snag closure",
+          "dur_wd": 2,
+          "start_wd": 75,
+          "finish_wd": 76,
+          "predecessor": "R580",
+          "critical": "Y",
+          "trade__package": "Main contractor",
+          "constraint__note": "-"
+        },
+        {
+          "id": "R600",
+          "wbs_phase": "10 Completion",
+          "activity": "Handover, warranties, O&M documents and DLP start",
+          "dur_wd": 1,
+          "start_wd": 77,
+          "finish_wd": 77,
+          "predecessor": "R590",
+          "critical": "Y",
+          "trade__package": "Main contractor",
+          "constraint__note": "MILESTONE M6 - practical completion at WD77 (~90 calendar days)"
+        }
+      ]
+    },
+    {
+      "code": "TPL-RENO-60",
+      "name": "Turnkey villa renovation - 60 calendar day fast track",
+      "total_working_days": 52,
+      "calendar_days": 60,
+      "work_week": 6,
+      "activities": [
+        {
+          "id": "F010",
+          "wbs_phase": "1 Pre-Construction",
+          "activity": "Contract, as-built survey and pre-agreed specification pack signed",
+          "dur_wd": 3,
+          "start_wd": 1,
+          "finish_wd": 3,
+          "predecessor": "-",
+          "critical": "Y",
+          "trade__package": "Main contractor",
+          "constraint__note": "Fast track requires a pre-selected finish pack - no open selections"
+        },
+        {
+          "id": "F020",
+          "wbs_phase": "2 Approvals",
+          "activity": "Fast-track permit submission and community NOC",
+          "dur_wd": 6,
+          "start_wd": 2,
+          "finish_wd": 7,
+          "predecessor": "F010 SS+1",
+          "critical": "N",
+          "trade__package": "PRO",
+          "constraint__note": "Out-of-hours works permit applied for at the same time"
+        },
+        {
+          "id": "F030",
+          "wbs_phase": "3 Long Lead",
+          "activity": "Aluminium survey using as-built plus tolerance sub-frame",
+          "dur_wd": 1,
+          "start_wd": 3,
+          "finish_wd": 3,
+          "predecessor": "F010",
+          "critical": "Y",
+          "trade__package": "Aluminium and glazing",
+          "constraint__note": "RISK - sub-frame method transfers remeasure risk to the contractor"
+        },
+        {
+          "id": "F040",
+          "wbs_phase": "3 Long Lead",
+          "activity": "ALUMINIUM LPO ISSUED - order-by milestone Day 4",
+          "dur_wd": 1,
+          "start_wd": 4,
+          "finish_wd": 4,
+          "predecessor": "F030",
+          "critical": "Y",
+          "trade__package": "Procurement",
+          "constraint__note": "Local fabricator, stock profiles and stock colour only"
+        },
+        {
+          "id": "F050",
+          "wbs_phase": "3 Long Lead",
+          "activity": "Aluminium fabrication and delivery (30 CD)",
+          "dur_wd": 26,
+          "start_wd": 5,
+          "finish_wd": 30,
+          "predecessor": "F040",
+          "critical": "Y",
+          "trade__package": "Aluminium and glazing",
+          "constraint__note": "Bespoke colours or imported systems make 60 days impossible"
+        },
+        {
+          "id": "F060",
+          "wbs_phase": "3 Long Lead",
+          "activity": "Modular joinery shop drawing and approval",
+          "dur_wd": 3,
+          "start_wd": 4,
+          "finish_wd": 6,
+          "predecessor": "F010",
+          "critical": "N",
+          "trade__package": "Joinery",
+          "constraint__note": "Modular carcass system only - no bespoke veneer or spray finishes"
+        },
+        {
+          "id": "F070",
+          "wbs_phase": "3 Long Lead",
+          "activity": "JOINERY LPO ISSUED - order-by milestone Day 7",
+          "dur_wd": 1,
+          "start_wd": 7,
+          "finish_wd": 7,
+          "predecessor": "F060",
+          "critical": "N",
+          "trade__package": "Procurement",
+          "constraint__note": "-"
+        },
+        {
+          "id": "F080",
+          "wbs_phase": "3 Long Lead",
+          "activity": "Modular joinery production and delivery (25 CD)",
+          "dur_wd": 22,
+          "start_wd": 8,
+          "finish_wd": 29,
+          "predecessor": "F070",
+          "critical": "N",
+          "trade__package": "Joinery",
+          "constraint__note": "Site verification hold point at WD22"
+        },
+        {
+          "id": "F090",
+          "wbs_phase": "3 Long Lead",
+          "activity": "Tiles, sanitaryware and fittings - ex-stock LPO and delivery",
+          "dur_wd": 12,
+          "start_wd": 4,
+          "finish_wd": 15,
+          "predecessor": "F010",
+          "critical": "N",
+          "trade__package": "Procurement",
+          "constraint__note": "Ex-stock items only - no imported natural stone"
+        },
+        {
+          "id": "F100",
+          "wbs_phase": "2 Approvals",
+          "activity": "Mobilisation, protection and temporary services",
+          "dur_wd": 2,
+          "start_wd": 6,
+          "finish_wd": 7,
+          "predecessor": "F020 SS+4",
+          "critical": "N",
+          "trade__package": "Main contractor",
+          "constraint__note": "-"
+        },
+        {
+          "id": "F110",
+          "wbs_phase": "4 Enabling",
+          "activity": "Demolition Zone A - ground floor wet areas and kitchen",
+          "dur_wd": 4,
+          "start_wd": 8,
+          "finish_wd": 11,
+          "predecessor": "F020, F100",
+          "critical": "Y",
+          "trade__package": "Demolition",
+          "constraint__note": "Zoned execution with two independent crews"
+        },
+        {
+          "id": "F120",
+          "wbs_phase": "4 Enabling",
+          "activity": "Demolition Zone B - first floor bedrooms, baths and common areas",
+          "dur_wd": 4,
+          "start_wd": 10,
+          "finish_wd": 13,
+          "predecessor": "F110 SS+2",
+          "critical": "N",
+          "trade__package": "Demolition",
+          "constraint__note": "-"
+        },
+        {
+          "id": "F130",
+          "wbs_phase": "5 First Fix",
+          "activity": "MEP first fix Zone A",
+          "dur_wd": 7,
+          "start_wd": 12,
+          "finish_wd": 18,
+          "predecessor": "F110",
+          "critical": "Y",
+          "trade__package": "MEP",
+          "constraint__note": "-"
+        },
+        {
+          "id": "F140",
+          "wbs_phase": "5 First Fix",
+          "activity": "MEP first fix Zone B",
+          "dur_wd": 7,
+          "start_wd": 14,
+          "finish_wd": 20,
+          "predecessor": "F120",
+          "critical": "N",
+          "trade__package": "MEP",
+          "constraint__note": "-"
+        },
+        {
+          "id": "F150",
+          "wbs_phase": "5 First Fix",
+          "activity": "Partitions and blockwork - both zones",
+          "dur_wd": 4,
+          "start_wd": 16,
+          "finish_wd": 19,
+          "predecessor": "F130 SS+4",
+          "critical": "N",
+          "trade__package": "Civil",
+          "constraint__note": "-"
+        },
+        {
+          "id": "F160",
+          "wbs_phase": "6 Wet Works",
+          "activity": "Plaster and skim Zone A",
+          "dur_wd": 5,
+          "start_wd": 19,
+          "finish_wd": 23,
+          "predecessor": "F130, F150",
+          "critical": "Y",
+          "trade__package": "Civil",
+          "constraint__note": "-"
+        },
+        {
+          "id": "F170",
+          "wbs_phase": "6 Wet Works",
+          "activity": "Plaster and skim Zone B",
+          "dur_wd": 5,
+          "start_wd": 21,
+          "finish_wd": 25,
+          "predecessor": "F140, F150",
+          "critical": "N",
+          "trade__package": "Civil",
+          "constraint__note": "-"
+        },
+        {
+          "id": "F180",
+          "wbs_phase": "6 Wet Works",
+          "activity": "Waterproofing wet areas plus 48h flood test",
+          "dur_wd": 4,
+          "start_wd": 24,
+          "finish_wd": 27,
+          "predecessor": "F160",
+          "critical": "Y",
+          "trade__package": "Waterproofing",
+          "constraint__note": "NON-COMPRESSIBLE - the 48h test cannot be shortened"
+        },
+        {
+          "id": "F190",
+          "wbs_phase": "6 Wet Works",
+          "activity": "Rapid-set screed and floor levelling",
+          "dur_wd": 4,
+          "start_wd": 24,
+          "finish_wd": 27,
+          "predecessor": "F160, F170",
+          "critical": "N",
+          "trade__package": "Civil",
+          "constraint__note": "Rapid-set screed mandatory - conventional screed breaks the programme"
+        },
+        {
+          "id": "F200",
+          "wbs_phase": "7 Finishes",
+          "activity": "Tiling Zone A",
+          "dur_wd": 8,
+          "start_wd": 28,
+          "finish_wd": 35,
+          "predecessor": "F180, F090",
+          "critical": "Y",
+          "trade__package": "Tiling",
+          "constraint__note": "-"
+        },
+        {
+          "id": "F210",
+          "wbs_phase": "7 Finishes",
+          "activity": "Tiling Zone B",
+          "dur_wd": 8,
+          "start_wd": 30,
+          "finish_wd": 37,
+          "predecessor": "F190, F090",
+          "critical": "N",
+          "trade__package": "Tiling",
+          "constraint__note": "-"
+        },
+        {
+          "id": "F220",
+          "wbs_phase": "7 Finishes",
+          "activity": "Aluminium installation, glazing and sealant",
+          "dur_wd": 5,
+          "start_wd": 31,
+          "finish_wd": 35,
+          "predecessor": "F050, F170",
+          "critical": "Y",
+          "trade__package": "Aluminium and glazing",
+          "constraint__note": "-"
+        },
+        {
+          "id": "F230",
+          "wbs_phase": "7 Finishes",
+          "activity": "Gypsum ceilings - both zones",
+          "dur_wd": 7,
+          "start_wd": 30,
+          "finish_wd": 36,
+          "predecessor": "F140",
+          "critical": "N",
+          "trade__package": "Gypsum",
+          "constraint__note": "-"
+        },
+        {
+          "id": "F240",
+          "wbs_phase": "8 Second Fix",
+          "activity": "MEP second fix - both zones",
+          "dur_wd": 8,
+          "start_wd": 36,
+          "finish_wd": 43,
+          "predecessor": "F220, F230, F200",
+          "critical": "Y",
+          "trade__package": "MEP",
+          "constraint__note": "-"
+        },
+        {
+          "id": "F250",
+          "wbs_phase": "8 Second Fix",
+          "activity": "Painting - primer and first coat",
+          "dur_wd": 6,
+          "start_wd": 36,
+          "finish_wd": 41,
+          "predecessor": "F230, F220",
+          "critical": "N",
+          "trade__package": "Painting",
+          "constraint__note": "-"
+        },
+        {
+          "id": "F260",
+          "wbs_phase": "8 Second Fix",
+          "activity": "Internal doors and ironmongery",
+          "dur_wd": 3,
+          "start_wd": 37,
+          "finish_wd": 39,
+          "predecessor": "F230",
+          "critical": "N",
+          "trade__package": "Doors and ironmongery",
+          "constraint__note": "-"
+        },
+        {
+          "id": "F270",
+          "wbs_phase": "9 Fit-Out",
+          "activity": "Joinery installation",
+          "dur_wd": 6,
+          "start_wd": 38,
+          "finish_wd": 43,
+          "predecessor": "F080, F250 SS+2",
+          "critical": "Y",
+          "trade__package": "Joinery",
+          "constraint__note": "-"
+        },
+        {
+          "id": "F280",
+          "wbs_phase": "9 Fit-Out",
+          "activity": "Countertop template and installation",
+          "dur_wd": 4,
+          "start_wd": 42,
+          "finish_wd": 45,
+          "predecessor": "F270",
+          "critical": "Y",
+          "trade__package": "Stone / solid surface",
+          "constraint__note": "Quartz or solid surface only - 10 day fabrication maximum"
+        },
+        {
+          "id": "F290",
+          "wbs_phase": "9 Fit-Out",
+          "activity": "Flooring and skirting",
+          "dur_wd": 4,
+          "start_wd": 42,
+          "finish_wd": 45,
+          "predecessor": "F190, F250",
+          "critical": "N",
+          "trade__package": "Flooring",
+          "constraint__note": "Moisture test on rapid-set screed"
+        },
+        {
+          "id": "F300",
+          "wbs_phase": "10 Completion",
+          "activity": "Final paint and touch-up",
+          "dur_wd": 5,
+          "start_wd": 44,
+          "finish_wd": 48,
+          "predecessor": "F270, F290",
+          "critical": "Y",
+          "trade__package": "Painting",
+          "constraint__note": "-"
+        },
+        {
+          "id": "F310",
+          "wbs_phase": "10 Completion",
+          "activity": "Glass, mirrors and shower screens",
+          "dur_wd": 2,
+          "start_wd": 44,
+          "finish_wd": 45,
+          "predecessor": "F200",
+          "critical": "N",
+          "trade__package": "Glass and mirrors",
+          "constraint__note": "Measure taken at WD36 - reduced fabrication window"
+        },
+        {
+          "id": "F320",
+          "wbs_phase": "10 Completion",
+          "activity": "Accessories, light fittings and appliances",
+          "dur_wd": 3,
+          "start_wd": 46,
+          "finish_wd": 48,
+          "predecessor": "F240, F280",
+          "critical": "Y",
+          "trade__package": "MEP / fit-out",
+          "constraint__note": "-"
+        },
+        {
+          "id": "F330",
+          "wbs_phase": "10 Completion",
+          "activity": "Testing, commissioning and inspections",
+          "dur_wd": 3,
+          "start_wd": 47,
+          "finish_wd": 49,
+          "predecessor": "F320 SS+1",
+          "critical": "Y",
+          "trade__package": "MEP",
+          "constraint__note": "-"
+        },
+        {
+          "id": "F340",
+          "wbs_phase": "10 Completion",
+          "activity": "Deep cleaning",
+          "dur_wd": 2,
+          "start_wd": 48,
+          "finish_wd": 49,
+          "predecessor": "F300 SS+4",
+          "critical": "N",
+          "trade__package": "Cleaning",
+          "constraint__note": "-"
+        },
+        {
+          "id": "F350",
+          "wbs_phase": "10 Completion",
+          "activity": "Snagging and de-snagging",
+          "dur_wd": 3,
+          "start_wd": 48,
+          "finish_wd": 50,
+          "predecessor": "F300 SS+4",
+          "critical": "Y",
+          "trade__package": "Main contractor",
+          "constraint__note": "-"
+        },
+        {
+          "id": "F360",
+          "wbs_phase": "10 Completion",
+          "activity": "Client inspection and snag closure",
+          "dur_wd": 1,
+          "start_wd": 51,
+          "finish_wd": 51,
+          "predecessor": "F350",
+          "critical": "Y",
+          "trade__package": "Main contractor",
+          "constraint__note": "-"
+        },
+        {
+          "id": "F370",
+          "wbs_phase": "10 Completion",
+          "activity": "Handover and DLP start",
+          "dur_wd": 1,
+          "start_wd": 52,
+          "finish_wd": 52,
+          "predecessor": "F360",
+          "critical": "Y",
+          "trade__package": "Main contractor",
+          "constraint__note": "Practical completion at WD52 (~60 calendar days)"
+        }
+      ]
+    },
+    {
+      "code": "TPL-GF1-NEW",
+      "name": "G+1 villa new build - full construction baseline",
+      "total_working_days": 300,
+      "calendar_days": 350,
+      "work_week": 6,
+      "activities": [
+        {
+          "id": "G010",
+          "wbs_phase": "1 Design & Permits",
+          "activity": "Design development, IFC drawings and specification",
+          "dur_wd": 30,
+          "start_wd": 1,
+          "finish_wd": 30,
+          "predecessor": "-",
+          "critical": "Y",
+          "trade__package": "Design",
+          "constraint__note": "-"
+        },
+        {
+          "id": "G020",
+          "wbs_phase": "1 Design & Permits",
+          "activity": "Soil investigation and geotechnical report",
+          "dur_wd": 5,
+          "start_wd": 5,
+          "finish_wd": 9,
+          "predecessor": "G010 SS+4",
+          "critical": "N",
+          "trade__package": "Specialist",
+          "constraint__note": "Required for foundation design"
+        },
+        {
+          "id": "G030",
+          "wbs_phase": "1 Design & Permits",
+          "activity": "Authority building permit submission via licensed consultant",
+          "dur_wd": 5,
+          "start_wd": 31,
+          "finish_wd": 35,
+          "predecessor": "G010, G020",
+          "critical": "Y",
+          "trade__package": "Consultant / PRO",
+          "constraint__note": "-"
+        },
+        {
+          "id": "G040",
+          "wbs_phase": "1 Design & Permits",
+          "activity": "Building permit and affection plan approval",
+          "dur_wd": 25,
+          "start_wd": 36,
+          "finish_wd": 60,
+          "predecessor": "G030",
+          "critical": "Y",
+          "trade__package": "Authority",
+          "constraint__note": "MILESTONE - no site works before issue"
+        },
+        {
+          "id": "G050",
+          "wbs_phase": "1 Design & Permits",
+          "activity": "Community NOC and contractor registration",
+          "dur_wd": 15,
+          "start_wd": 36,
+          "finish_wd": 50,
+          "predecessor": "G030 SS",
+          "critical": "N",
+          "trade__package": "PRO",
+          "constraint__note": "-"
+        },
+        {
+          "id": "G060",
+          "wbs_phase": "1 Design & Permits",
+          "activity": "Utility temporary supply and site water connection",
+          "dur_wd": 15,
+          "start_wd": 46,
+          "finish_wd": 60,
+          "predecessor": "G050",
+          "critical": "N",
+          "trade__package": "MEP",
+          "constraint__note": "-"
+        },
+        {
+          "id": "G070",
+          "wbs_phase": "2 Site Setup",
+          "activity": "Site establishment, hoarding, site office and storage",
+          "dur_wd": 8,
+          "start_wd": 61,
+          "finish_wd": 68,
+          "predecessor": "G040",
+          "critical": "Y",
+          "trade__package": "Main contractor",
+          "constraint__note": "-"
+        },
+        {
+          "id": "G080",
+          "wbs_phase": "2 Site Setup",
+          "activity": "Setting out and survey verification",
+          "dur_wd": 3,
+          "start_wd": 66,
+          "finish_wd": 68,
+          "predecessor": "G070 SS+5",
+          "critical": "Y",
+          "trade__package": "Survey",
+          "constraint__note": "-"
+        },
+        {
+          "id": "G090",
+          "wbs_phase": "3 Substructure",
+          "activity": "Excavation and earthworks",
+          "dur_wd": 10,
+          "start_wd": 69,
+          "finish_wd": 78,
+          "predecessor": "G080",
+          "critical": "Y",
+          "trade__package": "Civil",
+          "constraint__note": "-"
+        },
+        {
+          "id": "G100",
+          "wbs_phase": "3 Substructure",
+          "activity": "Anti-termite treatment and PCC blinding",
+          "dur_wd": 3,
+          "start_wd": 79,
+          "finish_wd": 81,
+          "predecessor": "G090",
+          "critical": "Y",
+          "trade__package": "Civil",
+          "constraint__note": "24h cure after anti-termite before PCC"
+        },
+        {
+          "id": "G110",
+          "wbs_phase": "3 Substructure",
+          "activity": "Foundation - rebar, formwork and concrete pour",
+          "dur_wd": 18,
+          "start_wd": 82,
+          "finish_wd": 99,
+          "predecessor": "G100",
+          "critical": "Y",
+          "trade__package": "Civil",
+          "constraint__note": "Inspection request before each pour"
+        },
+        {
+          "id": "G120",
+          "wbs_phase": "3 Substructure",
+          "activity": "Foundation waterproofing and protection board",
+          "dur_wd": 6,
+          "start_wd": 100,
+          "finish_wd": 105,
+          "predecessor": "G110",
+          "critical": "Y",
+          "trade__package": "Waterproofing",
+          "constraint__note": "7 day concrete cure before membrane"
+        },
+        {
+          "id": "G130",
+          "wbs_phase": "3 Substructure",
+          "activity": "Backfilling and compaction",
+          "dur_wd": 6,
+          "start_wd": 104,
+          "finish_wd": 109,
+          "predecessor": "G120 SS+4",
+          "critical": "N",
+          "trade__package": "Civil",
+          "constraint__note": "-"
+        },
+        {
+          "id": "G140",
+          "wbs_phase": "4 Superstructure",
+          "activity": "Ground floor columns and first floor slab",
+          "dur_wd": 25,
+          "start_wd": 106,
+          "finish_wd": 130,
+          "predecessor": "G120",
+          "critical": "Y",
+          "trade__package": "Civil",
+          "constraint__note": "Formwork strike 7-14 days, props 21-28 days"
+        },
+        {
+          "id": "G150",
+          "wbs_phase": "4 Superstructure",
+          "activity": "First floor columns and roof slab",
+          "dur_wd": 25,
+          "start_wd": 131,
+          "finish_wd": 155,
+          "predecessor": "G140",
+          "critical": "Y",
+          "trade__package": "Civil",
+          "constraint__note": "-"
+        },
+        {
+          "id": "G160",
+          "wbs_phase": "4 Superstructure",
+          "activity": "Staircase, parapet, water tank and miscellaneous concrete",
+          "dur_wd": 12,
+          "start_wd": 156,
+          "finish_wd": 167,
+          "predecessor": "G150",
+          "critical": "N",
+          "trade__package": "Civil",
+          "constraint__note": "-"
+        },
+        {
+          "id": "G170",
+          "wbs_phase": "5 Long Lead",
+          "activity": "ALUMINIUM ORDER-BY MILESTONE at slab stage",
+          "dur_wd": 1,
+          "start_wd": 140,
+          "finish_wd": 140,
+          "predecessor": "G140 SS+34",
+          "critical": "Y",
+          "trade__package": "Procurement",
+          "constraint__note": "60 CD lead - order before blockwork or the facade delays handover"
+        },
+        {
+          "id": "G180",
+          "wbs_phase": "5 Long Lead",
+          "activity": "Aluminium fabrication and delivery",
+          "dur_wd": 52,
+          "start_wd": 141,
+          "finish_wd": 192,
+          "predecessor": "G170",
+          "critical": "Y",
+          "trade__package": "Aluminium and glazing",
+          "constraint__note": "-"
+        },
+        {
+          "id": "G185",
+          "wbs_phase": "5 Long Lead",
+          "activity": "Lift order and manufacture (if in scope)",
+          "dur_wd": 90,
+          "start_wd": 150,
+          "finish_wd": 239,
+          "predecessor": "G150 SS+20",
+          "critical": "N",
+          "trade__package": "Specialist",
+          "constraint__note": "120 CD lead - order at superstructure stage"
+        },
+        {
+          "id": "G190",
+          "wbs_phase": "6 Envelope",
+          "activity": "Blockwork ground floor",
+          "dur_wd": 15,
+          "start_wd": 150,
+          "finish_wd": 164,
+          "predecessor": "G140",
+          "critical": "N",
+          "trade__package": "Civil",
+          "constraint__note": "-"
+        },
+        {
+          "id": "G200",
+          "wbs_phase": "6 Envelope",
+          "activity": "Blockwork first floor",
+          "dur_wd": 15,
+          "start_wd": 160,
+          "finish_wd": 174,
+          "predecessor": "G150, G190 SS+10",
+          "critical": "N",
+          "trade__package": "Civil",
+          "constraint__note": "-"
+        },
+        {
+          "id": "G210",
+          "wbs_phase": "6 Envelope",
+          "activity": "MEP first fix, sleeves and wall chasing",
+          "dur_wd": 35,
+          "start_wd": 165,
+          "finish_wd": 199,
+          "predecessor": "G190",
+          "critical": "Y",
+          "trade__package": "MEP",
+          "constraint__note": "-"
+        },
+        {
+          "id": "G220",
+          "wbs_phase": "6 Envelope",
+          "activity": "Internal plastering",
+          "dur_wd": 25,
+          "start_wd": 175,
+          "finish_wd": 199,
+          "predecessor": "G210 SS+10",
+          "critical": "Y",
+          "trade__package": "Civil",
+          "constraint__note": "-"
+        },
+        {
+          "id": "G230",
+          "wbs_phase": "6 Envelope",
+          "activity": "External plaster, render and cladding",
+          "dur_wd": 20,
+          "start_wd": 190,
+          "finish_wd": 209,
+          "predecessor": "G200",
+          "critical": "N",
+          "trade__package": "Civil",
+          "constraint__note": "-"
+        },
+        {
+          "id": "G240",
+          "wbs_phase": "6 Envelope",
+          "activity": "Roof waterproofing, insulation and screed",
+          "dur_wd": 12,
+          "start_wd": 168,
+          "finish_wd": 179,
+          "predecessor": "G160",
+          "critical": "N",
+          "trade__package": "Waterproofing",
+          "constraint__note": "Ponding test required"
+        },
+        {
+          "id": "G250",
+          "wbs_phase": "6 Envelope",
+          "activity": "Aluminium windows and doors installation and glazing",
+          "dur_wd": 20,
+          "start_wd": 195,
+          "finish_wd": 214,
+          "predecessor": "G180, G220",
+          "critical": "Y",
+          "trade__package": "Aluminium and glazing",
+          "constraint__note": "MILESTONE - building watertight"
+        },
+        {
+          "id": "G260",
+          "wbs_phase": "7 Wet Works",
+          "activity": "Wet area waterproofing and flood test",
+          "dur_wd": 10,
+          "start_wd": 200,
+          "finish_wd": 209,
+          "predecessor": "G220",
+          "critical": "Y",
+          "trade__package": "Waterproofing",
+          "constraint__note": "NON-COMPRESSIBLE 48h test"
+        },
+        {
+          "id": "G270",
+          "wbs_phase": "7 Wet Works",
+          "activity": "Screed and floor levelling",
+          "dur_wd": 12,
+          "start_wd": 205,
+          "finish_wd": 216,
+          "predecessor": "G220",
+          "critical": "N",
+          "trade__package": "Civil",
+          "constraint__note": "-"
+        },
+        {
+          "id": "G280",
+          "wbs_phase": "8 Finishes",
+          "activity": "Tiling and stone works",
+          "dur_wd": 35,
+          "start_wd": 210,
+          "finish_wd": 244,
+          "predecessor": "G260, G270",
+          "critical": "Y",
+          "trade__package": "Tiling",
+          "constraint__note": "-"
+        },
+        {
+          "id": "G290",
+          "wbs_phase": "8 Finishes",
+          "activity": "Gypsum ceilings and bulkheads",
+          "dur_wd": 20,
+          "start_wd": 215,
+          "finish_wd": 234,
+          "predecessor": "G210, G250",
+          "critical": "N",
+          "trade__package": "Gypsum",
+          "constraint__note": "-"
+        },
+        {
+          "id": "G300",
+          "wbs_phase": "9 Second Fix",
+          "activity": "MEP second fix",
+          "dur_wd": 30,
+          "start_wd": 235,
+          "finish_wd": 264,
+          "predecessor": "G290, G280 SS+25",
+          "critical": "Y",
+          "trade__package": "MEP",
+          "constraint__note": "-"
+        },
+        {
+          "id": "G310",
+          "wbs_phase": "9 Second Fix",
+          "activity": "Joinery, doors and ironmongery",
+          "dur_wd": 25,
+          "start_wd": 240,
+          "finish_wd": 264,
+          "predecessor": "G280 SS+30, G290",
+          "critical": "Y",
+          "trade__package": "Joinery",
+          "constraint__note": "-"
+        },
+        {
+          "id": "G320",
+          "wbs_phase": "9 Second Fix",
+          "activity": "Painting internal and external",
+          "dur_wd": 35,
+          "start_wd": 235,
+          "finish_wd": 269,
+          "predecessor": "G290, G230",
+          "critical": "Y",
+          "trade__package": "Painting",
+          "constraint__note": "-"
+        },
+        {
+          "id": "G330",
+          "wbs_phase": "10 External",
+          "activity": "Boundary wall, gate, driveway and hardscape",
+          "dur_wd": 35,
+          "start_wd": 215,
+          "finish_wd": 249,
+          "predecessor": "G130",
+          "critical": "N",
+          "trade__package": "Civil / landscape",
+          "constraint__note": "-"
+        },
+        {
+          "id": "G340",
+          "wbs_phase": "10 External",
+          "activity": "Swimming pool - shell, plaster, tiling and plant room",
+          "dur_wd": 45,
+          "start_wd": 200,
+          "finish_wd": 244,
+          "predecessor": "G130",
+          "critical": "N",
+          "trade__package": "Pool specialist",
+          "constraint__note": "Independent path - start early to avoid a handover clash"
+        },
+        {
+          "id": "G350",
+          "wbs_phase": "10 External",
+          "activity": "Landscape, irrigation and softscape",
+          "dur_wd": 25,
+          "start_wd": 250,
+          "finish_wd": 274,
+          "predecessor": "G330, G340",
+          "critical": "N",
+          "trade__package": "Landscape",
+          "constraint__note": "-"
+        },
+        {
+          "id": "G360",
+          "wbs_phase": "10 External",
+          "activity": "Lift installation and commissioning (if in scope)",
+          "dur_wd": 20,
+          "start_wd": 245,
+          "finish_wd": 264,
+          "predecessor": "G185, G160",
+          "critical": "N",
+          "trade__package": "Specialist",
+          "constraint__note": "-"
+        },
+        {
+          "id": "G370",
+          "wbs_phase": "11 Completion",
+          "activity": "Testing, commissioning and permanent utility connection",
+          "dur_wd": 20,
+          "start_wd": 265,
+          "finish_wd": 284,
+          "predecessor": "G300, G310",
+          "critical": "Y",
+          "trade__package": "MEP",
+          "constraint__note": "-"
+        },
+        {
+          "id": "G380",
+          "wbs_phase": "11 Completion",
+          "activity": "Civil Defence inspection and NOC",
+          "dur_wd": 10,
+          "start_wd": 270,
+          "finish_wd": 279,
+          "predecessor": "G370 SS+5",
+          "critical": "Y",
+          "trade__package": "Fire / PRO",
+          "constraint__note": "-"
+        },
+        {
+          "id": "G390",
+          "wbs_phase": "11 Completion",
+          "activity": "Building completion certificate and authority sign-offs",
+          "dur_wd": 20,
+          "start_wd": 275,
+          "finish_wd": 294,
+          "predecessor": "G380",
+          "critical": "Y",
+          "trade__package": "PRO",
+          "constraint__note": "-"
+        },
+        {
+          "id": "G400",
+          "wbs_phase": "11 Completion",
+          "activity": "Snagging and de-snagging",
+          "dur_wd": 15,
+          "start_wd": 280,
+          "finish_wd": 294,
+          "predecessor": "G320, G370",
+          "critical": "Y",
+          "trade__package": "Main contractor",
+          "constraint__note": "-"
+        },
+        {
+          "id": "G410",
+          "wbs_phase": "11 Completion",
+          "activity": "Deep cleaning",
+          "dur_wd": 5,
+          "start_wd": 293,
+          "finish_wd": 297,
+          "predecessor": "G400 SS+13",
+          "critical": "N",
+          "trade__package": "Cleaning",
+          "constraint__note": "-"
+        },
+        {
+          "id": "G420",
+          "wbs_phase": "11 Completion",
+          "activity": "Client handover, O&M documentation and DLP start",
+          "dur_wd": 3,
+          "start_wd": 298,
+          "finish_wd": 300,
+          "predecessor": "G390, G400, G410",
+          "critical": "Y",
+          "trade__package": "Main contractor",
+          "constraint__note": "Practical completion at WD300 (~12 months at a 6 day week)"
+        }
+      ]
+    }
+  ],
+  "long_lead_matrix": [
+    {
+      "item": "Aluminium and glazing - bespoke system or special colour",
+      "typical_lead_calendar_days": "55-70",
+      "order_by_rule": "Contract award + 7 days",
+      "site_info_needed_before_order": "As-built opening sizes or sub-frame detail",
+      "risk_if_late": "Direct day-for-day delay to watertight milestone"
+    },
+    {
+      "item": "Aluminium and glazing - local stock profile",
+      "typical_lead_calendar_days": "28-35",
+      "order_by_rule": "Contract award + 4 days",
+      "site_info_needed_before_order": "As-built opening sizes",
+      "risk_if_late": "Delays facade, second fix and painting"
+    },
+    {
+      "item": "Bespoke joinery (veneer, lacquer, spray finish)",
+      "typical_lead_calendar_days": "35-50",
+      "order_by_rule": "After plaster site verification",
+      "site_info_needed_before_order": "Verified wall dimensions after plaster",
+      "risk_if_late": "Delays kitchen, wardrobes and countertop chain"
+    },
+    {
+      "item": "Modular / stock-carcass joinery",
+      "typical_lead_calendar_days": "22-30",
+      "order_by_rule": "Contract award + 7 days",
+      "site_info_needed_before_order": "Approved layout",
+      "risk_if_late": "Same chain, shorter recovery window"
+    },
+    {
+      "item": "Imported natural stone (marble, travertine)",
+      "typical_lead_calendar_days": "45-60",
+      "order_by_rule": "At selection freeze",
+      "site_info_needed_before_order": "Slab selection and layout",
+      "risk_if_late": "Blocks all wet-area tiling"
+    },
+    {
+      "item": "Local porcelain and large format tiles",
+      "typical_lead_calendar_days": "10-20",
+      "order_by_rule": "At selection freeze",
+      "site_info_needed_before_order": "Quantities plus 10 percent wastage",
+      "risk_if_late": "Blocks tiling start"
+    },
+    {
+      "item": "Sanitaryware and brassware - imported",
+      "typical_lead_calendar_days": "30-45",
+      "order_by_rule": "At selection freeze",
+      "site_info_needed_before_order": "Rough-in dimensions",
+      "risk_if_late": "Blocks second fix plumbing"
+    },
+    {
+      "item": "Internal doors - engineered veneer",
+      "typical_lead_calendar_days": "30-45",
+      "order_by_rule": "After blockwork",
+      "site_info_needed_before_order": "Verified opening sizes",
+      "risk_if_late": "Blocks painting completion and handover"
+    },
+    {
+      "item": "Shower screens, mirrors and glass",
+      "typical_lead_calendar_days": "10-14 after site measure",
+      "order_by_rule": "After tiling complete",
+      "site_info_needed_before_order": "Finished tile dimensions",
+      "risk_if_late": "Blocks bathroom completion"
+    },
+    {
+      "item": "Decorative and imported light fittings",
+      "typical_lead_calendar_days": "30-45",
+      "order_by_rule": "At selection freeze",
+      "site_info_needed_before_order": "Ceiling layout and cut-out sizes",
+      "risk_if_late": "Blocks ceiling close-out and commissioning"
+    },
+    {
+      "item": "Smart home, AV and control systems",
+      "typical_lead_calendar_days": "20-30",
+      "order_by_rule": "At first fix",
+      "site_info_needed_before_order": "Approved low current layout",
+      "risk_if_late": "Blocks second fix and commissioning"
+    },
+    {
+      "item": "HVAC FCU, ducting and grilles",
+      "typical_lead_calendar_days": "20-30",
+      "order_by_rule": "At first fix",
+      "site_info_needed_before_order": "Approved HVAC layout",
+      "risk_if_late": "Blocks ceiling installation"
+    },
+    {
+      "item": "Kitchen appliances",
+      "typical_lead_calendar_days": "20-30",
+      "order_by_rule": "At joinery order",
+      "site_info_needed_before_order": "Appliance schedule and cut-outs",
+      "risk_if_late": "Blocks kitchen completion"
+    },
+    {
+      "item": "Quartz or solid surface countertops",
+      "typical_lead_calendar_days": "10-15 after template",
+      "order_by_rule": "After joinery base units fixed",
+      "site_info_needed_before_order": "Template on installed carcass",
+      "risk_if_late": "Blocks kitchen and vanity completion"
+    },
+    {
+      "item": "Lift / elevator",
+      "typical_lead_calendar_days": "90-120",
+      "order_by_rule": "At superstructure stage",
+      "site_info_needed_before_order": "Shaft dimensions and pit detail",
+      "risk_if_late": "Blocks completion certificate on G+1 with lift"
+    },
+    {
+      "item": "Swimming pool equipment and plant",
+      "typical_lead_calendar_days": "30-45",
+      "order_by_rule": "At pool shell stage",
+      "site_info_needed_before_order": "Pool volume and plant room layout",
+      "risk_if_late": "Blocks pool commissioning"
+    },
+    {
+      "item": "Generator and ATS panel",
+      "typical_lead_calendar_days": "60-90",
+      "order_by_rule": "At MEP design freeze",
+      "site_info_needed_before_order": "Load schedule",
+      "risk_if_late": "Blocks energisation and commissioning"
+    },
+    {
+      "item": "Fire alarm and fire fighting materials (Civil Defence approved)",
+      "typical_lead_calendar_days": "30-45",
+      "order_by_rule": "After Civil Defence design NOC",
+      "site_info_needed_before_order": "Approved fire drawings",
+      "risk_if_late": "Blocks Civil Defence final inspection and handover"
+    },
+    {
+      "item": "Wallpaper and specialist wall finishes",
+      "typical_lead_calendar_days": "21-30",
+      "order_by_rule": "At selection freeze",
+      "site_info_needed_before_order": "Wall areas after plaster",
+      "risk_if_late": "Blocks final finishing"
+    },
+    {
+      "item": "Landscape trees, plants and turf",
+      "typical_lead_calendar_days": "15-25",
+      "order_by_rule": "At hardscape completion",
+      "site_info_needed_before_order": "Planting layout",
+      "risk_if_late": "Blocks external handover"
+    }
+  ],
+  "locked_constraints": [
+    {
+      "constraint": "Waterproofing intercoat cure",
+      "minimum_hold": "12-24 hours",
+      "applies_after": "Each membrane coat",
+      "why_it_cannot_be_compressed": "Incomplete cure causes delamination and failed flood test",
+      "engine_behaviour": "Locked lag - cannot be reduced by the compression engine"
+    },
+    {
+      "constraint": "Flood / ponding test",
+      "minimum_hold": "48 hours (some consultants 72)",
+      "applies_after": "Waterproofing complete",
+      "why_it_cannot_be_compressed": "Leak detection needs sustained head of water",
+      "engine_behaviour": "Locked lag with an inspection request attached"
+    },
+    {
+      "constraint": "Screed cure before tiling",
+      "minimum_hold": "7 days conventional, 3 days rapid-set",
+      "applies_after": "Screed pour",
+      "why_it_cannot_be_compressed": "Moisture and shrinkage cause tile debonding",
+      "engine_behaviour": "Locked lag - alternative allowed only if rapid-set is specified"
+    },
+    {
+      "constraint": "Screed moisture before wood or vinyl",
+      "minimum_hold": "21 days conventional, 7 days rapid-set, or moisture test below 2.5 percent CM",
+      "applies_after": "Screed pour",
+      "why_it_cannot_be_compressed": "Trapped moisture destroys wood and vinyl flooring",
+      "engine_behaviour": "Locked lag plus mandatory moisture test record"
+    },
+    {
+      "constraint": "Concrete formwork strike - slabs",
+      "minimum_hold": "7-14 days (props 21-28)",
+      "applies_after": "Concrete pour",
+      "why_it_cannot_be_compressed": "Structural strength gain",
+      "engine_behaviour": "Locked lag - new build template only"
+    },
+    {
+      "constraint": "Concrete curing",
+      "minimum_hold": "7 days minimum",
+      "applies_after": "Each pour",
+      "why_it_cannot_be_compressed": "Strength and durability",
+      "engine_behaviour": "Locked lag"
+    },
+    {
+      "constraint": "Plaster cure before painting",
+      "minimum_hold": "7-14 days",
+      "applies_after": "Plaster complete",
+      "why_it_cannot_be_compressed": "Alkalinity and moisture cause paint failure",
+      "engine_behaviour": "Locked lag - can overlap with other trades"
+    },
+    {
+      "constraint": "Tile grout cure before wet use",
+      "minimum_hold": "24 hours (48-72 for heavy traffic)",
+      "applies_after": "Grouting",
+      "why_it_cannot_be_compressed": "Grout washout and movement",
+      "engine_behaviour": "Locked lag"
+    },
+    {
+      "constraint": "Paint intercoat",
+      "minimum_hold": "4-6 hours, 24 hours before joinery contact",
+      "applies_after": "Each coat",
+      "why_it_cannot_be_compressed": "Blocking and finish defects",
+      "engine_behaviour": "Soft lag - compressible with fast-dry systems"
+    },
+    {
+      "constraint": "Silicone and sealant cure",
+      "minimum_hold": "24 hours",
+      "applies_after": "Sealant application",
+      "why_it_cannot_be_compressed": "Adhesion failure",
+      "engine_behaviour": "Locked lag"
+    },
+    {
+      "constraint": "Epoxy or PU floor coats",
+      "minimum_hold": "24 hours between coats, 7 days full cure",
+      "applies_after": "Each coat",
+      "why_it_cannot_be_compressed": "Chemical cure",
+      "engine_behaviour": "Locked lag"
+    },
+    {
+      "constraint": "Anti-termite treatment",
+      "minimum_hold": "24 hours before PCC",
+      "applies_after": "Treatment complete",
+      "why_it_cannot_be_compressed": "Chemical must not be disturbed",
+      "engine_behaviour": "Locked lag - new build only"
+    }
+  ],
+  "productivity_norms": [
+    {
+      "work_item": "Soft strip demolition",
+      "unit": "m2",
+      "output_per_crew_per_day": "30-40",
+      "standard_crew": "4 labourers + 1 chargehand",
+      "notes": "Excludes structural demolition and debris removal"
+    },
+    {
+      "work_item": "Debris removal and loading",
+      "unit": "m3",
+      "output_per_crew_per_day": "15-20",
+      "standard_crew": "4 labourers",
+      "notes": "Skip availability usually governs"
+    },
+    {
+      "work_item": "Blockwork 200mm",
+      "unit": "m2",
+      "output_per_crew_per_day": "12-15",
+      "standard_crew": "1 mason + 1 helper",
+      "notes": "-"
+    },
+    {
+      "work_item": "Gypsum partition (both sides, insulated)",
+      "unit": "m2",
+      "output_per_crew_per_day": "20-25",
+      "standard_crew": "2 gypsum fixers",
+      "notes": "-"
+    },
+    {
+      "work_item": "Internal plaster and skim",
+      "unit": "m2",
+      "output_per_crew_per_day": "25-30",
+      "standard_crew": "1 plasterer + 1 helper",
+      "notes": "-"
+    },
+    {
+      "work_item": "Waterproofing - liquid membrane 2 coats",
+      "unit": "m2",
+      "output_per_crew_per_day": "40-50",
+      "standard_crew": "2 applicators",
+      "notes": "Excludes cure time"
+    },
+    {
+      "work_item": "Screed 50mm",
+      "unit": "m2",
+      "output_per_crew_per_day": "40-60",
+      "standard_crew": "4 labourers + 1 mason",
+      "notes": "-"
+    },
+    {
+      "work_item": "Floor tiling - large format 600x1200",
+      "unit": "m2",
+      "output_per_crew_per_day": "20-25",
+      "standard_crew": "1 tiler + 1 helper",
+      "notes": "Reduce 20 percent for pattern or diagonal laying"
+    },
+    {
+      "work_item": "Wall tiling",
+      "unit": "m2",
+      "output_per_crew_per_day": "12-18",
+      "standard_crew": "1 tiler + 1 helper",
+      "notes": "-"
+    },
+    {
+      "work_item": "Gypsum suspended ceiling",
+      "unit": "m2",
+      "output_per_crew_per_day": "20-25",
+      "standard_crew": "2 fixers",
+      "notes": "Reduce 30 percent for curved or multi-level bulkheads"
+    },
+    {
+      "work_item": "Painting - putty plus 2 coats",
+      "unit": "m2",
+      "output_per_crew_per_day": "80-120",
+      "standard_crew": "1 painter",
+      "notes": "-"
+    },
+    {
+      "work_item": "Electrical first fix",
+      "unit": "points",
+      "output_per_crew_per_day": "12-15",
+      "standard_crew": "1 electrician + 1 helper",
+      "notes": "-"
+    },
+    {
+      "work_item": "Plumbing first fix",
+      "unit": "fixture sets",
+      "output_per_crew_per_day": "4-6",
+      "standard_crew": "1 plumber + 1 helper",
+      "notes": "-"
+    },
+    {
+      "work_item": "Wood or vinyl flooring",
+      "unit": "m2",
+      "output_per_crew_per_day": "25-35",
+      "standard_crew": "2 fixers",
+      "notes": "-"
+    },
+    {
+      "work_item": "Skirting",
+      "unit": "linear m",
+      "output_per_crew_per_day": "60-80",
+      "standard_crew": "2 fixers",
+      "notes": "-"
+    },
+    {
+      "work_item": "Internal door installation",
+      "unit": "doors",
+      "output_per_crew_per_day": "3-4",
+      "standard_crew": "2 carpenters",
+      "notes": "Including frame and ironmongery"
+    },
+    {
+      "work_item": "Wardrobe installation",
+      "unit": "units",
+      "output_per_crew_per_day": "1.5-2",
+      "standard_crew": "2 joiners",
+      "notes": "-"
+    },
+    {
+      "work_item": "Kitchen installation",
+      "unit": "linear m",
+      "output_per_crew_per_day": "3-4",
+      "standard_crew": "2 joiners",
+      "notes": "Excluding countertop"
+    }
+  ],
+  "sc_prequalification_fields": [
+    {
+      "field_group": "Company",
+      "field": "Legal company name",
+      "type": "Text",
+      "mandatory": "Yes",
+      "expiry_tracked": "No",
+      "blocks_what_if_missing_or_expired": "Registration"
+    },
+    {
+      "field_group": "Company",
+      "field": "Trade licence number and copy",
+      "type": "File + text",
+      "mandatory": "Yes",
+      "expiry_tracked": "Yes",
+      "blocks_what_if_missing_or_expired": "All awards"
+    },
+    {
+      "field_group": "Company",
+      "field": "Licence issuing authority and activity list",
+      "type": "Text",
+      "mandatory": "Yes",
+      "expiry_tracked": "No",
+      "blocks_what_if_missing_or_expired": "Trade eligibility matching"
+    },
+    {
+      "field_group": "Company",
+      "field": "Establishment / immigration card",
+      "type": "File",
+      "mandatory": "Yes",
+      "expiry_tracked": "Yes",
+      "blocks_what_if_missing_or_expired": "Worker access card requests"
+    },
+    {
+      "field_group": "Company",
+      "field": "VAT registration (TRN)",
+      "type": "File + text",
+      "mandatory": "Yes",
+      "expiry_tracked": "No",
+      "blocks_what_if_missing_or_expired": "Invoice and payment certificate"
+    },
+    {
+      "field_group": "Company",
+      "field": "Chamber of commerce membership",
+      "type": "File",
+      "mandatory": "No",
+      "expiry_tracked": "Yes",
+      "blocks_what_if_missing_or_expired": "-"
+    },
+    {
+      "field_group": "Company",
+      "field": "Company profile and organisation chart",
+      "type": "File",
+      "mandatory": "No",
+      "expiry_tracked": "No",
+      "blocks_what_if_missing_or_expired": "Prequalification score"
+    },
+    {
+      "field_group": "Company",
+      "field": "Years in operation and annual turnover band",
+      "type": "Select",
+      "mandatory": "No",
+      "expiry_tracked": "No",
+      "blocks_what_if_missing_or_expired": "Package value ceiling"
+    },
+    {
+      "field_group": "Contact",
+      "field": "Registered office address and location pin",
+      "type": "Address",
+      "mandatory": "Yes",
+      "expiry_tracked": "No",
+      "blocks_what_if_missing_or_expired": "-"
+    },
+    {
+      "field_group": "Contact",
+      "field": "Primary contact, mobile, e-mail",
+      "type": "Text",
+      "mandatory": "Yes",
+      "expiry_tracked": "No",
+      "blocks_what_if_missing_or_expired": "RFQ delivery"
+    },
+    {
+      "field_group": "Contact",
+      "field": "Accounts contact for payment certificates",
+      "type": "Text",
+      "mandatory": "Yes",
+      "expiry_tracked": "No",
+      "blocks_what_if_missing_or_expired": "Payment notifications"
+    },
+    {
+      "field_group": "Trades",
+      "field": "Trade categories (multi-select from trade library)",
+      "type": "Multi-select",
+      "mandatory": "Yes",
+      "expiry_tracked": "No",
+      "blocks_what_if_missing_or_expired": "RFQ matching"
+    },
+    {
+      "field_group": "Trades",
+      "field": "Declared monthly capacity (value and manpower)",
+      "type": "Number",
+      "mandatory": "No",
+      "expiry_tracked": "No",
+      "blocks_what_if_missing_or_expired": "Capacity warnings at award"
+    },
+    {
+      "field_group": "Trades",
+      "field": "Own workshop or factory (address and photos)",
+      "type": "File",
+      "mandatory": "No",
+      "expiry_tracked": "No",
+      "blocks_what_if_missing_or_expired": "Prequalification score"
+    },
+    {
+      "field_group": "Compliance",
+      "field": "Contractors all risk insurance",
+      "type": "File",
+      "mandatory": "Yes",
+      "expiry_tracked": "Yes",
+      "blocks_what_if_missing_or_expired": "Award and site access"
+    },
+    {
+      "field_group": "Compliance",
+      "field": "Third party liability insurance",
+      "type": "File",
+      "mandatory": "Yes",
+      "expiry_tracked": "Yes",
+      "blocks_what_if_missing_or_expired": "Award and site access"
+    },
+    {
+      "field_group": "Compliance",
+      "field": "Workmen compensation insurance",
+      "type": "File",
+      "mandatory": "Yes",
+      "expiry_tracked": "Yes",
+      "blocks_what_if_missing_or_expired": "Worker mobilisation"
+    },
+    {
+      "field_group": "Compliance",
+      "field": "Municipality contractor classification / grade",
+      "type": "File",
+      "mandatory": "No",
+      "expiry_tracked": "Yes",
+      "blocks_what_if_missing_or_expired": "Permit-linked packages"
+    },
+    {
+      "field_group": "Compliance",
+      "field": "Civil Defence approved contractor certificate",
+      "type": "File",
+      "mandatory": "Conditional",
+      "expiry_tracked": "Yes",
+      "blocks_what_if_missing_or_expired": "Fire system packages - hard block"
+    },
+    {
+      "field_group": "Compliance",
+      "field": "SIRA installer licence",
+      "type": "File",
+      "mandatory": "Conditional",
+      "expiry_tracked": "Yes",
+      "blocks_what_if_missing_or_expired": "CCTV and access control packages - hard block"
+    },
+    {
+      "field_group": "Compliance",
+      "field": "Utility enrolled electrical contractor certificate",
+      "type": "File",
+      "mandatory": "Conditional",
+      "expiry_tracked": "Yes",
+      "blocks_what_if_missing_or_expired": "Electrical packages and energisation"
+    },
+    {
+      "field_group": "Compliance",
+      "field": "Community / master developer registrations held",
+      "type": "Multi-select + files",
+      "mandatory": "No",
+      "expiry_tracked": "Yes",
+      "blocks_what_if_missing_or_expired": "Award to projects in that community - hard block"
+    },
+    {
+      "field_group": "Compliance",
+      "field": "ISO 9001 / 45001 / 14001 certificates",
+      "type": "File",
+      "mandatory": "No",
+      "expiry_tracked": "Yes",
+      "blocks_what_if_missing_or_expired": "Prequalification score"
+    },
+    {
+      "field_group": "HSE",
+      "field": "HSE policy and safety statistics (LTI, incidents)",
+      "type": "File + number",
+      "mandatory": "Yes",
+      "expiry_tracked": "No",
+      "blocks_what_if_missing_or_expired": "Prequalification score"
+    },
+    {
+      "field_group": "HSE",
+      "field": "Nominated HSE officer and certification",
+      "type": "File",
+      "mandatory": "No",
+      "expiry_tracked": "Yes",
+      "blocks_what_if_missing_or_expired": "High risk packages"
+    },
+    {
+      "field_group": "Financial",
+      "field": "Bank details with IBAN and bank letter",
+      "type": "File",
+      "mandatory": "Yes",
+      "expiry_tracked": "No",
+      "blocks_what_if_missing_or_expired": "Payment release - change requires dual approval"
+    },
+    {
+      "field_group": "Financial",
+      "field": "Payment terms accepted",
+      "type": "Select",
+      "mandatory": "Yes",
+      "expiry_tracked": "No",
+      "blocks_what_if_missing_or_expired": "Comparison levelling"
+    },
+    {
+      "field_group": "Financial",
+      "field": "Retention percentage accepted",
+      "type": "Number",
+      "mandatory": "Yes",
+      "expiry_tracked": "No",
+      "blocks_what_if_missing_or_expired": "Comparison levelling"
+    },
+    {
+      "field_group": "Financial",
+      "field": "Advance payment required",
+      "type": "Number",
+      "mandatory": "No",
+      "expiry_tracked": "No",
+      "blocks_what_if_missing_or_expired": "Comparison levelling"
+    },
+    {
+      "field_group": "Experience",
+      "field": "Reference projects (client, value, year, scope)",
+      "type": "Repeating",
+      "mandatory": "No",
+      "expiry_tracked": "No",
+      "blocks_what_if_missing_or_expired": "Prequalification score"
+    },
+    {
+      "field_group": "Experience",
+      "field": "Client reference contacts",
+      "type": "Repeating",
+      "mandatory": "No",
+      "expiry_tracked": "No",
+      "blocks_what_if_missing_or_expired": "Prequalification score"
+    },
+    {
+      "field_group": "Experience",
+      "field": "Sample photographs of completed work",
+      "type": "Files",
+      "mandatory": "No",
+      "expiry_tracked": "No",
+      "blocks_what_if_missing_or_expired": "Prequalification score"
+    },
+    {
+      "field_group": "Workforce",
+      "field": "Total workforce and trade breakdown",
+      "type": "Number",
+      "mandatory": "Yes",
+      "expiry_tracked": "No",
+      "blocks_what_if_missing_or_expired": "Capacity check"
+    },
+    {
+      "field_group": "Workforce",
+      "field": "Worker roster with visa, Emirates ID and insurance",
+      "type": "Repeating + files",
+      "mandatory": "Conditional",
+      "expiry_tracked": "Yes",
+      "blocks_what_if_missing_or_expired": "Site access per worker - hard block"
+    },
+    {
+      "field_group": "Workforce",
+      "field": "Third party trade certificates (height, scaffold, electrical)",
+      "type": "Files",
+      "mandatory": "Conditional",
+      "expiry_tracked": "Yes",
+      "blocks_what_if_missing_or_expired": "High risk activity assignment"
+    },
+    {
+      "field_group": "Rating",
+      "field": "System-generated performance scorecard",
+      "type": "Computed",
+      "mandatory": "-",
+      "expiry_tracked": "No",
+      "blocks_what_if_missing_or_expired": "Bidder shortlisting and award recommendation"
+    }
+  ],
+  "sc_trade_packages": [
+    {
+      "package_code": "PKG-DEM",
+      "trade_package": "Demolition and waste removal",
+      "typical_boq_sections": "Strip out, debris removal, tipping",
+      "special_licence_required": "Approved waste hauler",
+      "typical_retention": "5 percent",
+      "typical_payment_terms": "30 days"
+    },
+    {
+      "package_code": "PKG-CIV",
+      "trade_package": "Civil, blockwork and plaster",
+      "typical_boq_sections": "Blockwork, partitions, plaster, screed",
+      "special_licence_required": "-",
+      "typical_retention": "5-10 percent",
+      "typical_payment_terms": "45 days"
+    },
+    {
+      "package_code": "PKG-WPF",
+      "trade_package": "Waterproofing",
+      "typical_boq_sections": "Wet areas, roof, terrace, planters",
+      "special_licence_required": "Manufacturer applicator approval",
+      "typical_retention": "10 percent",
+      "typical_payment_terms": "45 days"
+    },
+    {
+      "package_code": "PKG-TIL",
+      "trade_package": "Tiling and stone",
+      "typical_boq_sections": "Floor and wall tiling, skirting, thresholds",
+      "special_licence_required": "-",
+      "typical_retention": "5-10 percent",
+      "typical_payment_terms": "45 days"
+    },
+    {
+      "package_code": "PKG-MAR",
+      "trade_package": "Marble, quartz and solid surface",
+      "typical_boq_sections": "Countertops, vanities, staircase cladding",
+      "special_licence_required": "-",
+      "typical_retention": "5-10 percent",
+      "typical_payment_terms": "45 days"
+    },
+    {
+      "package_code": "PKG-GYP",
+      "trade_package": "Gypsum and false ceiling",
+      "typical_boq_sections": "Ceilings, bulkheads, cove lighting details",
+      "special_licence_required": "-",
+      "typical_retention": "5-10 percent",
+      "typical_payment_terms": "45 days"
+    },
+    {
+      "package_code": "PKG-PNT",
+      "trade_package": "Painting and decorative finishes",
+      "typical_boq_sections": "Putty, paint, wallpaper, special finishes",
+      "special_licence_required": "-",
+      "typical_retention": "5-10 percent",
+      "typical_payment_terms": "45 days"
+    },
+    {
+      "package_code": "PKG-JOI",
+      "trade_package": "Joinery and carpentry",
+      "typical_boq_sections": "Kitchen, wardrobes, vanities, feature panelling",
+      "special_licence_required": "-",
+      "typical_retention": "10 percent",
+      "typical_payment_terms": "45 days"
+    },
+    {
+      "package_code": "PKG-ALU",
+      "trade_package": "Aluminium, glazing and steel",
+      "typical_boq_sections": "Windows, doors, facade, balustrades, screens",
+      "special_licence_required": "-",
+      "typical_retention": "10 percent",
+      "typical_payment_terms": "45 days"
+    },
+    {
+      "package_code": "PKG-DOR",
+      "trade_package": "Doors and ironmongery",
+      "typical_boq_sections": "Internal doors, frames, hardware",
+      "special_licence_required": "-",
+      "typical_retention": "5-10 percent",
+      "typical_payment_terms": "45 days"
+    },
+    {
+      "package_code": "PKG-ELE",
+      "trade_package": "Electrical and low current",
+      "typical_boq_sections": "Conduits, wiring, DB, fittings, data",
+      "special_licence_required": "Utility enrolled contractor",
+      "typical_retention": "10 percent",
+      "typical_payment_terms": "45 days"
+    },
+    {
+      "package_code": "PKG-PLB",
+      "trade_package": "Plumbing and drainage",
+      "typical_boq_sections": "Water, drainage, sanitaryware, pumps",
+      "special_licence_required": "-",
+      "typical_retention": "10 percent",
+      "typical_payment_terms": "45 days"
+    },
+    {
+      "package_code": "PKG-HVA",
+      "trade_package": "HVAC",
+      "typical_boq_sections": "Ducting, FCU, VRF, controls, TAB",
+      "special_licence_required": "-",
+      "typical_retention": "10 percent",
+      "typical_payment_terms": "45 days"
+    },
+    {
+      "package_code": "PKG-FIR",
+      "trade_package": "Fire alarm and fire fighting",
+      "typical_boq_sections": "Detection, sprinklers, extinguishers",
+      "special_licence_required": "Civil Defence approved contractor",
+      "typical_retention": "10 percent",
+      "typical_payment_terms": "45 days"
+    },
+    {
+      "package_code": "PKG-SEC",
+      "trade_package": "CCTV, access control and security",
+      "typical_boq_sections": "Cameras, access, intercom",
+      "special_licence_required": "SIRA licence",
+      "typical_retention": "10 percent",
+      "typical_payment_terms": "45 days"
+    },
+    {
+      "package_code": "PKG-SMT",
+      "trade_package": "Smart home and AV",
+      "typical_boq_sections": "Control systems, lighting control, audio",
+      "special_licence_required": "-",
+      "typical_retention": "10 percent",
+      "typical_payment_terms": "45 days"
+    },
+    {
+      "package_code": "PKG-POO",
+      "trade_package": "Swimming pool",
+      "typical_boq_sections": "Shell, finishes, plant, water features",
+      "special_licence_required": "-",
+      "typical_retention": "10 percent",
+      "typical_payment_terms": "45 days"
+    },
+    {
+      "package_code": "PKG-LAN",
+      "trade_package": "Landscape and irrigation",
+      "typical_boq_sections": "Hardscape, softscape, irrigation, lighting",
+      "special_licence_required": "-",
+      "typical_retention": "10 percent",
+      "typical_payment_terms": "45 days"
+    },
+    {
+      "package_code": "PKG-SCF",
+      "trade_package": "Scaffolding and access",
+      "typical_boq_sections": "Erection, inspection, dismantling",
+      "special_licence_required": "Third party scaffold certification",
+      "typical_retention": "5 percent",
+      "typical_payment_terms": "30 days"
+    },
+    {
+      "package_code": "PKG-CLN",
+      "trade_package": "Cleaning",
+      "typical_boq_sections": "Progressive and final deep cleaning",
+      "special_licence_required": "-",
+      "typical_retention": "0-5 percent",
+      "typical_payment_terms": "30 days"
+    },
+    {
+      "package_code": "PKG-SPC",
+      "trade_package": "Specialist finishes",
+      "typical_boq_sections": "Epoxy, microcement, curtains, blinds, mirrors",
+      "special_licence_required": "-",
+      "typical_retention": "5-10 percent",
+      "typical_payment_terms": "45 days"
+    }
+  ],
+  "sc_portal_features": [
+    {
+      "#": 1,
+      "feature": "Self-service company registration and profile with document upload",
+      "who_uses_it": "Subcontractor admin",
+      "why_it_matters": "Removes the e-mail and WhatsApp document chase entirely",
+      "priority": "Must have"
+    },
+    {
+      "#": 2,
+      "feature": "Subcontractor invites and manages its own team members with role permissions",
+      "who_uses_it": "Subcontractor admin",
+      "why_it_matters": "One account per company, not per person - the portal scales without your admin effort",
+      "priority": "Must have"
+    },
+    {
+      "#": 3,
+      "feature": "Worker roster with visa, Emirates ID, insurance and trade certificate expiry",
+      "who_uses_it": "Subcontractor admin, HSE",
+      "why_it_matters": "A worker with an expired document is automatically blocked from the site register",
+      "priority": "Must have"
+    },
+    {
+      "#": 4,
+      "feature": "RFQ inbox with drawings, specification, site visit slot and deadline countdown",
+      "who_uses_it": "Subcontractor estimator",
+      "why_it_matters": "Every bidder receives an identical package - eliminates the disputed scope argument",
+      "priority": "Must have"
+    },
+    {
+      "#": 5,
+      "feature": "Rate entry directly into your BOQ template, or Excel upload with column mapping",
+      "who_uses_it": "Subcontractor estimator",
+      "why_it_matters": "Comparison becomes automatic because everyone quotes on the same structure",
+      "priority": "Must have"
+    },
+    {
+      "#": 6,
+      "feature": "Tender clarification thread with addenda broadcast to all bidders",
+      "who_uses_it": "Both",
+      "why_it_matters": "One answer reaches every bidder - protects tender integrity and your audit trail",
+      "priority": "Must have"
+    },
+    {
+      "#": 7,
+      "feature": "Sealed bids until the deadline, then side-by-side normalised comparison",
+      "who_uses_it": "Estimator, QS",
+      "why_it_matters": "Prevents rate leakage and gives you a defensible award recommendation",
+      "priority": "Must have"
+    },
+    {
+      "#": 8,
+      "feature": "Automatic eligibility gating on licence, insurance and community registration",
+      "who_uses_it": "System",
+      "why_it_matters": "A subcontractor without Civil Defence or SIRA approval cannot be awarded that package",
+      "priority": "Must have"
+    },
+    {
+      "#": 9,
+      "feature": "Award pack: scope, priced BOQ, drawings revision, programme extract, site rules",
+      "who_uses_it": "Both",
+      "why_it_matters": "The subcontractor receives everything in one issue with a single acknowledgement",
+      "priority": "Must have"
+    },
+    {
+      "#": 10,
+      "feature": "Digital subcontract agreement with e-signature",
+      "who_uses_it": "Both",
+      "why_it_matters": "Removes the two week contract signing delay",
+      "priority": "High"
+    },
+    {
+      "#": 11,
+      "feature": "Assigned programme activities pushed from the master Gantt",
+      "who_uses_it": "Subcontractor supervisor",
+      "why_it_matters": "The subcontractor sees only their activities and their dates - no more paper programmes",
+      "priority": "Must have"
+    },
+    {
+      "#": 12,
+      "feature": "Daily manpower return and progress update from mobile, offline capable",
+      "who_uses_it": "Subcontractor supervisor",
+      "why_it_matters": "Your progress data arrives without a site engineer chasing it",
+      "priority": "Must have"
+    },
+    {
+      "#": 13,
+      "feature": "Material delivery request and free-issue material acknowledgement",
+      "who_uses_it": "Both",
+      "why_it_matters": "Ends the argument about what was supplied by whom",
+      "priority": "High"
+    },
+    {
+      "#": 14,
+      "feature": "Snag list filtered to that subcontractor with photo evidence and due dates",
+      "who_uses_it": "Subcontractor supervisor",
+      "why_it_matters": "Snag closure becomes measurable per trade instead of one shared list",
+      "priority": "Must have"
+    },
+    {
+      "#": 15,
+      "feature": "Inspection request submission with notice period and result tracking",
+      "who_uses_it": "Subcontractor supervisor",
+      "why_it_matters": "Removes the phone call and the missed inspection",
+      "priority": "High"
+    },
+    {
+      "#": 16,
+      "feature": "HSE: toolbox talks, permits to work, incident reporting, induction status",
+      "who_uses_it": "Subcontractor supervisor, HSE",
+      "why_it_matters": "Compliance evidence is captured at source, not reconstructed later",
+      "priority": "High"
+    },
+    {
+      "#": 17,
+      "feature": "Document submittals: method statements, material samples, shop drawings",
+      "who_uses_it": "Subcontractor engineer",
+      "why_it_matters": "Consultant review codes tracked per submission, resubmissions numbered",
+      "priority": "High"
+    },
+    {
+      "#": 18,
+      "feature": "Progress claim submission against measured quantities with photo evidence",
+      "who_uses_it": "Subcontractor accounts",
+      "why_it_matters": "Claims arrive in a reviewable format instead of a PDF invoice",
+      "priority": "Must have"
+    },
+    {
+      "#": 19,
+      "feature": "Live claim status: submitted, measured, certified, approved, paid",
+      "who_uses_it": "Subcontractor accounts",
+      "why_it_matters": "This single feature is why subcontractors adopt portals - payment visibility",
+      "priority": "Must have"
+    },
+    {
+      "#": 20,
+      "feature": "Retention ledger with release dates and defect liability tracking",
+      "who_uses_it": "Subcontractor accounts",
+      "why_it_matters": "Retention disputes disappear when both sides see the same ledger",
+      "priority": "High"
+    },
+    {
+      "#": 21,
+      "feature": "Back-charge register with evidence and acknowledgement",
+      "who_uses_it": "Both",
+      "why_it_matters": "Damage, cleaning, power use and delay recoveries stop being written off",
+      "priority": "High"
+    },
+    {
+      "#": 22,
+      "feature": "Variation request and instruction acknowledgement",
+      "who_uses_it": "Both",
+      "why_it_matters": "No work without a numbered instruction - protects both parties",
+      "priority": "High"
+    },
+    {
+      "#": 23,
+      "feature": "Performance scorecard: quality, safety, programme, commercial, responsiveness",
+      "who_uses_it": "Both",
+      "why_it_matters": "Auto-computed rating drives future bidder shortlists and gives good subcontractors a reason to perform",
+      "priority": "High"
+    },
+    {
+      "#": 24,
+      "feature": "Latest drawing revision only, with superseded lockout",
+      "who_uses_it": "Subcontractor supervisor",
+      "why_it_matters": "The most common cause of rework in fit-out is building to an old revision",
+      "priority": "Must have"
+    },
+    {
+      "#": 25,
+      "feature": "WhatsApp notifications in the subcontractor's language",
+      "who_uses_it": "Subcontractor",
+      "why_it_matters": "In this market the portal will be ignored unless it reaches WhatsApp",
+      "priority": "High"
+    },
+    {
+      "#": 26,
+      "feature": "Cross-tenant profile - register once, receive RFQs from every contractor on the platform",
+      "who_uses_it": "Subcontractor",
+      "why_it_matters": "Turns the portal from a chore into a lead source and creates the network effect for your platform",
+      "priority": "Differentiator"
+    }
+  ]
+}

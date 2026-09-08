@@ -8,8 +8,10 @@ import java.util.UUID;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import com.fitouts.approvalconfig.application.ProjectPermitService;
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.lead.domain.Lead;
@@ -23,11 +25,14 @@ import com.fitouts.shared.error.NotFoundException;
 public class ProjectService {
 
     private final ProjectRepository projectRepository;
+    private final ProjectPermitService projectPermitService;
 
-    public ProjectService(ProjectRepository projectRepository) {
+    public ProjectService(ProjectRepository projectRepository, ProjectPermitService projectPermitService) {
         this.projectRepository = projectRepository;
+        this.projectPermitService = projectPermitService;
     }
 
+    @Transactional
     public Project create(Project request) {
         request.setId(null);
         request.setActive(true);
@@ -41,7 +46,9 @@ public class ProjectService {
         if (request.getProgress() == null) {
             request.setProgress(0);
         }
-        return projectRepository.save(request);
+        Project saved = projectRepository.save(request);
+        projectPermitService.instantiateForProject(saved);
+        return saved;
     }
 
     public List<Project> getAll() {
@@ -100,6 +107,9 @@ public class ProjectService {
         }
         if (request.getExpectedCompletionDate() != null) {
             project.setExpectedCompletionDate(request.getExpectedCompletionDate());
+        }
+        if (request.getJurisdictionPackId() != null) {
+            project.setJurisdictionPackId(request.getJurisdictionPackId());
         }
         if (request.isActive() != project.isActive()) {
             project.setActive(request.isActive());

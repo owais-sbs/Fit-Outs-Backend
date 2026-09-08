@@ -65,6 +65,24 @@ public class Project {
     @Column(name = "expected_completion_date")
     private LocalDate expectedCompletionDate;
 
+    @Column(name = "jurisdiction_pack_id")
+    private UUID jurisdictionPackId;
+
+    @Column(name = "approval_scope_kitchen", nullable = false)
+    private boolean approvalScopeKitchen;
+
+    @Column(name = "approval_scope_cctv", nullable = false)
+    private boolean approvalScopeCctv;
+
+    @Column(name = "approval_scope_rta", nullable = false)
+    private boolean approvalScopeRta;
+
+    @Column(name = "approval_scope_demo", nullable = false)
+    private boolean approvalScopeDemo;
+
+    @Column(name = "approval_scope_load", nullable = false)
+    private boolean approvalScopeLoad;
+
     private boolean isActive = true;
     private boolean isDeleted = false;
 
