@@ -5,6 +5,7 @@ import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -39,6 +40,19 @@ public class ApiExceptionHandler {
             AccessDeniedException exception,
             HttpServletRequest request) {
         return build(HttpStatus.FORBIDDEN, "Access denied", request.getRequestURI());
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiErrorResponse> handleUnreadableBody(
+            HttpMessageNotReadableException exception,
+            HttpServletRequest request) {
+        String detail = exception.getMostSpecificCause() != null
+                ? exception.getMostSpecificCause().getMessage()
+                : exception.getMessage();
+        String message = detail != null && detail.contains("UUID")
+                ? "Invalid UUID format in request body"
+                : "Invalid request body";
+        return build(HttpStatus.BAD_REQUEST, message, request.getRequestURI());
     }
 
     @ExceptionHandler(Exception.class)

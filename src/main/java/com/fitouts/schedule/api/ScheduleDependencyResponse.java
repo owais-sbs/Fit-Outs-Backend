@@ -12,4 +12,7 @@ public class ScheduleDependencyResponse {
     private UUID predecessorUuid;
     private UUID successorUuid;
     private String dependencyType;
+    private int lagWorkingDays;
+    private boolean locked;
+    private String lockReason;
 }

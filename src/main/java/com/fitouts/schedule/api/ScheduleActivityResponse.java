@@ -32,4 +32,15 @@ public class ScheduleActivityResponse {
     private String roomTaskTitle;
     private String roomTaskStatus;
     private String assigneeName;
+
+    // CPM fields (Module 43) — needed by the Gantt after template apply
+    private String activityCode;
+    private String wbsPhase;
+    private Integer durationWorkingDays;
+    private boolean milestone;
+    private boolean lockedDuration;
+    private String constraintNote;
+    private boolean critical;
+    private Integer totalFloat;
+    private Integer freeFloat;
 }
