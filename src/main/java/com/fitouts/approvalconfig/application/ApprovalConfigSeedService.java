@@ -24,12 +24,21 @@ import com.fitouts.approvalconfig.domain.ApprovalAuthority;
 import com.fitouts.approvalconfig.domain.ApprovalAuthorityRepository;
 import com.fitouts.approvalconfig.domain.ApprovalDocumentType;
 import com.fitouts.approvalconfig.domain.ApprovalDocumentTypeRepository;
+import com.fitouts.approvalconfig.domain.ApprovalPermitProjectNature;
+import com.fitouts.approvalconfig.domain.ApprovalPermitProjectNatureRepository;
+import com.fitouts.approvalconfig.domain.ApprovalPermitPropertyType;
+import com.fitouts.approvalconfig.domain.ApprovalPermitPropertyTypeRepository;
 import com.fitouts.approvalconfig.domain.ApprovalPermitScopeTag;
 import com.fitouts.approvalconfig.domain.ApprovalPermitScopeTagRepository;
 import com.fitouts.approvalconfig.domain.ApprovalPermitType;
 import com.fitouts.approvalconfig.domain.ApprovalPermitTypeRepository;
+import com.fitouts.approvalconfig.domain.ApprovalProjectNature;
+import com.fitouts.approvalconfig.domain.ApprovalProjectNatureRepository;
+import com.fitouts.approvalconfig.domain.ApprovalPropertyType;
+import com.fitouts.approvalconfig.domain.ApprovalPropertyTypeRepository;
 import com.fitouts.approvalconfig.domain.ApprovalScopeTag;
 import com.fitouts.approvalconfig.domain.ApprovalScopeTagRepository;
+import com.fitouts.approvalconfig.domain.PermitTriggerTypes;
 import com.fitouts.approvalconfig.domain.JurisdictionPack;
 import com.fitouts.approvalconfig.domain.JurisdictionPackDocument;
 import com.fitouts.approvalconfig.domain.JurisdictionPackDocumentRepository;
@@ -93,11 +102,53 @@ public class ApprovalConfigSeedService {
             link("P-SIGN", "SIGNAGE"),
             link("P-KITCHEN", "KITCHEN"));
 
+    private static final List<ScopeTagDef> PROPERTY_TYPES = List.of(
+            new ScopeTagDef("VILLA", "Villa", "Detached or townhouse villa, not a tower unit."),
+            new ScopeTagDef("APARTMENT", "Apartment / tower unit", "Unit inside a managed tower or apartment building."),
+            new ScopeTagDef("COMMERCIAL_SHELL", "Commercial / retail shell", "Shop, restaurant or retail unit inside a shell."),
+            new ScopeTagDef("OFFICE", "Office", "Office floor or suite, including fitted office space."));
+
+    private static final List<ScopeTagDef> PROJECT_NATURES = List.of(
+            new ScopeTagDef("NEW_BUILD", "New build", "Construction of a new building or villa."),
+            new ScopeTagDef("MAJOR_REFURB", "Major refurbishment", "Substantial strip-out and rebuild of an existing property."),
+            new ScopeTagDef("RENOVATION", "Renovation", "Alteration of layout, structure or services in an existing property."),
+            new ScopeTagDef("FITOUT", "Minor works / fit-out", "Fit-out or finishes inside an existing shell or unit."));
+
+    private static final Map<String, String> PERMIT_TRIGGER_TYPES = Map.ofEntries(
+            Map.entry("P-COMM-REG", PermitTriggerTypes.COMPANY),
+            Map.entry("P-COMM-NOC", PermitTriggerTypes.LOCATION),
+            Map.entry("P-ACCESS", PermitTriggerTypes.LOCATION),
+            Map.entry("P-WASTE", PermitTriggerTypes.LOCATION),
+            Map.entry("P-BLDG-NOC", PermitTriggerTypes.PROPERTY_PROJECT),
+            Map.entry("P-FITOUT", PermitTriggerTypes.PROPERTY_PROJECT),
+            Map.entry("P-GREEN", PermitTriggerTypes.PROPERTY_PROJECT),
+            Map.entry("P-DEWA-TEMP", PermitTriggerTypes.PROPERTY_PROJECT),
+            Map.entry("P-LIFT", PermitTriggerTypes.PROPERTY_PROJECT),
+            Map.entry("P-DCD-FINAL", PermitTriggerTypes.PREREQUISITE),
+            Map.entry("P-RECONNECT", PermitTriggerTypes.PREREQUISITE),
+            Map.entry("P-COMPLETE", PermitTriggerTypes.PREREQUISITE),
+            Map.entry("P-DEPOSIT", PermitTriggerTypes.PREREQUISITE));
+
+    private static final List<PermitTagLink> PERMIT_PROPERTY_LINKS = List.of(
+            link("P-BLDG-NOC", "APARTMENT"),
+            link("P-FITOUT", "COMMERCIAL_SHELL"),
+            link("P-FITOUT", "OFFICE"),
+            link("P-LIFT", "APARTMENT"));
+
+    private static final List<PermitTagLink> PERMIT_NATURE_LINKS = List.of(
+            link("P-GREEN", "NEW_BUILD"),
+            link("P-GREEN", "MAJOR_REFURB"),
+            link("P-DEWA-TEMP", "NEW_BUILD"));
+
     private final ApprovalAuthorityRepository authorityRepository;
     private final ApprovalPermitTypeRepository permitTypeRepository;
     private final ApprovalDocumentTypeRepository documentTypeRepository;
     private final ApprovalScopeTagRepository scopeTagRepository;
+    private final ApprovalPropertyTypeRepository propertyTypeRepository;
+    private final ApprovalProjectNatureRepository projectNatureRepository;
     private final ApprovalPermitScopeTagRepository permitScopeTagRepository;
+    private final ApprovalPermitPropertyTypeRepository permitPropertyTypeRepository;
+    private final ApprovalPermitProjectNatureRepository permitProjectNatureRepository;
     private final JurisdictionPackRepository packRepository;
     private final JurisdictionPackPermitRepository packPermitRepository;
     private final JurisdictionPackDocumentRepository packDocumentRepository;
@@ -128,6 +179,10 @@ public class ApprovalConfigSeedService {
                 }
                 seedScopeTags(companyId);
                 seedPermitScopeTags(companyId);
+                seedPropertyTypes(companyId);
+                seedProjectNatures(companyId);
+                seedPermitPropertyLinks(companyId);
+                seedPermitNatureLinks(companyId);
             });
         }
     }
@@ -173,6 +228,89 @@ public class ApprovalConfigSeedService {
         }
     }
 
+    private void seedPropertyTypes(UUID companyId) {
+        for (ScopeTagDef def : PROPERTY_TYPES) {
+            propertyTypeRepository.findByCompanyIdAndCodeAndDeletedFalse(companyId, def.code)
+                    .orElseGet(() -> {
+                        ApprovalPropertyType created = new ApprovalPropertyType();
+                        created.setCompanyId(companyId);
+                        created.setCode(def.code);
+                        created.setName(def.name);
+                        created.setDescription(def.description);
+                        created.setActive(true);
+                        return propertyTypeRepository.save(created);
+                    });
+        }
+    }
+
+    private void seedProjectNatures(UUID companyId) {
+        for (ScopeTagDef def : PROJECT_NATURES) {
+            projectNatureRepository.findByCompanyIdAndCodeAndDeletedFalse(companyId, def.code)
+                    .orElseGet(() -> {
+                        ApprovalProjectNature created = new ApprovalProjectNature();
+                        created.setCompanyId(companyId);
+                        created.setCode(def.code);
+                        created.setName(def.name);
+                        created.setDescription(def.description);
+                        created.setActive(true);
+                        return projectNatureRepository.save(created);
+                    });
+        }
+    }
+
+    private void seedPermitPropertyLinks(UUID companyId) {
+        if (permitPropertyTypeRepository.existsByCompanyId(companyId)) {
+            return;
+        }
+        for (PermitTagLink link : PERMIT_PROPERTY_LINKS) {
+            ApprovalPermitType permit = permitTypeRepository
+                    .findByCompanyIdAndPermitCodeAndDeletedFalse(companyId, link.permitCode())
+                    .orElse(null);
+            ApprovalPropertyType item = propertyTypeRepository
+                    .findByCompanyIdAndCodeAndDeletedFalse(companyId, link.tagCode())
+                    .orElse(null);
+            if (permit == null || item == null) {
+                continue;
+            }
+            ApprovalPermitPropertyType row = new ApprovalPermitPropertyType();
+            row.setCompanyId(companyId);
+            row.setPermitTypeId(permit.getId());
+            row.setPropertyTypeId(item.getId());
+            row.setCreatedByName("seed");
+            permitPropertyTypeRepository.save(row);
+        }
+    }
+
+    private void seedPermitNatureLinks(UUID companyId) {
+        if (permitProjectNatureRepository.existsByCompanyId(companyId)) {
+            return;
+        }
+        for (PermitTagLink link : PERMIT_NATURE_LINKS) {
+            ApprovalPermitType permit = permitTypeRepository
+                    .findByCompanyIdAndPermitCodeAndDeletedFalse(companyId, link.permitCode())
+                    .orElse(null);
+            ApprovalProjectNature item = projectNatureRepository
+                    .findByCompanyIdAndCodeAndDeletedFalse(companyId, link.tagCode())
+                    .orElse(null);
+            if (permit == null || item == null) {
+                continue;
+            }
+            ApprovalPermitProjectNature row = new ApprovalPermitProjectNature();
+            row.setCompanyId(companyId);
+            row.setPermitTypeId(permit.getId());
+            row.setProjectNatureId(item.getId());
+            row.setCreatedByName("seed");
+            permitProjectNatureRepository.save(row);
+        }
+    }
+
+    private static boolean requiresRegistration(String type, String code) {
+        String t = type == null ? "" : type;
+        String c = code == null ? "" : code;
+        return t.equalsIgnoreCase("Master Developer")
+                || Set.of("DDA", "TRK", "DMCC", "JAFZA").contains(c);
+    }
+
     private static String rootMessage(Throwable e) {
         Throwable current = e;
         while (current.getCause() != null && current.getCause() != current) {
@@ -201,6 +339,7 @@ public class ApprovalConfigSeedService {
                         created.setPermitsIssued(row.permits);
                         created.setSubmissionChannel(row.channel);
                         created.setNotes(blankToNull(row.notes));
+                        created.setRequiresCompanyRegistration(requiresRegistration(row.type, row.code));
                         return authorityRepository.save(created);
                     });
             authorities.put(row.code, entity);
@@ -217,6 +356,7 @@ public class ApprovalConfigSeedService {
                         created.setName(row.caseType);
                         created.setIssuingBody(row.issuingBody);
                         created.setTypicalTrigger(row.trigger);
+                        created.setTriggerType(PERMIT_TRIGGER_TYPES.getOrDefault(row.permitCode, PermitTriggerTypes.SCOPE_TAG));
                         created.setPrerequisiteCases(blankToNull(row.prerequisites));
                         created.setSlaWorkingDays(row.sla);
                         created.setTypicalValidity(blankToNull(row.validity));

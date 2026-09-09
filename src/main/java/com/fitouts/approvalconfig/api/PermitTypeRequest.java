@@ -13,6 +13,7 @@ public class PermitTypeRequest {
     private String name;
     private String issuingBody;
     private String typicalTrigger;
+    private String triggerType;
     private String prerequisiteCases;
     private String slaWorkingDays;
     private String typicalValidity;
@@ -21,4 +22,6 @@ public class PermitTypeRequest {
     private String blocksActivities;
     private Boolean active;
     private List<UUID> scopeTagIds;
+    private List<UUID> propertyTypeIds;
+    private List<UUID> projectNatureIds;
 }

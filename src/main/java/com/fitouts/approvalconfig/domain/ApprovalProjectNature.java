@@ -15,10 +15,10 @@ import lombok.Getter;
 import lombok.Setter;
 
 @Entity
-@Table(name = "approval_permit_types")
+@Table(name = "approval_project_natures")
 @Getter
 @Setter
-public class ApprovalPermitType {
+public class ApprovalProjectNature {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -27,38 +27,14 @@ public class ApprovalPermitType {
     @Column(name = "company_id", nullable = false)
     private UUID companyId;
 
-    @Column(name = "permit_code", nullable = false, length = 40)
-    private String permitCode;
+    @Column(nullable = false, length = 40)
+    private String code;
 
     @Column(nullable = false)
     private String name;
 
-    @Column(name = "issuing_body", length = 120)
-    private String issuingBody;
-
-    @Column(name = "typical_trigger", columnDefinition = "TEXT")
-    private String typicalTrigger;
-
-    @Column(name = "trigger_type", nullable = false, length = 40)
-    private String triggerType = PermitTriggerTypes.SCOPE_TAG;
-
-    @Column(name = "prerequisite_cases", columnDefinition = "TEXT")
-    private String prerequisiteCases;
-
-    @Column(name = "sla_working_days", length = 40)
-    private String slaWorkingDays;
-
-    @Column(name = "typical_validity", length = 80)
-    private String typicalValidity;
-
-    @Column(length = 80)
-    private String deposit;
-
-    @Column(length = 20)
-    private String renewable;
-
-    @Column(name = "blocks_activities", columnDefinition = "TEXT")
-    private String blocksActivities;
+    @Column(columnDefinition = "TEXT")
+    private String description;
 
     private boolean active = true;
     private boolean deleted = false;
