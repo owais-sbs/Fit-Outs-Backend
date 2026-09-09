@@ -18,4 +18,6 @@ public interface PaymentRequestRepository extends JpaRepository<PaymentRequest, 
 
     List<PaymentRequest> findByCompanyIdAndStatusInOrderByCreatedAtDesc(
             UUID companyId, Collection<BillingStatus> statuses);
+
+    List<PaymentRequest> findByStatusAndReminderSentAtIsNull(BillingStatus status);
 }
