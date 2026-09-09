@@ -1,5 +1,6 @@
 package com.fitouts.approvalconfig.api;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -10,17 +11,16 @@ import lombok.Setter;
 @Getter
 @Setter
 @Builder
-public class AuthorityResponse {
+public class CompanyRegistrationResponse {
     private UUID id;
-    private String code;
-    private String name;
-    private String type;
-    private String emirate;
-    private String jurisdictionAreas;
-    private String permitsIssued;
-    private String submissionChannel;
+    private UUID authorityId;
+    private String authorityCode;
+    private String authorityName;
+    private String referenceNo;
+    private LocalDate registrationDate;
+    private LocalDate renewalDate;
+    private String status;
     private String notes;
-    private boolean requiresCompanyRegistration;
     private boolean active;
     private LocalDateTime updatedAt;
 }

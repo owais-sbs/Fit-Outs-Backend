@@ -51,6 +51,9 @@ public class ApprovalAuthority {
     @Column(columnDefinition = "TEXT")
     private String notes;
 
+    @Column(name = "requires_company_registration", nullable = false)
+    private boolean requiresCompanyRegistration = false;
+
     private boolean active = true;
     private boolean deleted = false;
 

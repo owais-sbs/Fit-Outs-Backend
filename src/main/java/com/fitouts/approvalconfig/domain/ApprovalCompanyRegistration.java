@@ -1,5 +1,6 @@
 package com.fitouts.approvalconfig.domain;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -15,10 +16,10 @@ import lombok.Getter;
 import lombok.Setter;
 
 @Entity
-@Table(name = "approval_permit_types")
+@Table(name = "approval_company_registrations")
 @Getter
 @Setter
-public class ApprovalPermitType {
+public class ApprovalCompanyRegistration {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -27,38 +28,23 @@ public class ApprovalPermitType {
     @Column(name = "company_id", nullable = false)
     private UUID companyId;
 
-    @Column(name = "permit_code", nullable = false, length = 40)
-    private String permitCode;
+    @Column(name = "authority_id", nullable = false)
+    private UUID authorityId;
 
-    @Column(nullable = false)
-    private String name;
+    @Column(name = "reference_no", length = 120)
+    private String referenceNo;
 
-    @Column(name = "issuing_body", length = 120)
-    private String issuingBody;
+    @Column(name = "registration_date")
+    private LocalDate registrationDate;
 
-    @Column(name = "typical_trigger", columnDefinition = "TEXT")
-    private String typicalTrigger;
+    @Column(name = "renewal_date")
+    private LocalDate renewalDate;
 
-    @Column(name = "trigger_type", nullable = false, length = 40)
-    private String triggerType = PermitTriggerTypes.SCOPE_TAG;
+    @Column(nullable = false, length = 40)
+    private String status = "Active";
 
-    @Column(name = "prerequisite_cases", columnDefinition = "TEXT")
-    private String prerequisiteCases;
-
-    @Column(name = "sla_working_days", length = 40)
-    private String slaWorkingDays;
-
-    @Column(name = "typical_validity", length = 80)
-    private String typicalValidity;
-
-    @Column(length = 80)
-    private String deposit;
-
-    @Column(length = 20)
-    private String renewable;
-
-    @Column(name = "blocks_activities", columnDefinition = "TEXT")
-    private String blocksActivities;
+    @Column(columnDefinition = "TEXT")
+    private String notes;
 
     private boolean active = true;
     private boolean deleted = false;

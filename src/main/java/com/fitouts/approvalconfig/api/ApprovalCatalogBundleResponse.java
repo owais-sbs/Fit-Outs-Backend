@@ -14,5 +14,8 @@ public class ApprovalCatalogBundleResponse {
     private List<PermitTypeResponse> permitTypes;
     private List<DocumentTypeResponse> documentTypes;
     private List<ScopeTagResponse> scopeTags;
+    private List<CatalogItemResponse> propertyTypes;
+    private List<CatalogItemResponse> projectNatures;
+    private List<CompanyRegistrationResponse> companyRegistrations;
     private List<JurisdictionPackResponse> packs;
 }
