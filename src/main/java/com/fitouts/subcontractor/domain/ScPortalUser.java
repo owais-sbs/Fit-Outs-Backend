@@ -40,6 +40,9 @@ public class ScPortalUser {
     @Column(name = "invited_by_account_id")
     private Long invitedByAccountId;
 
+    @Column(name = "signature_image_path", length = 512)
+    private String signatureImagePath;
+
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 

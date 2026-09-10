@@ -1,6 +1,6 @@
 -- Wave 5: Cross-tenant subcontractor organization + tenant membership + portal roles.
 
-CREATE TABLE sc_organization (
+CREATE TABLE IF NOT EXISTS sc_organization (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     legal_company_name VARCHAR(255),
     trade_licence_number VARCHAR(120),
@@ -44,10 +44,10 @@ CREATE TABLE sc_organization (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_sc_organization_name ON sc_organization(legal_company_name);
+CREATE INDEX IF NOT EXISTS idx_sc_organization_name ON sc_organization(legal_company_name);
 
 -- Per-GC tenant relationship (AVL / prequalification status).
-CREATE TABLE sc_tenant_membership (
+CREATE TABLE IF NOT EXISTS sc_tenant_membership (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_uuid UUID NOT NULL REFERENCES sc_organization(uuid) ON DELETE CASCADE,
     company_id UUID NOT NULL,
@@ -64,12 +64,12 @@ CREATE TABLE sc_tenant_membership (
     )
 );
 
-CREATE UNIQUE INDEX uq_sc_tenant_membership ON sc_tenant_membership(organization_uuid, company_id);
-CREATE INDEX idx_sc_tenant_membership_company ON sc_tenant_membership(company_id);
-CREATE INDEX idx_sc_tenant_membership_status ON sc_tenant_membership(company_id, status);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sc_tenant_membership ON sc_tenant_membership(organization_uuid, company_id);
+CREATE INDEX IF NOT EXISTS idx_sc_tenant_membership_company ON sc_tenant_membership(company_id);
+CREATE INDEX IF NOT EXISTS idx_sc_tenant_membership_status ON sc_tenant_membership(company_id, status);
 
 -- Portal users within a subcontractor organization (C5 roles).
-CREATE TABLE sc_portal_user (
+CREATE TABLE IF NOT EXISTS sc_portal_user (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_uuid UUID NOT NULL REFERENCES sc_organization(uuid) ON DELETE CASCADE,
     account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
@@ -84,11 +84,11 @@ CREATE TABLE sc_portal_user (
     CONSTRAINT chk_sc_portal_user_status CHECK (status IN ('INVITED', 'ACTIVE', 'DISABLED'))
 );
 
-CREATE UNIQUE INDEX uq_sc_portal_user_account ON sc_portal_user(account_id);
-CREATE INDEX idx_sc_portal_user_org ON sc_portal_user(organization_uuid);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sc_portal_user_account ON sc_portal_user(account_id);
+CREATE INDEX IF NOT EXISTS idx_sc_portal_user_org ON sc_portal_user(organization_uuid);
 
 -- Extended document vault (C7 document types).
-CREATE TABLE sc_organization_document (
+CREATE TABLE IF NOT EXISTS sc_organization_document (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_uuid UUID NOT NULL REFERENCES sc_organization(uuid) ON DELETE CASCADE,
     document_code VARCHAR(32) NOT NULL,
@@ -101,11 +101,11 @@ CREATE TABLE sc_organization_document (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE UNIQUE INDEX uq_sc_org_document ON sc_organization_document(organization_uuid, document_code);
-CREATE INDEX idx_sc_org_document_org ON sc_organization_document(organization_uuid);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sc_org_document ON sc_organization_document(organization_uuid, document_code);
+CREATE INDEX IF NOT EXISTS idx_sc_org_document_org ON sc_organization_document(organization_uuid);
 
 -- Community / master developer registrations (C7, blocks award per community).
-CREATE TABLE sc_community_registration (
+CREATE TABLE IF NOT EXISTS sc_community_registration (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_uuid UUID NOT NULL REFERENCES sc_organization(uuid) ON DELETE CASCADE,
     authority_code VARCHAR(32) NOT NULL,
@@ -117,10 +117,10 @@ CREATE TABLE sc_community_registration (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_sc_community_reg_org ON sc_community_registration(organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_sc_community_reg_org ON sc_community_registration(organization_uuid);
 
 -- Bank details with verification gate (C12 rule 4).
-CREATE TABLE sc_bank_detail (
+CREATE TABLE IF NOT EXISTS sc_bank_detail (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_uuid UUID NOT NULL REFERENCES sc_organization(uuid) ON DELETE CASCADE,
     bank_name VARCHAR(160),
@@ -138,10 +138,10 @@ CREATE TABLE sc_bank_detail (
     )
 );
 
-CREATE UNIQUE INDEX uq_sc_bank_org ON sc_bank_detail(organization_uuid);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sc_bank_org ON sc_bank_detail(organization_uuid);
 
 -- Reference projects (C7 experience).
-CREATE TABLE sc_organization_reference (
+CREATE TABLE IF NOT EXISTS sc_organization_reference (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_uuid UUID NOT NULL REFERENCES sc_organization(uuid) ON DELETE CASCADE,
     client_name VARCHAR(160),
@@ -156,10 +156,10 @@ CREATE TABLE sc_organization_reference (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_sc_org_reference_org ON sc_organization_reference(organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_sc_org_reference_org ON sc_organization_reference(organization_uuid);
 
 -- Public self-registration tokens.
-CREATE TABLE sc_registration_invite (
+CREATE TABLE IF NOT EXISTS sc_registration_invite (
     token UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID,
     email VARCHAR(255) NOT NULL,
@@ -170,7 +170,7 @@ CREATE TABLE sc_registration_invite (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_sc_registration_invite_email ON sc_registration_invite(email);
+CREATE INDEX IF NOT EXISTS idx_sc_registration_invite_email ON sc_registration_invite(email);
 
 -- Link legacy profile rows to organizations.
 ALTER TABLE sc_company_profile ADD COLUMN IF NOT EXISTS organization_uuid UUID REFERENCES sc_organization(uuid);
@@ -203,7 +203,8 @@ BEGIN
             uuid, organization_uuid, company_id, status, created_at, updated_at
         ) VALUES (
             gen_random_uuid(), new_org, r.company_id, r.status, r.created_at, r.updated_at
-        );
+        )
+        ON CONFLICT DO NOTHING;
         INSERT INTO sc_portal_user (
             uuid, organization_uuid, account_id, portal_role, status, created_at, updated_at
         ) VALUES (

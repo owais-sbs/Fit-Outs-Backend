@@ -12,6 +12,9 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+
 @Entity
 @Table(name = "sc_package_award")
 @Getter
@@ -36,17 +39,58 @@ public class ScPackageAward {
     @Column(name = "awarded_at")
     private OffsetDateTime awardedAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "contract_status", length = 64)
+    private ScContractStatus contractStatus;
+
     @Column(name = "contract_file_path", columnDefinition = "TEXT")
     private String contractFilePath;
 
+    @Column(name = "admin_signed_at")
+    private OffsetDateTime adminSignedAt;
+
+    @Column(name = "admin_signed_by")
+    private Long adminSignedBy;
+
+    @Column(name = "admin_signer_name")
+    private String adminSignerName;
+
+    @Column(name = "admin_signer_title")
+    private String adminSignerTitle;
+
+    @Column(name = "admin_signature_audit_json", columnDefinition = "TEXT")
+    private String adminSignatureAuditJson;
+
     @Column(name = "signed_at")
     private OffsetDateTime signedAt;
+
+    @Column(name = "subcontractor_signed_by")
+    private Long subcontractorSignedBy;
+
+    @Column(name = "subcontractor_signer_name")
+    private String subcontractorSignerName;
+
+    @Column(name = "subcontractor_signer_title")
+    private String subcontractorSignerTitle;
 
     @Column(name = "signature_audit_json", columnDefinition = "TEXT")
     private String signatureAuditJson;
 
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
+
+    public ScContractStatus getContractStatus() {
+        if (contractStatus != null) {
+            return contractStatus;
+        }
+        if (signedAt != null) {
+            return ScContractStatus.SIGNED_AND_EXECUTED;
+        }
+        if (adminSignedAt != null || contractFilePath != null) {
+            return ScContractStatus.WAITING_FOR_CONTRACTOR_SIGNATURE;
+        }
+        return ScContractStatus.WAITING_FOR_ADMIN_SIGNATURE;
+    }
 
     @PrePersist
     void onCreate() {

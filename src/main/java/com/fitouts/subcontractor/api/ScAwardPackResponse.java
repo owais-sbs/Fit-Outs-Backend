@@ -18,5 +18,10 @@ public class ScAwardPackResponse {
     private UUID quoteUuid;
     private BigDecimal awardedValue;
     private OffsetDateTime awardedAt;
+    private String contractStatus;
     private String contractFilePath;
+    private OffsetDateTime adminSignedAt;
+    private String adminSignerName;
+    private OffsetDateTime signedAt;
+    private String signatureAuditJson;
 }
