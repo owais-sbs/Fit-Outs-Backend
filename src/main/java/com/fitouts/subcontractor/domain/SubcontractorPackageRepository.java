@@ -12,10 +12,15 @@ public interface SubcontractorPackageRepository extends JpaRepository<Subcontrac
 
     Optional<SubcontractorPackage> findByUuidAndCompanyId(UUID uuid, UUID companyId);
 
+    Optional<SubcontractorPackage> findByBoqLineIdAndCompanyId(UUID boqLineId, UUID companyId);
+
     List<SubcontractorPackage> findByAppointedAccountIdAndCompanyIdOrderByCreatedAtDesc(
             Long appointedAccountId, UUID companyId);
 
     long countByProjectIdAndCompanyId(Long projectId, UUID companyId);
 
     long countByProjectIdAndCompanyIdAndStatus(Long projectId, UUID companyId, SubcontractorPackageStatus status);
+
+    List<SubcontractorPackage> findByCompanyIdAndAppointedAccountIdInOrderByCreatedAtDesc(
+            UUID companyId, java.util.Collection<Long> appointedAccountIds);
 }

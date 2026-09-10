@@ -9,4 +9,5 @@ public class ProgressUpdateRequest {
     private Integer percentComplete;
     private String notes;
     private BigDecimal labourHours;
+    private String delayReason;
 }

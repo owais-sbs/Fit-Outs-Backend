@@ -31,6 +31,14 @@ public class SubcontractorClaimResponse {
     /** Comma-separated stored file paths */
     private String attachmentPaths;
 
+    /** Wave 7 measured/certified fields */
+    private java.math.BigDecimal measuredQty;
+    private java.math.BigDecimal measuredValue;
+    private java.math.BigDecimal certifiedValue;
+    private Long measuredBy;
+    private OffsetDateTime measuredAt;
+    private UUID certificateUuid;
+
     /** Enriched display fields */
     private String packageName;
     private String projectName;
