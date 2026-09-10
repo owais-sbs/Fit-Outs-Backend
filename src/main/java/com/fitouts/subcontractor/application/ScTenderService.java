@@ -545,7 +545,12 @@ public class ScTenderService {
                 .quoteUuid(award.getQuoteUuid())
                 .awardedValue(award.getAwardedValue())
                 .awardedAt(award.getAwardedAt())
+                .contractStatus(award.getContractStatus().name())
                 .contractFilePath(award.getContractFilePath())
+                .adminSignedAt(award.getAdminSignedAt())
+                .adminSignerName(award.getAdminSignerName())
+                .signedAt(award.getSignedAt())
+                .signatureAuditJson(award.getSignatureAuditJson())
                 .build();
     }
 
