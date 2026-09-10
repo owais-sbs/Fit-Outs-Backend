@@ -38,6 +38,9 @@ public class ActivityProgressUpdate {
     @Column(name = "labour_hours")
     private BigDecimal labourHours;
 
+    @Column(name = "delay_reason", length = 64)
+    private String delayReason;
+
     @Column(name = "photo_paths")
     private String photoPaths;
 

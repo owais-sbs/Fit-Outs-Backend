@@ -64,6 +64,26 @@ public class SubcontractorClaim {
     @Column(name = "attachment_paths")
     private String attachmentPaths;
 
+    // --- Wave 7 measured/certified fields ------------------------------------
+
+    @Column(name = "measured_qty", precision = 18, scale = 4)
+    private BigDecimal measuredQty;
+
+    @Column(name = "measured_value", precision = 18, scale = 2)
+    private BigDecimal measuredValue;
+
+    @Column(name = "certified_value", precision = 18, scale = 2)
+    private BigDecimal certifiedValue;
+
+    @Column(name = "measured_by")
+    private Long measuredBy;
+
+    @Column(name = "measured_at")
+    private OffsetDateTime measuredAt;
+
+    @Column(name = "certificate_uuid")
+    private UUID certificateUuid;
+
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
