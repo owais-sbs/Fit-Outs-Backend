@@ -1,42 +1,15 @@
--- V75 was recorded applied on shared RDS while Hibernate ddl-auto skipped
--- NOT NULL columns on the already-populated permit table (same class of gap as V73).
--- Idempotent: add anything still missing, then backfill catalogue rows.
+-- Renumbered from V75 after merging main (main owns V73–V80 for subcontractor portal).
+-- Authority resolution on the Permit Catalogue, plus candidate storage on generated cases.
+-- project + permit_type is no longer unique: ALL_REQUIRED can emit one case per authority.
 
 ALTER TABLE approval_permit_types
-    ADD COLUMN IF NOT EXISTS authority_resolution_mechanism VARCHAR(40);
-
-ALTER TABLE approval_permit_types
-    ADD COLUMN IF NOT EXISTS fixed_authority_id UUID REFERENCES approval_authorities (id);
-
-ALTER TABLE approval_permit_types
-    ADD COLUMN IF NOT EXISTS inherit_authority_from_permit_code VARCHAR(40);
-
-ALTER TABLE approval_permit_types
-    ADD COLUMN IF NOT EXISTS resolution_mode VARCHAR(40);
-
-UPDATE approval_permit_types SET resolution_mode = 'ANY_ONE_APPLIES' WHERE resolution_mode IS NULL;
-
-ALTER TABLE approval_permit_types
-    ALTER COLUMN resolution_mode SET DEFAULT 'ANY_ONE_APPLIES';
-ALTER TABLE approval_permit_types
-    ALTER COLUMN resolution_mode SET NOT NULL;
-
-ALTER TABLE approval_permit_types
-    ADD COLUMN IF NOT EXISTS resolution_mode_confirmed_by VARCHAR(120);
-
-ALTER TABLE approval_permit_types
-    ADD COLUMN IF NOT EXISTS resolution_mode_confirmed_at TIMESTAMP;
-
-ALTER TABLE approval_permit_types
-    ADD COLUMN IF NOT EXISTS allow_internal_hse_signoff BOOLEAN;
-
-UPDATE approval_permit_types SET allow_internal_hse_signoff = FALSE
-WHERE allow_internal_hse_signoff IS NULL;
-
-ALTER TABLE approval_permit_types
-    ALTER COLUMN allow_internal_hse_signoff SET DEFAULT FALSE;
-ALTER TABLE approval_permit_types
-    ALTER COLUMN allow_internal_hse_signoff SET NOT NULL;
+    ADD COLUMN IF NOT EXISTS authority_resolution_mechanism VARCHAR(40),
+    ADD COLUMN IF NOT EXISTS fixed_authority_id UUID REFERENCES approval_authorities (id),
+    ADD COLUMN IF NOT EXISTS inherit_authority_from_permit_code VARCHAR(40),
+    ADD COLUMN IF NOT EXISTS resolution_mode VARCHAR(40) NOT NULL DEFAULT 'ANY_ONE_APPLIES',
+    ADD COLUMN IF NOT EXISTS resolution_mode_confirmed_by VARCHAR(120),
+    ADD COLUMN IF NOT EXISTS resolution_mode_confirmed_at TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS allow_internal_hse_signoff BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE INDEX IF NOT EXISTS idx_approval_permit_types_fixed_authority
     ON approval_permit_types (fixed_authority_id);
@@ -60,6 +33,7 @@ CREATE INDEX IF NOT EXISTS idx_approval_permit_authority_roles_permit
 ALTER TABLE approval_case
     ADD COLUMN IF NOT EXISTS candidate_authority_codes TEXT;
 
+-- Live uniqueness is permit + authority (empty authority for unresolved cases).
 DO $$
 BEGIN
     BEGIN
@@ -72,6 +46,7 @@ BEGIN
     END;
 END $$;
 
+-- One-time backfill. Skip rows an admin has already configured.
 UPDATE approval_permit_types p
 SET authority_resolution_mechanism = 'FIXED',
     fixed_authority_id = a.id
@@ -132,14 +107,6 @@ UPDATE approval_permit_types
 SET allow_internal_hse_signoff = TRUE
 WHERE deleted = FALSE
   AND permit_code = 'P-HOT';
-
-CREATE UNIQUE INDEX IF NOT EXISTS uq_approval_permit_authority_roles_pair
-    ON approval_permit_authority_roles (permit_type_id, authority_role);
-
-ALTER TABLE approval_permit_authority_roles
-    ALTER COLUMN id SET DEFAULT gen_random_uuid();
-ALTER TABLE approval_permit_authority_roles
-    ALTER COLUMN created_at SET DEFAULT NOW();
 
 INSERT INTO approval_permit_authority_roles (id, company_id, permit_type_id, authority_role, created_by_name, created_at)
 SELECT gen_random_uuid(), p.company_id, p.id, v.role, 'seed', NOW()

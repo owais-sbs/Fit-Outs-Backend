@@ -16,13 +16,19 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.fitouts.account.domain.AccountRepository;
+import com.fitouts.auth.domain.Role;
+import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.billing.application.BillingApprovalEventService;
 import com.fitouts.billing.application.BillingPaymentEmailService;
 import com.fitouts.billing.application.BillingService;
@@ -34,6 +40,7 @@ import com.fitouts.billing.domain.PaymentRequestRepository;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
 import com.fitouts.schedule.domain.ScheduleActivityRepository;
+import com.fitouts.shared.context.CompanyContext;
 
 class BillingModuleTest {
 
@@ -69,6 +76,24 @@ class BillingModuleTest {
                 billingPaymentEmailService,
                 accountRepository
         );
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+        CompanyContext.clear();
+    }
+
+    private void authenticateFinance() {
+        AuthPrincipal principal = AuthPrincipal.builder()
+                .accountId(1L)
+                .companyId(companyId)
+                .email("finance@test")
+                .roles(Set.of(Role.FINANCE))
+                .build();
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));
+        CompanyContext.set(companyId);
     }
 
     private PaymentRequest createPaymentRequest(UUID milestoneUuid, BillingStatus status, OffsetDateTime reminderSentAt) {
@@ -330,6 +355,7 @@ class BillingModuleTest {
     @Test
     @DisplayName("TEST J — markPaid on ISSUED status throws exception (ISSUED -> PAID is impossible)")
     void testJ_markPaidOnIssued_throwsException() {
+        authenticateFinance();
         UUID mUuid = UUID.randomUUID();
         PaymentRequest pr = createPaymentRequest(mUuid, BillingStatus.ISSUED, null);
 
@@ -343,6 +369,7 @@ class BillingModuleTest {
     @Test
     @DisplayName("TEST K — markPaid on CLIENT_ACCEPTED status transitions to PAID")
     void testK_markPaidOnClientAccepted_succeeds() {
+        authenticateFinance();
         UUID mUuid = UUID.randomUUID();
         PaymentRequest pr = createPaymentRequest(mUuid, BillingStatus.CLIENT_ACCEPTED, null);
         BillingMilestone m = createMilestone(mUuid, "P1", LocalDate.now(), BillingStatus.CLIENT_ACCEPTED);
@@ -350,6 +377,7 @@ class BillingModuleTest {
         when(paymentRequestRepository.findByUuidAndCompanyId(any(), any())).thenReturn(Optional.of(pr));
         when(milestoneRepository.findByUuidAndCompanyId(any(), any())).thenReturn(Optional.of(m));
         when(paymentRequestRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(milestoneRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         billingService.markPaid(pr.getUuid());
 

@@ -1,3 +1,5 @@
+-- Renumbered from V74 after merging main (main owns V73–V80 for subcontractor portal).
+
 ALTER TABLE approval_authorities
     ADD COLUMN IF NOT EXISTS applies_emirate_wide BOOLEAN NOT NULL DEFAULT FALSE;
 

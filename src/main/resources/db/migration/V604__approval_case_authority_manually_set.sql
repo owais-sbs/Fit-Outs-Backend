@@ -1,5 +1,5 @@
+-- Renumbered from V82 after merging main (main owns V73–V80 for subcontractor portal).
 -- Manual authority picker: keep a user's bind across generate leftover cleanup.
--- V76–V80 are owned by other branches on shared RDS.
 
 ALTER TABLE approval_case
     ADD COLUMN IF NOT EXISTS authority_manually_set BOOLEAN;
