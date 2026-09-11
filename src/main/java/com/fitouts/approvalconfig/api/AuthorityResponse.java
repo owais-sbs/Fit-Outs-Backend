@@ -20,6 +20,8 @@ public class AuthorityResponse {
     private String permitsIssued;
     private String submissionChannel;
     private String notes;
+    private boolean requiresCompanyRegistration;
+    private boolean appliesEmirateWide;
     private boolean active;
     private LocalDateTime updatedAt;
 }

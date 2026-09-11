@@ -13,6 +13,7 @@ public class PermitTypeRequest {
     private String name;
     private String issuingBody;
     private String typicalTrigger;
+    private String triggerType;
     private String prerequisiteCases;
     private String slaWorkingDays;
     private String typicalValidity;
@@ -21,4 +22,14 @@ public class PermitTypeRequest {
     private String blocksActivities;
     private Boolean active;
     private List<UUID> scopeTagIds;
+    private List<UUID> propertyTypeIds;
+    private List<UUID> projectNatureIds;
+    private String authorityResolutionMechanism;
+    private UUID fixedAuthorityId;
+    private String inheritAuthorityFromPermitCode;
+    private String resolutionMode;
+    /** True when the admin is confirming the MULTI_AUTHORITY resolution mode on this save. */
+    private Boolean confirmResolutionMode;
+    private Boolean allowInternalHseSignoff;
+    private List<String> candidateAuthorityRoles;
 }

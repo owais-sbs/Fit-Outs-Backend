@@ -17,6 +17,7 @@ public class PermitTypeResponse {
     private String name;
     private String issuingBody;
     private String typicalTrigger;
+    private String triggerType;
     private String prerequisiteCases;
     private String slaWorkingDays;
     private String typicalValidity;
@@ -27,4 +28,21 @@ public class PermitTypeResponse {
     private LocalDateTime updatedAt;
     private List<UUID> scopeTagIds;
     private List<LinkedScopeTagResponse> scopeTags;
+    private List<UUID> propertyTypeIds;
+    private List<CatalogLinkResponse> propertyTypes;
+    private List<UUID> projectNatureIds;
+    private List<CatalogLinkResponse> projectNatures;
+    private boolean missingPrerequisite;
+    private String authorityResolutionMechanism;
+    private UUID fixedAuthorityId;
+    private String fixedAuthorityCode;
+    private String fixedAuthorityName;
+    private String inheritAuthorityFromPermitCode;
+    private String resolutionMode;
+    private String resolutionModeConfirmedBy;
+    private LocalDateTime resolutionModeConfirmedAt;
+    private boolean resolutionModeNeedsReview;
+    private boolean authorityResolutionIncomplete;
+    private boolean allowInternalHseSignoff;
+    private List<String> candidateAuthorityRoles;
 }

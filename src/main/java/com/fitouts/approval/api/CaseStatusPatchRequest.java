@@ -22,6 +22,6 @@ public class CaseStatusPatchRequest {
     private LocalDate approvedDate;
     private List<String> linkedActivityUuids;
     private String notes;
-    /** Required when moving to REJECTED, WITHDRAWN or CLOSED. */
+    /** Required when moving to REJECTED or CLOSED. */
     private String reason;
 }

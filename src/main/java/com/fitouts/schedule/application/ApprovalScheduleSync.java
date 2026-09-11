@@ -121,7 +121,7 @@ public class ApprovalScheduleSync {
         if (c.getBlocksActivityCodes() == null || c.getBlocksActivityCodes().isBlank()) return null;
 
         ApprovalCaseStatus status = c.getStatus();
-        if (status == ApprovalCaseStatus.WITHDRAWN || status == ApprovalCaseStatus.CLOSED) return null;
+        if (status == ApprovalCaseStatus.CLOSED) return null;
 
         boolean live = status == ApprovalCaseStatus.APPROVED
                 || status == ApprovalCaseStatus.ISSUED

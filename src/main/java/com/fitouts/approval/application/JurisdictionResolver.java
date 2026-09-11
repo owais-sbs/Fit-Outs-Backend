@@ -13,13 +13,14 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.fitouts.approval.api.ProjectScopeToggles;
 import com.fitouts.approval.api.ResolvedAuthorityView;
 import com.fitouts.approval.domain.Authority;
 import com.fitouts.approval.domain.AuthorityRepository;
 import com.fitouts.approval.domain.AuthorityType;
 import com.fitouts.approval.domain.Jurisdiction;
 import com.fitouts.approval.domain.JurisdictionRepository;
+import com.fitouts.approvalconfig.domain.ApprovalAuthority;
+import com.fitouts.approvalconfig.domain.ApprovalAuthorityRepository;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -27,11 +28,9 @@ import lombok.RequiredArgsConstructor;
 /**
  * Works out which authorities own a project.
  *
- * <p>Three layers apply to every UAE fit-out: the community or master developer decides
- * whether you may work at all, the regulator decides whether the work is legal, and building
- * management controls day-to-day access. On top of that sit scope-triggered bodies such as
- * Civil Defence for fire work or SIRA for security, which are pulled in by the project's scope
- * toggles rather than by its address.
+ * <p>Community lookup supplies the master developer, regulator and building-management
+ * bodies. Emirate-wide authorities (Civil Defence, utilities, RTA-type) are added from the
+ * Authority library when their flag is on — they do not need a jurisdiction row.
  */
 @Service
 @RequiredArgsConstructor
@@ -39,18 +38,7 @@ public class JurisdictionResolver {
 
     private final JurisdictionRepository jurisdictionRepository;
     private final AuthorityRepository authorityRepository;
-
-    /** Authorities that apply because of what the work involves, not where it is. */
-    private static final Map<String, String> SCOPE_AUTHORITIES = new LinkedHashMap<>();
-
-    static {
-        SCOPE_AUTHORITIES.put("DCD", "fireSystem");
-        SCOPE_AUTHORITIES.put("SIRA", "securitySystem");
-        SCOPE_AUTHORITIES.put("RTA", "hoardingOnRoad");
-        SCOPE_AUTHORITIES.put("DMFS", "commercialKitchen");
-        SCOPE_AUTHORITIES.put("DET", "signage");
-        SCOPE_AUTHORITIES.put("DMW", "demolition");
-    }
+    private final ApprovalAuthorityRepository approvalAuthorityRepository;
 
     @Getter
     public static class Resolution {
@@ -91,13 +79,11 @@ public class JurisdictionResolver {
      * @param emirate       project emirate, defaulted to Dubai when blank
      * @param communityName the community as entered on the project
      * @param buildingName  optional tower or building
-     * @param scope         scope toggles; defaults are applied when null
      */
     @Transactional(readOnly = true)
     public Resolution resolve(UUID companyId, String emirate, String communityName,
-                              String buildingName, ProjectScopeToggles scope) {
+                              String buildingName) {
         Resolution resolution = new Resolution();
-        ProjectScopeToggles toggles = scope != null ? scope : new ProjectScopeToggles();
         Map<String, Authority> authorities = authorityIndex(companyId);
         String resolvedEmirate = (emirate == null || emirate.isBlank()) ? "Dubai" : emirate.trim();
 
@@ -148,41 +134,33 @@ public class JurisdictionResolver {
                     "Building management for " + buildingName.trim());
         }
 
-        addScopeAuthorities(resolution, authorities, toggles, resolvedEmirate);
+        addEmirateWideAuthorities(resolution, authorities, companyId, resolvedEmirate);
         return resolution;
     }
 
     /**
-     * Pulls in bodies triggered by what the work involves. Adding these by address would put
-     * Civil Defence on every painting job.
+     * Bodies that apply everywhere in the emirate (Civil Defence, utilities, RTA-type).
+     * Flagged on the Authority library; no jurisdiction row is required.
      */
-    private void addScopeAuthorities(Resolution resolution, Map<String, Authority> authorities,
-                                     ProjectScopeToggles toggles, String emirate) {
-        boolean abuDhabi = "abu dhabi".equalsIgnoreCase(emirate);
+    private void addEmirateWideAuthorities(Resolution resolution, Map<String, Authority> authorities,
+                                           UUID companyId, String emirate) {
+        if (companyId == null) return;
+        for (ApprovalAuthority config : approvalAuthorityRepository
+                .findByCompanyIdAndDeletedFalseOrderByNameAsc(companyId)) {
+            if (!config.isActive() || !config.isAppliesEmirateWide()) continue;
+            if (!sameEmirate(emirate, config.getEmirate())) continue;
+            Authority runtime = authorities.get(config.getCode());
+            if (runtime == null) continue;
+            resolution.add(runtime, "Emirate",
+                    runtime.getName() + " applies across " + emirate);
+        }
+    }
 
-        if (toggles.isFireSystem()) {
-            resolution.add(authorities.get(abuDhabi ? "ADCD" : "DCD"), "Scope",
-                    "Fire or life safety system in scope");
+    private static boolean sameEmirate(String project, String authority) {
+        if (project == null || project.isBlank() || authority == null || authority.isBlank()) {
+            return false;
         }
-        if (toggles.isSecuritySystem()) {
-            resolution.add(authorities.get("SIRA"), "Scope", "CCTV or access control in scope");
-        }
-        if (toggles.isHoardingOnRoad()) {
-            resolution.add(authorities.get("RTA"), "Scope", "Hoarding or lifting on public road");
-        }
-        if (toggles.isCommercialKitchen()) {
-            resolution.add(authorities.get("DMFS"), "Scope", "Commercial kitchen in scope");
-        }
-        if (toggles.isSignage()) {
-            resolution.add(authorities.get("DET"), "Scope", "External signage in scope");
-        }
-        if (toggles.isDemolition()) {
-            resolution.add(authorities.get("DMW"), "Scope", "Waste leaving site");
-        }
-        if (toggles.isMepLoadChange() || toggles.isDemolition()) {
-            String utility = abuDhabi ? "ADDC" : "sharjah".equalsIgnoreCase(emirate) ? "SEWA" : "DEWA";
-            resolution.add(authorities.get(utility), "Utility", "Utility disconnection or load change");
-        }
+        return project.trim().equalsIgnoreCase(authority.trim());
     }
 
     private void fallbackByEmirate(Resolution resolution, Map<String, Authority> authorities, String emirate) {

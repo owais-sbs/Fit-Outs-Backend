@@ -11,6 +11,8 @@ public interface CaseFeeRepository extends JpaRepository<CaseFee, UUID> {
 
     List<CaseFee> findByCaseUuidOrderByCreatedAtAsc(UUID caseUuid);
 
+    void deleteByCaseUuid(UUID caseUuid);
+
     List<CaseFee> findByCompanyIdOrderByCreatedAtDesc(UUID companyId);
 
     /** Refundable amounts a third party still holds. This is the deposit ledger. */
