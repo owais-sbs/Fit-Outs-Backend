@@ -8,4 +8,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface ApprovalCaseEventRepository extends JpaRepository<ApprovalCaseEvent, UUID> {
 
     List<ApprovalCaseEvent> findByCaseUuidOrderByCreatedAtDesc(UUID caseUuid);
+
+    void deleteByCaseUuid(UUID caseUuid);
 }

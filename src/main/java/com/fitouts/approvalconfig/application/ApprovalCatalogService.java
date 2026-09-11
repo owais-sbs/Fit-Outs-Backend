@@ -39,6 +39,8 @@ import com.fitouts.approvalconfig.domain.ApprovalCompanyRegistration;
 import com.fitouts.approvalconfig.domain.ApprovalCompanyRegistrationRepository;
 import com.fitouts.approvalconfig.domain.ApprovalDocumentType;
 import com.fitouts.approvalconfig.domain.ApprovalDocumentTypeRepository;
+import com.fitouts.approvalconfig.domain.ApprovalPermitAuthorityRole;
+import com.fitouts.approvalconfig.domain.ApprovalPermitAuthorityRoleRepository;
 import com.fitouts.approvalconfig.domain.ApprovalPermitProjectNature;
 import com.fitouts.approvalconfig.domain.ApprovalPermitProjectNatureRepository;
 import com.fitouts.approvalconfig.domain.ApprovalPermitPropertyType;
@@ -47,6 +49,9 @@ import com.fitouts.approvalconfig.domain.ApprovalPermitScopeTag;
 import com.fitouts.approvalconfig.domain.ApprovalPermitScopeTagRepository;
 import com.fitouts.approvalconfig.domain.ApprovalPermitType;
 import com.fitouts.approvalconfig.domain.ApprovalPermitTypeRepository;
+import com.fitouts.approvalconfig.domain.PermitAuthorityMechanisms;
+import com.fitouts.approvalconfig.domain.PermitAuthorityRoles;
+import com.fitouts.approvalconfig.domain.PermitResolutionModes;
 import com.fitouts.approvalconfig.domain.ApprovalProjectNature;
 import com.fitouts.approvalconfig.domain.ApprovalProjectNatureRepository;
 import com.fitouts.approvalconfig.domain.ApprovalPropertyType;
@@ -75,6 +80,7 @@ public class ApprovalCatalogService {
     private final ApprovalPermitScopeTagRepository permitScopeTagRepository;
     private final ApprovalPermitPropertyTypeRepository permitPropertyTypeRepository;
     private final ApprovalPermitProjectNatureRepository permitProjectNatureRepository;
+    private final ApprovalPermitAuthorityRoleRepository permitAuthorityRoleRepository;
     private final ApprovalCompanyRegistrationRepository companyRegistrationRepository;
     private final JurisdictionPackService packService;
 
@@ -410,6 +416,9 @@ public class ApprovalCatalogService {
         if (request.getRequiresCompanyRegistration() != null) {
             entity.setRequiresCompanyRegistration(request.getRequiresCompanyRegistration());
         }
+        if (request.getAppliesEmirateWide() != null) {
+            entity.setAppliesEmirateWide(request.getAppliesEmirateWide());
+        }
         if (request.getActive() != null) {
             entity.setActive(request.getActive());
         }
@@ -451,6 +460,59 @@ public class ApprovalCatalogService {
         }
         if (request.getActive() != null) {
             entity.setActive(request.getActive());
+        }
+        applyAuthorityResolution(entity, request, creating);
+        if (request.getAllowInternalHseSignoff() != null) {
+            entity.setAllowInternalHseSignoff(request.getAllowInternalHseSignoff());
+        }
+    }
+
+    private void applyAuthorityResolution(ApprovalPermitType entity, PermitTypeRequest request, boolean creating) {
+        if (!creating && request.getAuthorityResolutionMechanism() == null
+                && request.getFixedAuthorityId() == null
+                && request.getInheritAuthorityFromPermitCode() == null
+                && request.getResolutionMode() == null
+                && request.getConfirmResolutionMode() == null) {
+            return;
+        }
+        String mechanism = PermitAuthorityMechanisms.normalize(request.getAuthorityResolutionMechanism());
+        entity.setAuthorityResolutionMechanism(mechanism);
+
+        if (PermitAuthorityMechanisms.FIXED.equals(mechanism)) {
+            if (request.getFixedAuthorityId() != null) {
+                ApprovalAuthority linked = authority(request.getFixedAuthorityId());
+                entity.setFixedAuthorityId(linked.getId());
+            }
+        } else {
+            entity.setFixedAuthorityId(null);
+        }
+
+        if (PermitAuthorityMechanisms.INHERIT_FROM_PERMIT.equals(mechanism)) {
+            String inherit = request.getInheritAuthorityFromPermitCode();
+            entity.setInheritAuthorityFromPermitCode(StringUtils.hasText(inherit)
+                    ? inherit.trim().toUpperCase()
+                    : null);
+        } else {
+            entity.setInheritAuthorityFromPermitCode(null);
+        }
+
+        String previousMode = entity.getResolutionMode();
+        if (PermitAuthorityMechanisms.MULTI_AUTHORITY.equals(mechanism)) {
+            String mode = PermitResolutionModes.normalize(request.getResolutionMode());
+            entity.setResolutionMode(mode);
+            boolean modeChanged = StringUtils.hasText(previousMode) && !mode.equals(previousMode);
+            boolean confirm = creating
+                    || Boolean.TRUE.equals(request.getConfirmResolutionMode())
+                    || modeChanged;
+            if (confirm) {
+                Actor actor = currentActor();
+                entity.setResolutionModeConfirmedBy(StringUtils.hasText(actor.name()) ? actor.name() : "admin");
+                entity.setResolutionModeConfirmedAt(java.time.LocalDateTime.now());
+            }
+        } else {
+            entity.setResolutionMode(PermitResolutionModes.normalize(request.getResolutionMode()));
+            entity.setResolutionModeConfirmedBy(null);
+            entity.setResolutionModeConfirmedAt(null);
         }
     }
 
@@ -533,6 +595,7 @@ public class ApprovalCatalogService {
                 .submissionChannel(entity.getSubmissionChannel())
                 .notes(entity.getNotes())
                 .requiresCompanyRegistration(entity.isRequiresCompanyRegistration())
+                .appliesEmirateWide(entity.isAppliesEmirateWide())
                 .active(entity.isActive())
                 .updatedAt(entity.getUpdatedAt())
                 .build();
@@ -591,6 +654,15 @@ public class ApprovalCatalogService {
                 .filter(item -> item != null)
                 .sorted(Comparator.comparing(CatalogLinkResponse::getName, String.CASE_INSENSITIVE_ORDER))
                 .toList();
+        ApprovalAuthority fixed = entity.getFixedAuthorityId() == null
+                ? null
+                : links.authorities.get(entity.getFixedAuthorityId());
+        List<String> roles = links.rolesByPermit.getOrDefault(entity.getId(), List.of()).stream()
+                .map(ApprovalPermitAuthorityRole::getAuthorityRole)
+                .map(PermitAuthorityRoles::normalize)
+                .filter(role -> role != null)
+                .distinct()
+                .toList();
         return PermitTypeResponse.builder()
                 .id(entity.getId())
                 .permitCode(entity.getPermitCode())
@@ -615,6 +687,21 @@ public class ApprovalCatalogService {
                 .missingPrerequisite(PermitTriggerTypes.PREREQUISITE.equals(
                         PermitTriggerTypes.normalize(entity.getTriggerType()))
                         && !StringUtils.hasText(entity.getPrerequisiteCases()))
+                .authorityResolutionMechanism(entity.getAuthorityResolutionMechanism())
+                .fixedAuthorityId(entity.getFixedAuthorityId())
+                .fixedAuthorityCode(fixed != null ? fixed.getCode() : null)
+                .fixedAuthorityName(fixed != null ? fixed.getName() : null)
+                .inheritAuthorityFromPermitCode(entity.getInheritAuthorityFromPermitCode())
+                .resolutionMode(PermitResolutionModes.normalize(entity.getResolutionMode()))
+                .resolutionModeConfirmedBy(entity.getResolutionModeConfirmedBy())
+                .resolutionModeConfirmedAt(entity.getResolutionModeConfirmedAt())
+                .resolutionModeNeedsReview(PermitAuthorityMechanisms.MULTI_AUTHORITY.equals(
+                        PermitAuthorityMechanisms.normalize(entity.getAuthorityResolutionMechanism()))
+                        && entity.getResolutionModeConfirmedAt() == null)
+                .authorityResolutionIncomplete(
+                        PermitAuthorityMechanisms.normalize(entity.getAuthorityResolutionMechanism()) == null)
+                .allowInternalHseSignoff(entity.isAllowInternalHseSignoff())
+                .candidateAuthorityRoles(roles)
                 .build();
     }
 
@@ -667,6 +754,46 @@ public class ApprovalCatalogService {
         replaceScopeTagsForPermit(permit, request.getScopeTagIds());
         replacePropertyTypesForPermit(permit, request.getPropertyTypeIds());
         replaceProjectNaturesForPermit(permit, request.getProjectNatureIds());
+        replaceAuthorityRolesForPermit(permit, request.getCandidateAuthorityRoles());
+    }
+
+    private void replaceAuthorityRolesForPermit(ApprovalPermitType permit, List<String> roles) {
+        if (roles == null) {
+            return;
+        }
+        Set<String> desired = new LinkedHashSet<>();
+        if (PermitAuthorityMechanisms.MULTI_AUTHORITY.equals(
+                PermitAuthorityMechanisms.normalize(permit.getAuthorityResolutionMechanism()))) {
+            for (String raw : roles) {
+                String role = PermitAuthorityRoles.normalize(raw);
+                if (role != null) {
+                    desired.add(role);
+                }
+            }
+        }
+        List<ApprovalPermitAuthorityRole> existing = permitAuthorityRoleRepository.findByPermitTypeId(permit.getId());
+        Set<String> keep = new HashSet<>();
+        for (ApprovalPermitAuthorityRole row : existing) {
+            String role = PermitAuthorityRoles.normalize(row.getAuthorityRole());
+            if (role != null && desired.contains(role)) {
+                keep.add(role);
+            } else {
+                permitAuthorityRoleRepository.delete(row);
+            }
+        }
+        Actor actor = currentActor();
+        for (String role : desired) {
+            if (keep.contains(role)) {
+                continue;
+            }
+            ApprovalPermitAuthorityRole row = new ApprovalPermitAuthorityRole();
+            row.setCompanyId(permit.getCompanyId());
+            row.setPermitTypeId(permit.getId());
+            row.setAuthorityRole(role);
+            row.setCreatedBy(actor.accountId());
+            row.setCreatedByName(actor.name());
+            permitAuthorityRoleRepository.save(row);
+        }
     }
 
     private void replaceScopeTagsForPermit(ApprovalPermitType permit, List<UUID> scopeTagIds) {
@@ -906,8 +1033,16 @@ public class ApprovalCatalogService {
             natureByPermit.computeIfAbsent(row.getPermitTypeId(), k -> new ArrayList<>()).add(row);
             natureByItem.computeIfAbsent(row.getProjectNatureId(), k -> new ArrayList<>()).add(row);
         }
+        Map<UUID, ApprovalAuthority> authorityMap = authorityRepository
+                .findByCompanyIdAndDeletedFalseOrderByNameAsc(companyId).stream()
+                .collect(Collectors.toMap(ApprovalAuthority::getId, a -> a, (a, b) -> a));
+        Map<UUID, List<ApprovalPermitAuthorityRole>> rolesByPermit = new HashMap<>();
+        for (ApprovalPermitAuthorityRole row : permitAuthorityRoleRepository.findByCompanyId(companyId)) {
+            rolesByPermit.computeIfAbsent(row.getPermitTypeId(), k -> new ArrayList<>()).add(row);
+        }
         return new CatalogLinks(permitMap, tagMap, byPermit, byTag,
-                propertyMap, natureMap, propertyByPermit, propertyByItem, natureByPermit, natureByItem);
+                propertyMap, natureMap, propertyByPermit, propertyByItem, natureByPermit, natureByItem,
+                authorityMap, rolesByPermit);
     }
 
     private Actor currentActor() {
@@ -931,7 +1066,9 @@ public class ApprovalCatalogService {
             Map<UUID, List<ApprovalPermitPropertyType>> propertyByPermit,
             Map<UUID, List<ApprovalPermitPropertyType>> propertyByItem,
             Map<UUID, List<ApprovalPermitProjectNature>> natureByPermit,
-            Map<UUID, List<ApprovalPermitProjectNature>> natureByItem) {
+            Map<UUID, List<ApprovalPermitProjectNature>> natureByItem,
+            Map<UUID, ApprovalAuthority> authorities,
+            Map<UUID, List<ApprovalPermitAuthorityRole>> rolesByPermit) {
     }
 
     private record Actor(Long accountId, String name) {

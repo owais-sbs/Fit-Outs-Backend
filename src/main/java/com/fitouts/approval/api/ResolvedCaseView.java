@@ -27,6 +27,9 @@ public class ResolvedCaseView {
     private List<String> requiredDocumentCodes;
     private String blocksActivitiesRaw;
     private String triggerReason;
-    /** True when a case for this permit already exists on the project. */
+    /** True when a live case for this permit + authority already exists on the project. */
     private boolean alreadyExists;
+    private List<String> candidateAuthorityCodes;
+    private boolean authorityUnresolved;
+    private String authorityResolutionNote;
 }

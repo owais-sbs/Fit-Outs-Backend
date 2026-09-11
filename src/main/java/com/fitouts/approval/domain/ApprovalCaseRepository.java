@@ -20,6 +20,16 @@ public interface ApprovalCaseRepository extends JpaRepository<ApprovalCase, UUID
     Optional<ApprovalCase> findByProjectIdAndCompanyIdAndPermitTypeCode(
             Long projectId, UUID companyId, String permitTypeCode);
 
+    @Query("SELECT c FROM ApprovalCase c WHERE c.projectId = :projectId AND c.companyId = :companyId "
+            + "AND c.permitTypeCode = :permitTypeCode AND c.status NOT IN ("
+            + "com.fitouts.approval.domain.ApprovalCaseStatus.REJECTED, "
+            + "com.fitouts.approval.domain.ApprovalCaseStatus.CLOSED) "
+            + "ORDER BY c.createdAt ASC")
+    List<ApprovalCase> findLiveByProjectAndPermit(
+            @Param("projectId") Long projectId,
+            @Param("companyId") UUID companyId,
+            @Param("permitTypeCode") String permitTypeCode);
+
     long countByCompanyId(UUID companyId);
 
     boolean existsByCompanyIdAndCaseNumber(UUID companyId, String caseNumber);

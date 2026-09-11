@@ -54,6 +54,9 @@ public class ApprovalAuthority {
     @Column(name = "requires_company_registration", nullable = false)
     private boolean requiresCompanyRegistration = false;
 
+    @Column(name = "applies_emirate_wide", nullable = false)
+    private boolean appliesEmirateWide = false;
+
     private boolean active = true;
     private boolean deleted = false;
 

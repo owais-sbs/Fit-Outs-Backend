@@ -13,64 +13,40 @@ import com.fitouts.boq.domain.BoqLine;
 
 class ScopeFromWorkItemsTest {
 
-    private static PermitTriggerRules.Context ctx(ProjectScopeToggles scope) {
-        return new PermitTriggerRules.Context(scope, false, false);
-    }
-
     @Test
     void emptyCodesDoNotTurnOnDemolitionOrMep() {
         ProjectScopeToggles scope = ScopeFromWorkItems.fromCodes(Set.of());
 
         assertThat(scope.isDemolition()).isFalse();
         assertThat(scope.isMepLoadChange()).isFalse();
-        assertThat(PermitTriggerRules.applies("P-DEMO", ctx(scope))).isFalse();
-        assertThat(PermitTriggerRules.applies("P-SIRA", ctx(scope))).isFalse();
-        assertThat(PermitTriggerRules.applies("P-COMM-NOC", ctx(scope))).isTrue();
-        assertThat(PermitTriggerRules.applies("P-ACCESS", ctx(scope))).isTrue();
-        assertThat(PermitTriggerRules.applies("P-COMPLETE", ctx(scope))).isTrue();
+        assertThat(scope.isFireSystem()).isFalse();
     }
 
     @Test
-    void kitchenTagLightsKitchenPermitOnly() {
+    void kitchenTagLightsKitchenToggleOnly() {
         ProjectScopeToggles scope = ScopeFromWorkItems.fromCodes(Set.of("KITCHEN"));
 
         assertThat(scope.isCommercialKitchen()).isTrue();
         assertThat(scope.isDemolition()).isFalse();
-        assertThat(PermitTriggerRules.applies("P-KITCHEN", ctx(scope))).isTrue();
-        assertThat(PermitTriggerRules.applies("P-DEMO", ctx(scope))).isFalse();
-        assertThat(PermitTriggerRules.applies("P-SIRA", ctx(scope))).isFalse();
+        assertThat(scope.isSecuritySystem()).isFalse();
     }
 
     @Test
-    void demolitionTagLightsDemoDisconnectAndWaste() {
+    void demolitionTagLightsDemolitionToggle() {
         ProjectScopeToggles scope = ScopeFromWorkItems.fromCodes(Set.of("DEMOLITION"));
 
         assertThat(scope.isDemolition()).isTrue();
-        assertThat(PermitTriggerRules.applies("P-DEMO", ctx(scope))).isTrue();
-        assertThat(PermitTriggerRules.applies("P-DISCONNECT", ctx(scope))).isTrue();
-        assertThat(PermitTriggerRules.applies("P-WASTE", ctx(scope))).isTrue();
-        assertThat(PermitTriggerRules.applies("P-SIRA", ctx(scope))).isFalse();
+        assertThat(scope.isSecuritySystem()).isFalse();
     }
 
     @Test
     void layoutAndStructuralBothCountAsStructuralChange() {
         assertThat(ScopeFromWorkItems.fromCodes(Set.of("LAYOUT")).isStructuralChange()).isTrue();
         assertThat(ScopeFromWorkItems.fromCodes(Set.of("STRUCTURAL")).isStructuralChange()).isTrue();
-        assertThat(PermitTriggerRules.applies("P-MOD",
-                ctx(ScopeFromWorkItems.fromCodes(Set.of("LAYOUT"))))).isTrue();
     }
 
     @Test
-    void hotWorksNeverAutoGeneratesACase() {
-        ProjectScopeToggles scope = ScopeFromWorkItems.fromCodes(Set.of("HOT_WORKS"));
-
-        assertThat(scope.isDemolition()).isFalse();
-        assertThat(PermitTriggerRules.applies("P-HOT", ctx(scope))).isFalse();
-        assertThat(PermitTriggerRules.excludedReason("P-HOT")).isNotBlank();
-    }
-
-    @Test
-    void remainingCatalogCodesMapOntoTriggerToggles() {
+    void remainingCatalogCodesMapOntoToggles() {
         ProjectScopeToggles scope = ScopeFromWorkItems.fromCodes(Set.of(
                 "FACADE", "MEP_LOAD", "FIRE_LIFE", "SIGNAGE", "SECURITY", "NIGHT", "HOARDING"));
 
@@ -81,12 +57,6 @@ class ScopeFromWorkItemsTest {
         assertThat(scope.isSecuritySystem()).isTrue();
         assertThat(scope.isNightWork()).isTrue();
         assertThat(scope.isHoardingOnRoad()).isTrue();
-        assertThat(PermitTriggerRules.applies("P-SIRA", ctx(scope))).isTrue();
-        assertThat(PermitTriggerRules.applies("P-NIGHT", ctx(scope))).isTrue();
-        assertThat(PermitTriggerRules.applies("P-RTA", ctx(scope))).isTrue();
-        assertThat(PermitTriggerRules.applies("P-DCD-NOC", ctx(scope))).isTrue();
-        assertThat(PermitTriggerRules.applies("P-LOAD", ctx(scope))).isTrue();
-        assertThat(PermitTriggerRules.applies("P-SIGN", ctx(scope))).isTrue();
     }
 
     @Test

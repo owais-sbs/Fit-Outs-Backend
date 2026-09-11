@@ -15,5 +15,6 @@ public class AuthorityRequest {
     private String submissionChannel;
     private String notes;
     private Boolean requiresCompanyRegistration;
+    private Boolean appliesEmirateWide;
     private Boolean active;
 }

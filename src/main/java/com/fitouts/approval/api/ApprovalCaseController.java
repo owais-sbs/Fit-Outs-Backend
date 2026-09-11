@@ -2,6 +2,7 @@ package com.fitouts.approval.api;
 
 import java.util.UUID;
 
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -41,6 +42,15 @@ public class ApprovalCaseController extends BaseController {
         }
     }
 
+    @PostMapping("/api/projects/{projectId}/approvals/cases")
+    public Object addCase(@PathVariable Long projectId, @RequestBody AddPermitRequest request) {
+        try {
+            return successResponse("Permit added", caseService.addCase(projectId, request));
+        } catch (Exception e) {
+            return failureResponse("Failed to add permit", e.getMessage());
+        }
+    }
+
     @GetMapping("/api/projects/{projectId}/approvals")
     public Object listForProject(@PathVariable Long projectId) {
         try {
@@ -67,6 +77,24 @@ public class ApprovalCaseController extends BaseController {
             return successResponse(caseService.get(caseUuid));
         } catch (Exception e) {
             return failureResponse("Failed to load permit", e.getMessage());
+        }
+    }
+
+    @DeleteMapping("/api/approval-cases/{caseUuid}")
+    public Object deleteIfNotStarted(@PathVariable UUID caseUuid) {
+        try {
+            return successResponse("Permit removed", caseService.deleteIfNotStarted(caseUuid));
+        } catch (Exception e) {
+            return failureResponse("Failed to remove permit", e.getMessage());
+        }
+    }
+
+    @PostMapping("/api/approval-cases/{caseUuid}/authority")
+    public Object bindAuthority(@PathVariable UUID caseUuid, @RequestBody BindAuthorityRequest request) {
+        try {
+            return successResponse("Authority saved", caseService.bindAuthority(caseUuid, request));
+        } catch (Exception e) {
+            return failureResponse("Failed to set authority", e.getMessage());
         }
     }
 

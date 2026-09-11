@@ -15,7 +15,6 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
-import com.fitouts.approval.api.ProjectScopeToggles;
 import com.fitouts.approval.api.SeedImportSummary;
 import com.fitouts.approval.application.ApprovalSeedImportService;
 import com.fitouts.approval.application.JurisdictionResolver;
@@ -225,7 +224,7 @@ class SeedImportAcceptanceTest {
         importOnce();
 
         JurisdictionResolver.Resolution resolution =
-                resolver.resolve(null, "Dubai", "Palm Jumeirah", null, ProjectScopeToggles.defaults());
+                resolver.resolve(null, "Dubai", "Palm Jumeirah", null);
 
         List<String> codes = resolution.getAuthorities().stream()
                 .map(a -> a.getCode())
