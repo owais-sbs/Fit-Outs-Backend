@@ -25,11 +25,10 @@ public enum ApprovalCaseStatus {
     RENEWAL_IN_PROGRESS,
     EXPIRED,
     CLOSED,
-    REJECTED,
-    WITHDRAWN;
+    REJECTED;
 
     private static final Set<ApprovalCaseStatus> TERMINAL =
-            EnumSet.of(CLOSED, REJECTED, WITHDRAWN);
+            EnumSet.of(CLOSED, REJECTED);
 
     /** Statuses at or past approval, used when checking a prerequisite is satisfied. */
     private static final Set<ApprovalCaseStatus> APPROVED_OR_LATER =
@@ -60,19 +59,19 @@ public enum ApprovalCaseStatus {
      */
     public Set<ApprovalCaseStatus> allowedNext() {
         return switch (this) {
-            case NOT_STARTED -> EnumSet.of(PACK_IN_PREPARATION, READY_TO_SUBMIT, WITHDRAWN);
-            case PACK_IN_PREPARATION -> EnumSet.of(READY_TO_SUBMIT, WITHDRAWN);
-            case READY_TO_SUBMIT -> EnumSet.of(PACK_IN_PREPARATION, SUBMITTED, WITHDRAWN);
-            case SUBMITTED -> EnumSet.of(UNDER_REVIEW, COMMENTS_RECEIVED, APPROVED, REJECTED, WITHDRAWN);
-            case UNDER_REVIEW -> EnumSet.of(COMMENTS_RECEIVED, APPROVED, REJECTED, WITHDRAWN);
-            case COMMENTS_RECEIVED -> EnumSet.of(RESUBMITTED, PACK_IN_PREPARATION, WITHDRAWN, REJECTED);
-            case RESUBMITTED -> EnumSet.of(UNDER_REVIEW, COMMENTS_RECEIVED, APPROVED, REJECTED, WITHDRAWN);
+            case NOT_STARTED -> EnumSet.of(PACK_IN_PREPARATION, READY_TO_SUBMIT);
+            case PACK_IN_PREPARATION -> EnumSet.of(READY_TO_SUBMIT);
+            case READY_TO_SUBMIT -> EnumSet.of(PACK_IN_PREPARATION, SUBMITTED);
+            case SUBMITTED -> EnumSet.of(UNDER_REVIEW, COMMENTS_RECEIVED, APPROVED, REJECTED);
+            case UNDER_REVIEW -> EnumSet.of(COMMENTS_RECEIVED, APPROVED, REJECTED);
+            case COMMENTS_RECEIVED -> EnumSet.of(RESUBMITTED, PACK_IN_PREPARATION, REJECTED);
+            case RESUBMITTED -> EnumSet.of(UNDER_REVIEW, COMMENTS_RECEIVED, APPROVED, REJECTED);
             case APPROVED -> EnumSet.of(ISSUED, CLOSED);
             case ISSUED -> EnumSet.of(EXPIRING_SOON, EXPIRED, RENEWAL_IN_PROGRESS, CLOSED);
             case EXPIRING_SOON -> EnumSet.of(RENEWAL_IN_PROGRESS, EXPIRED, CLOSED);
             case RENEWAL_IN_PROGRESS -> EnumSet.of(ISSUED, EXPIRED, CLOSED);
             case EXPIRED -> EnumSet.of(RENEWAL_IN_PROGRESS, CLOSED);
-            case CLOSED, REJECTED, WITHDRAWN -> EnumSet.noneOf(ApprovalCaseStatus.class);
+            case CLOSED, REJECTED -> EnumSet.noneOf(ApprovalCaseStatus.class);
         };
     }
 

@@ -11,4 +11,6 @@ public interface CaseSubmissionRepository extends JpaRepository<CaseSubmission, 
     List<CaseSubmission> findByCaseUuidOrderByVersionAsc(UUID caseUuid);
 
     Optional<CaseSubmission> findFirstByCaseUuidOrderByVersionDesc(UUID caseUuid);
+
+    void deleteByCaseUuid(UUID caseUuid);
 }

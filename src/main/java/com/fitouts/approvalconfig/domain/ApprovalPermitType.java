@@ -36,6 +36,34 @@ public class ApprovalPermitType {
     @Column(name = "issuing_body", length = 120)
     private String issuingBody;
 
+    /**
+     * Structured issuer lookup. Null means the catalogue row is incomplete.
+     *
+     * <p>{@link PermitAuthorityMechanisms#FIXED} links {@link #fixedAuthorityId} to one
+     * named body. Seeded FIXED permits are Dubai-specific; do not add per-emirate
+     * switching here — another emirate is a new Permit Type row.
+     */
+    @Column(name = "authority_resolution_mechanism", length = 40)
+    private String authorityResolutionMechanism;
+
+    @Column(name = "fixed_authority_id")
+    private UUID fixedAuthorityId;
+
+    @Column(name = "inherit_authority_from_permit_code", length = 40)
+    private String inheritAuthorityFromPermitCode;
+
+    @Column(name = "resolution_mode", nullable = false, length = 40)
+    private String resolutionMode = PermitResolutionModes.ANY_ONE_APPLIES;
+
+    @Column(name = "resolution_mode_confirmed_by", length = 120)
+    private String resolutionModeConfirmedBy;
+
+    @Column(name = "resolution_mode_confirmed_at")
+    private LocalDateTime resolutionModeConfirmedAt;
+
+    @Column(name = "allow_internal_hse_signoff", nullable = false)
+    private boolean allowInternalHseSignoff = false;
+
     @Column(name = "typical_trigger", columnDefinition = "TEXT")
     private String typicalTrigger;
 

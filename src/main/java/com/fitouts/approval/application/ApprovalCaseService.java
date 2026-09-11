@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.security.core.Authentication;
@@ -21,10 +22,12 @@ import org.springframework.util.StringUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fitouts.account.domain.Account;
 import com.fitouts.account.domain.AccountRepository;
+import com.fitouts.approval.api.AddPermitRequest;
 import com.fitouts.approval.api.ApprovalCaseDetailResponse;
 import com.fitouts.approval.api.ApprovalCaseResponse;
 import com.fitouts.approval.api.ApprovalResolveRequest;
 import com.fitouts.approval.api.ApprovalResolveResponse;
+import com.fitouts.approval.api.BindAuthorityRequest;
 import com.fitouts.approval.api.CaseCommentRequest;
 import com.fitouts.approval.api.CaseCommentResponse;
 import com.fitouts.approval.api.CaseEventResponse;
@@ -44,7 +47,6 @@ import com.fitouts.approval.domain.ApprovalCaseEventRepository;
 import com.fitouts.approval.domain.ApprovalCaseRepository;
 import com.fitouts.approval.domain.ApprovalCaseStatus;
 import com.fitouts.approval.domain.Authority;
-import com.fitouts.approval.domain.AuthorityType;
 import com.fitouts.approval.domain.CaseChecklistItem;
 import com.fitouts.approval.domain.CaseChecklistItemRepository;
 import com.fitouts.approval.domain.CaseComment;
@@ -56,6 +58,14 @@ import com.fitouts.approval.domain.CaseSubmissionRepository;
 import com.fitouts.approval.domain.DocumentType;
 import com.fitouts.approval.domain.PermitType;
 import com.fitouts.approval.domain.PermitTypeRepository;
+import com.fitouts.approvalconfig.application.ApprovalConfigSeedService;
+import com.fitouts.approvalconfig.domain.ApprovalAuthority;
+import com.fitouts.approvalconfig.domain.ApprovalAuthorityRepository;
+import com.fitouts.approvalconfig.domain.ApprovalPermitAuthorityRole;
+import com.fitouts.approvalconfig.domain.ApprovalPermitAuthorityRoleRepository;
+import com.fitouts.approvalconfig.domain.ApprovalPermitType;
+import com.fitouts.approvalconfig.domain.ApprovalPermitTypeRepository;
+import com.fitouts.approvalconfig.domain.PermitAuthorityMechanisms;
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.notification.application.NotificationService;
@@ -108,6 +118,12 @@ public class ApprovalCaseService {
     private final AccountRepository accountRepository;
     private final ObjectMapper objectMapper;
     private final ScopeFromWorkItems scopeFromWorkItems;
+    private final PermitCatalogueResolver permitCatalogueResolver;
+    private final ApprovalConfigSeedService approvalConfigSeedService;
+    private final ApprovalPermitTypeRepository configPermitTypeRepository;
+    private final ApprovalPermitAuthorityRoleRepository permitAuthorityRoleRepository;
+    private final ApprovalAuthorityRepository approvalAuthorityRepository;
+
 
     // Resolve and generate
 
@@ -117,6 +133,7 @@ public class ApprovalCaseService {
         requireStaff();
         Project project = requireProject(projectId);
         UUID companyId = CompanyContext.get();
+        approvalConfigSeedService.ensureSeeded(companyId);
 
         ScopeFromWorkItems.DerivedScope derived = scopeFromWorkItems.derive(projectId);
         Location location = resolveLocation(project, request, derived.toggles());
@@ -125,59 +142,141 @@ public class ApprovalCaseService {
         }
 
         JurisdictionResolver.Resolution resolution = resolver.resolve(
-                companyId, location.emirate(), location.community(), location.building(), location.scope());
+                companyId, location.emirate(), location.community(), location.building());
 
-        Map<String, ApprovalCase> existing = new LinkedHashMap<>();
-        for (ApprovalCase c : caseRepository.findByProjectIdAndCompanyIdOrderByCreatedAtAsc(projectId, companyId)) {
-            existing.put(c.getPermitTypeCode(), c);
-        }
+        List<ApprovalCase> existingRows = caseRepository
+                .findByProjectIdAndCompanyIdOrderByCreatedAtAsc(projectId, companyId);
+        Set<String> liveIdentities = liveIdentities(existingRows);
+        List<String> warnings = new ArrayList<>(resolution.getWarnings());
 
-        List<ResolvedCaseView> cases = proposeCases(companyId, resolution, location, existing.keySet());
+        List<ResolvedCaseView> cases = proposeCases(
+                companyId, resolution, location, derived, liveIdentities, existingRows, warnings);
+        addLeftoverWarnings(warnings, existingRows, cases);
+
         return ApprovalResolveResponse.builder()
                 .projectId(projectId)
                 .emirate(location.emirate())
                 .communityName(location.community())
                 .buildingName(location.building())
                 .plotZone(location.plotZone())
+                .approvalPropertyTypeId(location.propertyTypeId())
+                .approvalProjectNatureId(location.projectNatureId())
                 .jurisdictionMatched(resolution.isJurisdictionMatched())
                 .jurisdictionUnverified(resolution.isJurisdictionUnverified())
                 .matchNote(resolution.getMatchNote())
                 .authorities(resolution.getAuthorities())
                 .cases(cases)
-                .warnings(resolution.getWarnings())
+                .warnings(warnings)
                 .derivedScopeTags(derived.tags())
                 .hasApprovedBoq(derived.hasApprovedBoq())
                 .scopeNote(derived.note())
                 .build();
     }
 
-    /** Creates the resolved cases. Existing cases for the same permit are left alone. */
+    /** Creates missing resolver cases. Existing permits are left in place. */
     @Transactional
     public List<ApprovalCaseResponse> generate(Long projectId, ApprovalResolveRequest request) {
         AuthPrincipal principal = requireStaff();
         Project project = requireProject(projectId);
         UUID companyId = CompanyContext.get();
+        approvalConfigSeedService.ensureSeeded(companyId);
 
         ScopeFromWorkItems.DerivedScope derived = scopeFromWorkItems.derive(projectId);
         Location location = resolveLocation(project, request, derived.toggles());
         persistLocation(project, location);
 
         JurisdictionResolver.Resolution resolution = resolver.resolve(
-                companyId, location.emirate(), location.community(), location.building(), location.scope());
+                companyId, location.emirate(), location.community(), location.building());
 
-        Map<String, ApprovalCase> existing = new LinkedHashMap<>();
-        for (ApprovalCase c : caseRepository.findByProjectIdAndCompanyIdOrderByCreatedAtAsc(projectId, companyId)) {
-            existing.put(c.getPermitTypeCode(), c);
+        Map<String, ApprovalCase> live = new LinkedHashMap<>();
+        List<ApprovalCase> existingRows = caseRepository
+                .findByProjectIdAndCompanyIdOrderByCreatedAtAsc(projectId, companyId);
+        for (ApprovalCase c : existingRows) {
+            if (isLiveResolverCase(c)) {
+                live.put(caseIdentity(c.getPermitTypeCode(), c.getAuthorityCode()), c);
+            }
         }
 
+        List<String> warnings = new ArrayList<>();
+        List<ResolvedCaseView> proposals = proposeCases(
+                companyId, resolution, location, derived, live.keySet(), existingRows, warnings);
         Map<String, DocumentType> documentTypes = libraryService.documentTypeIndex(companyId);
-        for (ResolvedCaseView proposal : proposeCases(companyId, resolution, location, existing.keySet())) {
+        for (ResolvedCaseView proposal : proposals) {
             if (proposal.isAlreadyExists()) continue;
-            ApprovalCase created = createCase(project, companyId, proposal, principal, documentTypes);
-            existing.put(created.getPermitTypeCode(), created);
+            createCase(project, companyId, proposal, principal, documentTypes);
         }
 
         return listForProject(projectId);
+    }
+
+    /** Adds one catalogue permit that the resolver did not (or would not) create. */
+    @Transactional
+    public List<ApprovalCaseResponse> addCase(Long projectId, AddPermitRequest request) {
+        AuthPrincipal principal = requireStaff();
+        Project project = requireProject(projectId);
+        UUID companyId = CompanyContext.get();
+        approvalConfigSeedService.ensureSeeded(companyId);
+        String code = request != null ? request.getPermitTypeCode() : null;
+        if (!StringUtils.hasText(code)) {
+            throw new BadRequestException("permitTypeCode is required");
+        }
+
+        if (!caseRepository.findLiveByProjectAndPermit(projectId, companyId, code.trim()).isEmpty()) {
+            throw new BadRequestException("This project already has " + code.trim());
+        }
+
+        PermitType permit = permitTypeRepository.findByCodeVisible(code.trim(), companyId).stream()
+                .findFirst()
+                .orElseThrow(() -> new NotFoundException("Permit type not found"));
+
+        ScopeFromWorkItems.DerivedScope derived = scopeFromWorkItems.derive(projectId);
+        Location location = resolveLocation(project, null, derived.toggles());
+        JurisdictionResolver.Resolution resolution = resolver.resolve(
+                companyId, location.emirate(), location.community(), location.building());
+        List<ApprovalCase> existingRows = caseRepository
+                .findByProjectIdAndCompanyIdOrderByCreatedAtAsc(projectId, companyId);
+        List<String> warnings = new ArrayList<>();
+        List<ResolvedCaseView> proposals = bindConfigPermit(
+                code.trim(),
+                "Added manually",
+                companyId,
+                resolution,
+                location,
+                existingRows,
+                Set.of(),
+                warnings);
+        if (proposals.isEmpty()) {
+            proposals = List.of(toProposal(permit, null, false, "Added manually", List.of(), true, null));
+        }
+        Map<String, DocumentType> documentTypes = libraryService.documentTypeIndex(companyId);
+        for (ResolvedCaseView proposal : proposals) {
+            createCase(project, companyId, proposal, principal, documentTypes);
+        }
+        return listForProject(projectId);
+    }
+
+    /** Drops a case that has not been started. Restore from BOQ/scope can recreate it. */
+    @Transactional
+    public List<ApprovalCaseResponse> deleteIfNotStarted(UUID caseUuid) {
+        requireStaff();
+        UUID companyId = requireCompany();
+        ApprovalCase approvalCase = requireCase(caseUuid, companyId);
+        if (approvalCase.getStatus() != ApprovalCaseStatus.NOT_STARTED) {
+            throw new BadRequestException("Only permits that have not been started can be removed");
+        }
+        Long projectId = approvalCase.getProjectId();
+        deleteCaseAndChildren(approvalCase);
+        return listForProject(projectId);
+    }
+
+    private void deleteCaseAndChildren(ApprovalCase approvalCase) {
+        UUID caseUuid = approvalCase.getUuid();
+        checklistRepository.deleteByCaseUuid(caseUuid);
+        submissionRepository.deleteByCaseUuid(caseUuid);
+        commentRepository.deleteByCaseUuid(caseUuid);
+        feeRepository.deleteByCaseUuid(caseUuid);
+        eventRepository.deleteByCaseUuid(caseUuid);
+        caseRepository.delete(approvalCase);
     }
 
     private ApprovalCase createCase(Project project, UUID companyId, ResolvedCaseView proposal,
@@ -189,6 +288,7 @@ public class ApprovalCaseService {
         approvalCase.setPermitTypeName(proposal.getPermitTypeName());
         approvalCase.setAuthorityCode(proposal.getAuthorityCode());
         approvalCase.setAuthorityName(proposal.getAuthorityName());
+        approvalCase.setCandidateAuthorityCodes(SeedValueParser.joinList(proposal.getCandidateAuthorityCodes()));
         approvalCase.setCaseNumber(caseNumberGenerator.next(companyId, proposal.getPermitTypeCode()));
         approvalCase.setStatus(ApprovalCaseStatus.NOT_STARTED);
         approvalCase.setSlaDays(proposal.getSlaDays());
@@ -265,78 +365,322 @@ public class ApprovalCaseService {
     }
 
     /**
-     * Walks the permit catalogue and keeps the permits whose issuing body is in scope and
-     * whose trigger the project's scope satisfies.
+     * Walks the Approvals Config permit catalogue and keeps rows whose trigger type matches
+     * this project's BOQ scope tags and classifiers. Authority resolution runs afterwards
+     * and never drops a permit from the set.
      */
     private List<ResolvedCaseView> proposeCases(UUID companyId,
                                                 JurisdictionResolver.Resolution resolution,
                                                 Location location,
-                                                java.util.Set<String> existingCodes) {
-        Map<String, Authority> authorities = libraryService.authorityIndex(companyId);
-        PermitTriggerRules.Context context = new PermitTriggerRules.Context(
-                location.scope(),
-                StringUtils.hasText(location.building()),
-                location.newBuild());
-
-        List<ResolvedCaseView> out = new ArrayList<>();
-        for (PermitType permit : permitTypeRepository.findVisible(companyId)) {
-            if (!PermitTriggerRules.applies(permit.getCode(), context)) continue;
-
-            Authority issuing = bindAuthority(permit, resolution, authorities);
-            if (issuing == null) continue;
-
-            Integer sla = permit.planningSlaDays();
-            boolean usingActual = permit.getActualMedianSlaDays() != null
-                    && permit.getCompletedCaseCount() >= ACTUAL_SLA_MIN_SAMPLE;
-
-            out.add(ResolvedCaseView.builder()
-                    .permitTypeCode(permit.getCode())
-                    .permitTypeName(permit.getName())
-                    .authorityCode(issuing.getCode())
-                    .authorityName(issuing.getName())
-                    .authorityType(issuing.getType().name())
-                    .slaDays(sla)
-                    .slaSource(usingActual
-                            ? "Median of " + permit.getCompletedCaseCount() + " completed cases"
-                            : "Seeded estimate " + permit.getIndicativeSlaRaw())
-                    .validityDays(permit.getValidityDaysMax())
-                    .hasDeposit(permit.isHasDeposit())
-                    .depositConditional(permit.isDepositConditional())
-                    .depositAmountIndicative(permit.getDepositAmountIndicative())
-                    .feeIndicative(permit.getFeeIndicative())
-                    .prerequisitePermitCodes(SeedValueParser.splitList(permit.getPrerequisitePermitCodes()))
-                    .requiredDocumentCodes(SeedValueParser.splitList(permit.getRequiredDocumentCodes()))
-                    .blocksActivitiesRaw(permit.getBlocksActivitiesRaw())
-                    .triggerReason(PermitTriggerRules.reason(permit.getCode(), permit.getTypicalTrigger()))
-                    .alreadyExists(existingCodes.contains(permit.getCode()))
-                    .build());
+                                                ScopeFromWorkItems.DerivedScope derived,
+                                                Set<String> liveIdentities,
+                                                List<ApprovalCase> existingRows,
+                                                List<String> warnings) {
+        Map<String, PermitType> runtimePermits = libraryService.permitTypeIndex(companyId);
+        Set<String> tagCodes = new java.util.LinkedHashSet<>();
+        if (derived != null && derived.tags() != null) {
+            for (var tag : derived.tags()) {
+                if (tag != null && StringUtils.hasText(tag.getCode())) {
+                    tagCodes.add(tag.getCode().trim().toUpperCase(Locale.ROOT));
+                }
+            }
         }
 
-        out.sort(Comparator.comparing(ResolvedCaseView::getPermitTypeCode));
+        List<PermitTriggerEvaluator.Match> matches = permitCatalogueResolver.evaluate(
+                companyId,
+                tagCodes,
+                location.propertyTypeId(),
+                location.projectNatureId(),
+                def -> true);
+
+        Map<String, ApprovalPermitType> configByCode = configPermitIndex(companyId);
+        Map<UUID, List<String>> rolesByPermit = rolesByPermit(companyId);
+        AuthorityLookup lookup = authorityLookup(companyId, resolution, location, existingRows);
+        Set<String> livePermitCodes = livePermitCodes(existingRows);
+        Set<String> singletonManualPermits = singletonManualPermits(existingRows);
+
+        List<PermitTriggerEvaluator.Match> inheritLater = new ArrayList<>();
+        List<ResolvedCaseView> out = new ArrayList<>();
+        for (PermitTriggerEvaluator.Match match : matches) {
+            ApprovalPermitType config = configByCode.get(normaliseCode(match.permit().code()));
+            if (isInherit(config)) {
+                inheritLater.add(match);
+                continue;
+            }
+            appendBoundProposals(out, match, config, runtimePermits, rolesByPermit, lookup,
+                    liveIdentities, livePermitCodes, singletonManualPermits, warnings);
+        }
+
+        boolean progressed = true;
+        while (progressed && !inheritLater.isEmpty()) {
+            progressed = false;
+            List<PermitTriggerEvaluator.Match> remaining = new ArrayList<>();
+            for (PermitTriggerEvaluator.Match match : inheritLater) {
+                ApprovalPermitType config = configByCode.get(normaliseCode(match.permit().code()));
+                String source = config != null ? normaliseCode(config.getInheritAuthorityFromPermitCode()) : null;
+                if (source != null && !lookup.inherit.containsKey(source) && remainingWouldProvide(inheritLater, source)) {
+                    remaining.add(match);
+                    continue;
+                }
+                appendBoundProposals(out, match, config, runtimePermits, rolesByPermit, lookup,
+                        liveIdentities, livePermitCodes, singletonManualPermits, warnings);
+                progressed = true;
+            }
+            if (remaining.size() == inheritLater.size()) {
+                for (PermitTriggerEvaluator.Match match : remaining) {
+                    ApprovalPermitType config = configByCode.get(normaliseCode(match.permit().code()));
+                    appendBoundProposals(out, match, config, runtimePermits, rolesByPermit, lookup,
+                            liveIdentities, livePermitCodes, singletonManualPermits, warnings);
+                }
+                break;
+            }
+            inheritLater = remaining;
+        }
+
+        out.sort(Comparator.comparing(ResolvedCaseView::getPermitTypeCode)
+                .thenComparing(view -> view.getAuthorityCode() == null ? "" : view.getAuthorityCode()));
         return out;
     }
 
-    /**
-     * Picks the authority that will actually issue this permit.
-     *
-     * <p>Some catalogue rows name a specific body ("Dubai Civil Defence"); others name a
-     * layer ("Master Developer"), because which developer applies depends on the community.
-     * A permit whose layer has no authority in scope is dropped rather than guessed at.
-     */
-    private Authority bindAuthority(PermitType permit,
-                                    JurisdictionResolver.Resolution resolution,
-                                    Map<String, Authority> authorities) {
-        if (permit.getAuthorityCode() != null) {
-            return resolution.hasAuthority(permit.getAuthorityCode())
-                    ? authorities.get(permit.getAuthorityCode())
-                    : null;
+    private boolean remainingWouldProvide(List<PermitTriggerEvaluator.Match> remaining, String source) {
+        for (PermitTriggerEvaluator.Match match : remaining) {
+            if (source.equals(normaliseCode(match.permit().code()))) return true;
         }
-        if (permit.getAuthorityType() == null) return null;
+        return false;
+    }
 
-        AuthorityType layer = AuthorityType.fromLabel(permit.getAuthorityType());
-        return resolution.byType(layer)
-                .map(view -> authorities.get(view.getCode()))
+    private void appendBoundProposals(List<ResolvedCaseView> out,
+                                      PermitTriggerEvaluator.Match match,
+                                      ApprovalPermitType config,
+                                      Map<String, PermitType> runtimePermits,
+                                      Map<UUID, List<String>> rolesByPermit,
+                                      AuthorityLookup lookup,
+                                      Set<String> liveIdentities,
+                                      Set<String> livePermitCodes,
+                                      Set<String> singletonManualPermits,
+                                      List<String> warnings) {
+        PermitTriggerEvaluator.PermitDef def = match.permit();
+        PermitType runtime = runtimePermits.get(def.code());
+        List<String> roles = config == null ? List.of() : rolesByPermit.getOrDefault(config.getId(), List.of());
+        PermitAuthorityResolver.Result result = PermitAuthorityResolver.resolve(
+                config,
+                roles,
+                lookup.jurisdiction,
+                lookup.emirate,
+                lookup.runtimeByCode,
+                lookup.configById,
+                lookup.configAuthorities,
+                lookup.inherit);
+        if (result.warning() != null && warnings != null) {
+            warnings.add(result.warning());
+        }
+        rememberInherit(lookup.inherit, def.code(), result);
+        List<Authority> bound = result.unresolved() ? List.of() : result.authorities();
+        if (bound.isEmpty()) {
+            boolean alreadyExists = liveIdentities.contains(caseIdentity(def.code(), null))
+                    || livePermitCodes.contains(normaliseCode(def.code()));
+            out.add(toProposal(def, runtime, null, alreadyExists,
+                    match.reason(), result.candidateCodes(), true, result.warning()));
+            return;
+        }
+        for (Authority issuing : bound) {
+            boolean alreadyExists = liveIdentities.contains(caseIdentity(def.code(), issuing.getCode()))
+                    || singletonManualPermits.contains(normaliseCode(def.code()));
+            out.add(toProposal(def, runtime, issuing,
+                    alreadyExists,
+                    match.reason(), List.of(), false, null));
+        }
+    }
+
+    private List<ResolvedCaseView> bindConfigPermit(String permitCode, String reason, UUID companyId,
+                                                    JurisdictionResolver.Resolution resolution,
+                                                    Location location,
+                                                    List<ApprovalCase> existingRows,
+                                                    Set<String> liveIdentities,
+                                                    List<String> warnings) {
+        ApprovalPermitType config = configPermitTypeRepository
+                .findByCompanyIdAndPermitCodeAndDeletedFalse(companyId, permitCode)
                 .orElse(null);
+        PermitType runtime = libraryService.permitTypeIndex(companyId).get(permitCode);
+        PermitTriggerEvaluator.PermitDef def = new PermitTriggerEvaluator.PermitDef(
+                permitCode,
+                runtime != null ? runtime.getName() : permitCode,
+                config != null ? config.getTriggerType() : null,
+                config != null ? config.getTypicalTrigger() : null,
+                config != null ? config.getIssuingBody() : null,
+                Set.of(),
+                Set.of(),
+                Set.of(),
+                config != null ? SeedValueParser.permitCodes(config.getPrerequisiteCases()) : List.of());
+        AuthorityLookup lookup = authorityLookup(companyId, resolution, location, existingRows);
+        List<ResolvedCaseView> out = new ArrayList<>();
+        appendBoundProposals(
+                out,
+                new PermitTriggerEvaluator.Match(def, reason),
+                config,
+                libraryService.permitTypeIndex(companyId),
+                rolesByPermit(companyId),
+                lookup,
+                liveIdentities,
+                livePermitCodes(existingRows),
+                singletonManualPermits(existingRows),
+                warnings);
+        return out;
+    }
+
+    private static boolean isInherit(ApprovalPermitType config) {
+        return config != null && PermitAuthorityMechanisms.INHERIT_FROM_PERMIT.equals(
+                PermitAuthorityMechanisms.normalize(config.getAuthorityResolutionMechanism()));
+    }
+
+    private static void rememberInherit(Map<String, PermitAuthorityResolver.InheritSource> inherit,
+                                        String permitCode,
+                                        PermitAuthorityResolver.Result result) {
+        if (permitCode == null) return;
+        inherit.put(normaliseCode(permitCode), new PermitAuthorityResolver.InheritSource(
+                result.authorities(), result.candidateCodes(), result.unresolved()));
+    }
+
+    private AuthorityLookup authorityLookup(UUID companyId, JurisdictionResolver.Resolution resolution,
+                                            Location location, List<ApprovalCase> existingRows) {
+        Map<String, Authority> runtimeByCode = libraryService.authorityIndex(companyId);
+        List<ApprovalAuthority> configAuthorities = approvalAuthorityRepository
+                .findByCompanyIdAndDeletedFalseOrderByNameAsc(companyId);
+        Map<UUID, ApprovalAuthority> configById = new LinkedHashMap<>();
+        for (ApprovalAuthority authority : configAuthorities) {
+            configById.put(authority.getId(), authority);
+        }
+        Map<String, PermitAuthorityResolver.InheritSource> inherit = inheritFromExisting(existingRows, runtimeByCode);
+        String emirate = location != null && StringUtils.hasText(location.emirate())
+                ? location.emirate()
+                : (resolution.getMatched() != null ? resolution.getMatched().getEmirate() : "Dubai");
+        return new AuthorityLookup(
+                resolution.getMatched(),
+                emirate,
+                runtimeByCode,
+                configById,
+                configAuthorities,
+                inherit);
+    }
+
+    private Map<String, PermitAuthorityResolver.InheritSource> inheritFromExisting(
+            List<ApprovalCase> existingRows, Map<String, Authority> runtimeByCode) {
+        Map<String, List<ApprovalCase>> byPermit = new LinkedHashMap<>();
+        if (existingRows != null) {
+            for (ApprovalCase row : existingRows) {
+                if (!isLiveResolverCase(row) || row.getPermitTypeCode() == null) continue;
+                byPermit.computeIfAbsent(normaliseCode(row.getPermitTypeCode()), k -> new ArrayList<>()).add(row);
+            }
+        }
+        Map<String, PermitAuthorityResolver.InheritSource> inherit = new LinkedHashMap<>();
+        for (Map.Entry<String, List<ApprovalCase>> entry : byPermit.entrySet()) {
+            List<Authority> authorities = new ArrayList<>();
+            List<String> candidates = new ArrayList<>();
+            boolean unresolved = false;
+            Set<String> seen = new java.util.LinkedHashSet<>();
+            for (ApprovalCase row : entry.getValue()) {
+                if (!StringUtils.hasText(row.getAuthorityCode())) {
+                    unresolved = true;
+                    candidates.addAll(SeedValueParser.splitList(row.getCandidateAuthorityCodes()));
+                    continue;
+                }
+                if (!seen.add(row.getAuthorityCode())) continue;
+                Authority runtime = runtimeByCode.get(row.getAuthorityCode());
+                if (runtime != null) {
+                    authorities.add(runtime);
+                } else {
+                    unresolved = true;
+                    candidates.add(row.getAuthorityCode());
+                }
+            }
+            inherit.put(entry.getKey(), new PermitAuthorityResolver.InheritSource(
+                    authorities, candidates, unresolved || authorities.isEmpty()));
+        }
+        return inherit;
+    }
+
+    private Map<String, ApprovalPermitType> configPermitIndex(UUID companyId) {
+        Map<String, ApprovalPermitType> index = new LinkedHashMap<>();
+        for (ApprovalPermitType permit : configPermitTypeRepository
+                .findByCompanyIdAndDeletedFalseOrderByPermitCodeAsc(companyId)) {
+            if (permit.getPermitCode() != null) {
+                index.put(normaliseCode(permit.getPermitCode()), permit);
+            }
+        }
+        return index;
+    }
+
+    private Map<UUID, List<String>> rolesByPermit(UUID companyId) {
+        Map<UUID, List<String>> roles = new LinkedHashMap<>();
+        for (ApprovalPermitAuthorityRole row : permitAuthorityRoleRepository.findByCompanyId(companyId)) {
+            if (row.getAuthorityRole() == null) continue;
+            roles.computeIfAbsent(row.getPermitTypeId(), k -> new ArrayList<>()).add(row.getAuthorityRole());
+        }
+        return roles;
+    }
+
+    private record AuthorityLookup(
+            com.fitouts.approval.domain.Jurisdiction jurisdiction,
+            String emirate,
+            Map<String, Authority> runtimeByCode,
+            Map<UUID, ApprovalAuthority> configById,
+            List<ApprovalAuthority> configAuthorities,
+            Map<String, PermitAuthorityResolver.InheritSource> inherit) {
+    }
+
+    private ResolvedCaseView toProposal(PermitTriggerEvaluator.PermitDef def, PermitType permit,
+                                        Authority issuing, boolean alreadyExists, String triggerReason,
+                                        List<String> candidateCodes, boolean unresolved, String resolutionNote) {
+        if (permit != null) {
+            return toProposal(permit, issuing, alreadyExists, triggerReason, candidateCodes, unresolved, resolutionNote);
+        }
+        return ResolvedCaseView.builder()
+                .permitTypeCode(def.code())
+                .permitTypeName(def.name())
+                .authorityCode(issuing != null ? issuing.getCode() : null)
+                .authorityName(issuing != null ? issuing.getName() : null)
+                .authorityType(issuing != null && issuing.getType() != null ? issuing.getType().name() : null)
+                .prerequisitePermitCodes(def.prerequisiteCodes())
+                .triggerReason(triggerReason)
+                .alreadyExists(alreadyExists)
+                .candidateAuthorityCodes(candidateCodes)
+                .authorityUnresolved(unresolved)
+                .authorityResolutionNote(resolutionNote)
+                .build();
+    }
+
+    private ResolvedCaseView toProposal(PermitType permit, Authority issuing, boolean alreadyExists,
+                                        String triggerReason, List<String> candidateCodes,
+                                        boolean unresolved, String resolutionNote) {
+        Integer sla = permit.planningSlaDays();
+        boolean usingActual = permit.getActualMedianSlaDays() != null
+                && permit.getCompletedCaseCount() >= ACTUAL_SLA_MIN_SAMPLE;
+        return ResolvedCaseView.builder()
+                .permitTypeCode(permit.getCode())
+                .permitTypeName(permit.getName())
+                .authorityCode(issuing != null ? issuing.getCode() : null)
+                .authorityName(issuing != null ? issuing.getName() : null)
+                .authorityType(issuing != null && issuing.getType() != null
+                        ? issuing.getType().name()
+                        : null)
+                .slaDays(sla)
+                .slaSource(usingActual
+                        ? "Median of " + permit.getCompletedCaseCount() + " completed cases"
+                        : "Seeded estimate " + permit.getIndicativeSlaRaw())
+                .validityDays(permit.getValidityDaysMax())
+                .hasDeposit(permit.isHasDeposit())
+                .depositConditional(permit.isDepositConditional())
+                .depositAmountIndicative(permit.getDepositAmountIndicative())
+                .feeIndicative(permit.getFeeIndicative())
+                .prerequisitePermitCodes(SeedValueParser.splitList(permit.getPrerequisitePermitCodes()))
+                .requiredDocumentCodes(SeedValueParser.splitList(permit.getRequiredDocumentCodes()))
+                .blocksActivitiesRaw(permit.getBlocksActivitiesRaw())
+                .triggerReason(triggerReason)
+                .alreadyExists(alreadyExists)
+                .candidateAuthorityCodes(candidateCodes)
+                .authorityUnresolved(unresolved)
+                .authorityResolutionNote(resolutionNote)
+                .build();
     }
 
     // Reading
@@ -375,7 +719,9 @@ public class ApprovalCaseService {
         Map<String, DocumentType> documentTypes = libraryService.documentTypeIndex(companyId);
 
         return ApprovalCaseDetailResponse.builder()
-                .header(toResponse(approvalCase, checklist, companyId, projectNames(companyId), accountNames()))
+                .header(toResponse(approvalCase, checklist, companyId,
+                        nameMap(approvalCase.getProjectId(), projectName(approvalCase.getProjectId())),
+                        nameMap(approvalCase.getAssignedToAccountId(), accountName(approvalCase.getAssignedToAccountId()))))
                 .checklist(checklist.stream().map(i -> toChecklistItem(i, documentTypes)).toList())
                 .submissions(submissionRepository.findByCaseUuidOrderByVersionAsc(caseUuid)
                         .stream().map(this::toSubmission).toList())
@@ -388,6 +734,53 @@ public class ApprovalCaseService {
                 .allowedTransitions(approvalCase.getStatus().allowedNext().stream()
                         .map(Enum::name).sorted().toList())
                 .build();
+    }
+
+    /**
+     * Binds (or rebinds) the issuing authority on a case that has not been submitted yet.
+     * Identity is project + permit + authority, so a clash with a live sibling is rejected.
+     */
+    @Transactional
+    public ApprovalCaseDetailResponse bindAuthority(UUID caseUuid, BindAuthorityRequest request) {
+        AuthPrincipal principal = requireStaff();
+        UUID companyId = requireCompany();
+        ApprovalCase approvalCase = requireCase(caseUuid, companyId);
+        ApprovalCaseStatus status = approvalCase.getStatus();
+        if (status != ApprovalCaseStatus.NOT_STARTED
+                && status != ApprovalCaseStatus.PACK_IN_PREPARATION
+                && status != ApprovalCaseStatus.READY_TO_SUBMIT) {
+            throw new BadRequestException("Authority can only be set before the pack is submitted.");
+        }
+        String requested = request != null ? SeedValueParser.trimToNull(request.getAuthorityCode()) : null;
+        if (requested == null) {
+            throw new BadRequestException("authorityCode is required");
+        }
+
+        Authority authority = findRuntimeAuthority(companyId, requested);
+        if (authority == null) {
+            throw new NotFoundException("Authority not found");
+        }
+
+        String newCode = authority.getCode();
+        if (!newCode.equalsIgnoreCase(approvalCase.getAuthorityCode() == null ? "" : approvalCase.getAuthorityCode())) {
+            for (ApprovalCase other : caseRepository.findLiveByProjectAndPermit(
+                    approvalCase.getProjectId(), companyId, approvalCase.getPermitTypeCode())) {
+                if (other.getUuid().equals(approvalCase.getUuid())) continue;
+                if (newCode.equalsIgnoreCase(other.getAuthorityCode() == null ? "" : other.getAuthorityCode())) {
+                    throw new BadRequestException("This project already has "
+                            + approvalCase.getPermitTypeCode() + " with " + authority.getName());
+                }
+            }
+        }
+
+        approvalCase.setAuthorityCode(authority.getCode());
+        approvalCase.setAuthorityName(authority.getName());
+        approvalCase.setCandidateAuthorityCodes(null);
+        approvalCase.setAuthorityManuallySet(true);
+        caseRepository.save(approvalCase);
+        recordEvent(approvalCase, status, status, "AUTHORITY_BOUND",
+                authority.getCode() + " " + authority.getName(), principal.getAccountId());
+        return get(caseUuid);
     }
 
     // Status transitions
@@ -481,6 +874,7 @@ public class ApprovalCaseService {
         switch (to) {
             case READY_TO_SUBMIT -> requireChecklistComplete(approvalCase);
             case SUBMITTED, RESUBMITTED -> {
+                requireAuthorityBound(approvalCase);
                 requireChecklistComplete(approvalCase);
                 requirePrerequisitesApproved(approvalCase, companyId);
                 startSlaClock(approvalCase, LocalDate.now());
@@ -502,7 +896,7 @@ public class ApprovalCaseService {
                 approvalCase.setExpiryDate(resolveExpiry(approvalCase, request, companyId));
                 spawnDepositRefundCaseIfNeeded(approvalCase, principal, companyId);
             }
-            case REJECTED, WITHDRAWN, CLOSED -> {
+            case REJECTED, CLOSED -> {
                 if (!StringUtils.hasText(request.getReason())) {
                     throw new BadRequestException("A reason is required to " + to.name().toLowerCase(Locale.ROOT) + " a case");
                 }
@@ -516,6 +910,12 @@ public class ApprovalCaseService {
         approvalCase.setStatus(to);
         caseRepository.save(approvalCase);
         recordEvent(approvalCase, from, to, "STATUS_CHANGE", request.getReason(), principal.getAccountId());
+    }
+
+    private void requireAuthorityBound(ApprovalCase approvalCase) {
+        if (!StringUtils.hasText(approvalCase.getAuthorityCode())) {
+            throw new BadRequestException("This permit has no authority. Select one before submitting.");
+        }
     }
 
     /** Blocks the move when a required document is missing or expired, and says which. */
@@ -550,16 +950,22 @@ public class ApprovalCaseService {
         List<String> codes = SeedValueParser.splitList(approvalCase.getPrerequisitePermitCodes());
         if (codes.isEmpty()) return List.of();
 
-        Map<String, ApprovalCase> byCode = new LinkedHashMap<>();
+        List<ApprovalCase> liveOfType = new ArrayList<>();
         for (ApprovalCase c : caseRepository
                 .findByProjectIdAndCompanyIdOrderByCreatedAtAsc(approvalCase.getProjectId(), companyId)) {
-            byCode.put(c.getPermitTypeCode(), c);
+            if (isLiveResolverCase(c) && c.getPermitTypeCode() != null) {
+                liveOfType.add(c);
+            }
         }
 
         List<String> unmet = new ArrayList<>();
         for (String code : codes) {
-            ApprovalCase prerequisite = byCode.get(code);
-            if (prerequisite == null || !prerequisite.getStatus().isApprovedOrLater()) {
+            String wanted = normaliseCode(code);
+            List<ApprovalCase> matches = liveOfType.stream()
+                    .filter(c -> wanted.equals(normaliseCode(c.getPermitTypeCode())))
+                    .toList();
+            if (matches.isEmpty()
+                    || matches.stream().anyMatch(c -> !c.getStatus().isApprovedOrLater())) {
                 unmet.add(code);
             }
         }
@@ -596,7 +1002,9 @@ public class ApprovalCaseService {
         if (permit == null || !permit.isHasDeposit()) return;
 
         Optional<ApprovalCase> alreadyOpen = caseRepository
-                .findByProjectIdAndCompanyIdAndPermitTypeCode(approvalCase.getProjectId(), companyId, "P-DEPOSIT");
+                .findLiveByProjectAndPermit(approvalCase.getProjectId(), companyId, "P-DEPOSIT")
+                .stream()
+                .findFirst();
         if (alreadyOpen.isPresent()) {
             approvalCase.setDepositRefundCaseUuid(alreadyOpen.get().getUuid());
             return;
@@ -788,6 +1196,7 @@ public class ApprovalCaseService {
         UUID companyId = requireCompany();
         ApprovalCase approvalCase = requireCase(caseUuid, companyId);
 
+        requireAuthorityBound(approvalCase);
         requireChecklistComplete(approvalCase);
         requirePrerequisitesApproved(approvalCase, companyId);
 
@@ -1206,9 +1615,12 @@ public class ApprovalCaseService {
                         .map(CaseChecklistItem::getDocumentTypeCode)
                         .toList());
 
-        boolean ready = blocking == 0 && unmet.isEmpty();
+        boolean unresolved = !StringUtils.hasText(c.getAuthorityCode());
+        boolean ready = !unresolved && blocking == 0 && unmet.isEmpty();
         String blockReason = null;
-        if (blocking > 0) {
+        if (unresolved) {
+            blockReason = "Authority not resolved";
+        } else if (blocking > 0) {
             blockReason = blocking + " required document" + (blocking == 1 ? " is" : "s are") + " missing or expired";
         } else if (!unmet.isEmpty()) {
             blockReason = "Waiting on " + String.join(", ", unmet);
@@ -1223,6 +1635,8 @@ public class ApprovalCaseService {
                 .permitTypeName(c.getPermitTypeName())
                 .authorityCode(c.getAuthorityCode())
                 .authorityName(c.getAuthorityName())
+                .candidateAuthorityCodes(SeedValueParser.splitList(c.getCandidateAuthorityCodes()))
+                .authorityManuallySet(c.isAuthorityManuallySet())
                 .status(c.getStatus().name())
                 .assignedToAccountId(c.getAssignedToAccountId())
                 .assignedToName(accounts.get(c.getAssignedToAccountId()))
@@ -1347,9 +1761,9 @@ public class ApprovalCaseService {
 
     // Helpers
 
-    /** Location and scope for a resolve, taking overrides ahead of what the project stores. */
+    /** Location, scope and classifiers for a resolve, taking overrides ahead of what the project stores. */
     private record Location(String emirate, String community, String building, String plotZone,
-                            ProjectScopeToggles scope, boolean newBuild) {
+                            ProjectScopeToggles scope, UUID propertyTypeId, UUID projectNatureId) {
     }
 
     private Location resolveLocation(Project project, ApprovalResolveRequest request,
@@ -1358,10 +1772,13 @@ public class ApprovalCaseService {
         String community = firstNonBlank(request != null ? request.getCommunityName() : null, project.getCommunityName());
         String building = firstNonBlank(request != null ? request.getBuildingName() : null, project.getBuildingName());
         String plotZone = firstNonBlank(request != null ? request.getPlotZone() : null, project.getPlotZone());
-
-        boolean newBuild = project.getProjectType() != null
-                && project.getProjectType().toLowerCase(Locale.ROOT).contains("new build");
-        return new Location(emirate, community, building, plotZone, derivedScope, newBuild);
+        UUID propertyTypeId = request != null && request.getApprovalPropertyTypeId() != null
+                ? request.getApprovalPropertyTypeId()
+                : project.getApprovalPropertyTypeId();
+        UUID projectNatureId = request != null && request.getApprovalProjectNatureId() != null
+                ? request.getApprovalProjectNatureId()
+                : project.getApprovalProjectNatureId();
+        return new Location(emirate, community, building, plotZone, derivedScope, propertyTypeId, projectNatureId);
     }
 
     private void persistLocation(Project project, Location location) {
@@ -1369,12 +1786,108 @@ public class ApprovalCaseService {
         project.setCommunityName(location.community());
         project.setBuildingName(location.building());
         project.setPlotZone(location.plotZone());
+        project.setApprovalPropertyTypeId(location.propertyTypeId());
+        project.setApprovalProjectNatureId(location.projectNatureId());
         try {
             project.setScopeTogglesJson(objectMapper.writeValueAsString(location.scope()));
         } catch (Exception ignored) {
             // Scope stays as it was; the resolve still runs with the in-memory value.
         }
         projectRepository.save(project);
+    }
+
+    private static boolean isLiveResolverCase(ApprovalCase approvalCase) {
+        return approvalCase != null && ResolverRerunPolicy.blocksDuplicate(approvalCase.getStatus());
+    }
+
+    private static Set<String> liveIdentities(List<ApprovalCase> rows) {
+        Set<String> identities = new java.util.LinkedHashSet<>();
+        for (ApprovalCase row : rows) {
+            if (isLiveResolverCase(row) && row.getPermitTypeCode() != null) {
+                identities.add(caseIdentity(row.getPermitTypeCode(), row.getAuthorityCode()));
+            }
+        }
+        return identities;
+    }
+
+    static String caseIdentity(String permitCode, String authorityCode) {
+        String permit = permitCode == null ? "" : permitCode.trim();
+        String authority = authorityCode == null ? "" : authorityCode.trim();
+        return permit + "\0" + authority;
+    }
+
+    static boolean shouldKeepLeftover(ApprovalCase leftover, Set<String> wantedIdentities,
+                                      Set<String> wantedPermits) {
+        if (leftover == null) return true;
+        if (wantedIdentities.contains(caseIdentity(leftover.getPermitTypeCode(), leftover.getAuthorityCode()))) {
+            return true;
+        }
+        if (leftover.isAuthorityManuallySet()) return true;
+        return leftover.getPermitTypeCode() != null
+                && wantedPermits.contains(normaliseCode(leftover.getPermitTypeCode()));
+    }
+
+    private static Set<String> livePermitCodes(List<ApprovalCase> rows) {
+        Set<String> codes = new java.util.LinkedHashSet<>();
+        if (rows == null) return codes;
+        for (ApprovalCase row : rows) {
+            if (isLiveResolverCase(row) && row.getPermitTypeCode() != null) {
+                codes.add(normaliseCode(row.getPermitTypeCode()));
+            }
+        }
+        return codes;
+    }
+
+    private static Set<String> singletonManualPermits(List<ApprovalCase> rows) {
+        Map<String, List<ApprovalCase>> byPermit = new LinkedHashMap<>();
+        if (rows != null) {
+            for (ApprovalCase row : rows) {
+                if (!isLiveResolverCase(row) || row.getPermitTypeCode() == null) continue;
+                byPermit.computeIfAbsent(normaliseCode(row.getPermitTypeCode()), k -> new ArrayList<>()).add(row);
+            }
+        }
+        Set<String> codes = new java.util.LinkedHashSet<>();
+        for (Map.Entry<String, List<ApprovalCase>> entry : byPermit.entrySet()) {
+            if (entry.getValue().size() == 1 && entry.getValue().get(0).isAuthorityManuallySet()) {
+                codes.add(entry.getKey());
+            }
+        }
+        return codes;
+    }
+
+    private Authority findRuntimeAuthority(UUID companyId, String code) {
+        Map<String, Authority> index = libraryService.authorityIndex(companyId);
+        Authority exact = index.get(code);
+        if (exact != null) return exact;
+        for (Map.Entry<String, Authority> entry : index.entrySet()) {
+            if (entry.getKey() != null && entry.getKey().equalsIgnoreCase(code)) {
+                return entry.getValue();
+            }
+        }
+        return null;
+    }
+
+    private static String normaliseCode(String code) {
+        return code == null ? "" : code.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private static void addLeftoverWarnings(List<String> warnings, List<ApprovalCase> existing,
+                                            List<ResolvedCaseView> proposed) {
+        Set<String> wanted = new java.util.LinkedHashSet<>();
+        Set<String> wantedPermits = new java.util.LinkedHashSet<>();
+        for (ResolvedCaseView view : proposed) {
+            wanted.add(caseIdentity(view.getPermitTypeCode(), view.getAuthorityCode()));
+            if (view.getPermitTypeCode() != null) {
+                wantedPermits.add(normaliseCode(view.getPermitTypeCode()));
+            }
+        }
+        for (ApprovalCase leftover : existing) {
+            if (!isLiveResolverCase(leftover) || shouldKeepLeftover(leftover, wanted, wantedPermits)) {
+                continue;
+            }
+            warnings.add(leftover.getPermitTypeCode() + " is no longer triggered but is "
+                    + leftover.getStatus().name() + " and was left in place.");
+        }
     }
 
     private void recordEvent(ApprovalCase approvalCase, ApprovalCaseStatus from, ApprovalCaseStatus to,
@@ -1434,6 +1947,24 @@ public class ApprovalCaseService {
         for (Project project : projectRepository.findByCompanyIdAndIsDeletedFalse(companyId)) {
             names.put(project.getId(), project.getName());
         }
+        return names;
+    }
+
+    private String projectName(Long projectId) {
+        if (projectId == null) return null;
+        return projectRepository.findById(projectId).map(Project::getName).orElse(null);
+    }
+
+    private String accountName(Long accountId) {
+        if (accountId == null) return null;
+        return accountRepository.findById(accountId)
+                .map(a -> a.getFullName() != null ? a.getFullName() : a.getEmail())
+                .orElse(null);
+    }
+
+    private static Map<Long, String> nameMap(Long id, String name) {
+        Map<Long, String> names = new LinkedHashMap<>();
+        if (id != null && name != null) names.put(id, name);
         return names;
     }
 

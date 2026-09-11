@@ -33,4 +33,16 @@ public class PermitTypeResponse {
     private List<UUID> projectNatureIds;
     private List<CatalogLinkResponse> projectNatures;
     private boolean missingPrerequisite;
+    private String authorityResolutionMechanism;
+    private UUID fixedAuthorityId;
+    private String fixedAuthorityCode;
+    private String fixedAuthorityName;
+    private String inheritAuthorityFromPermitCode;
+    private String resolutionMode;
+    private String resolutionModeConfirmedBy;
+    private LocalDateTime resolutionModeConfirmedAt;
+    private boolean resolutionModeNeedsReview;
+    private boolean authorityResolutionIncomplete;
+    private boolean allowInternalHseSignoff;
+    private List<String> candidateAuthorityRoles;
 }

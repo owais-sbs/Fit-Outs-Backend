@@ -8,4 +8,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface CaseCommentRepository extends JpaRepository<CaseComment, UUID> {
 
     List<CaseComment> findByCaseUuidOrderByRaisedDateAsc(UUID caseUuid);
+
+    void deleteByCaseUuid(UUID caseUuid);
 }

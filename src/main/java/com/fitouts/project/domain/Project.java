@@ -88,6 +88,12 @@ public class Project {
     @Column(name = "jurisdiction_pack_id")
     private UUID jurisdictionPackId;
 
+    @Column(name = "approval_property_type_id")
+    private UUID approvalPropertyTypeId;
+
+    @Column(name = "approval_project_nature_id")
+    private UUID approvalProjectNatureId;
+
     @Column(name = "approval_scope_kitchen", nullable = false)
     private boolean approvalScopeKitchen;
 

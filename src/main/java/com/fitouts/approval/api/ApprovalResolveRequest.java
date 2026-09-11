@@ -1,5 +1,7 @@
 package com.fitouts.approval.api;
 
+import java.util.UUID;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -19,4 +21,6 @@ public class ApprovalResolveRequest {
     private ProjectScopeToggles scope;
     /** Persist the location and scope back onto the project as part of the call. */
     private Boolean saveToProject;
+    private UUID approvalPropertyTypeId;
+    private UUID approvalProjectNatureId;
 }
