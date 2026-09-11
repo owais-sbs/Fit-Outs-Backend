@@ -43,6 +43,14 @@ public class ApprovalCase {
     @Column(name = "authority_name")
     private String authorityName;
 
+    /** Codes the resolver could not uniquely pick, stored for a future picker. */
+    @Column(name = "candidate_authority_codes", columnDefinition = "TEXT")
+    private String candidateAuthorityCodes;
+
+    /** True after a user picks an issuer; generate must not withdraw or recreate this case. */
+    @Column(name = "authority_manually_set", nullable = false)
+    private boolean authorityManuallySet;
+
     @Column(name = "case_number", nullable = false, length = 64)
     private String caseNumber;
 

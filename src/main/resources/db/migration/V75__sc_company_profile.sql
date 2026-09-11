@@ -1,5 +1,5 @@
 -- Subcontractor vendor company profile (one per SC admin account per tenant).
-CREATE TABLE sc_company_profile (
+CREATE TABLE IF NOT EXISTS sc_company_profile (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL,
     admin_account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
@@ -25,11 +25,11 @@ CREATE TABLE sc_company_profile (
     )
 );
 
-CREATE UNIQUE INDEX uq_sc_company_profile_account ON sc_company_profile(company_id, admin_account_id);
-CREATE INDEX idx_sc_company_profile_company ON sc_company_profile(company_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sc_company_profile_account ON sc_company_profile(company_id, admin_account_id);
+CREATE INDEX IF NOT EXISTS idx_sc_company_profile_company ON sc_company_profile(company_id);
 
 -- Insurance and specialist compliance documents (trade licence lives on profile).
-CREATE TABLE sc_compliance_document (
+CREATE TABLE IF NOT EXISTS sc_compliance_document (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     profile_uuid UUID NOT NULL REFERENCES sc_company_profile(uuid) ON DELETE CASCADE,
     document_type VARCHAR(32) NOT NULL,
@@ -43,11 +43,11 @@ CREATE TABLE sc_compliance_document (
     )
 );
 
-CREATE UNIQUE INDEX uq_sc_compliance_doc ON sc_compliance_document(profile_uuid, document_type);
-CREATE INDEX idx_sc_compliance_doc_profile ON sc_compliance_document(profile_uuid);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sc_compliance_doc ON sc_compliance_document(profile_uuid, document_type);
+CREATE INDEX IF NOT EXISTS idx_sc_compliance_doc_profile ON sc_compliance_document(profile_uuid);
 
 -- Worker roster (data only — no login).
-CREATE TABLE sc_worker (
+CREATE TABLE IF NOT EXISTS sc_worker (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     profile_uuid UUID NOT NULL REFERENCES sc_company_profile(uuid) ON DELETE CASCADE,
     full_name VARCHAR(160) NOT NULL,
@@ -63,4 +63,4 @@ CREATE TABLE sc_worker (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_sc_worker_profile ON sc_worker(profile_uuid);
+CREATE INDEX IF NOT EXISTS idx_sc_worker_profile ON sc_worker(profile_uuid);

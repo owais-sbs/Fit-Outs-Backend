@@ -183,4 +183,115 @@ public class ApprovalCatalogController extends BaseController {
             return failureResponse("Failed to delete scope tag", e.getMessage());
         }
     }
+
+    @GetMapping("/property-types")
+    public ResponseEntity<?> listPropertyTypes() {
+        try {
+            return successResponse(catalogService.listPropertyTypes());
+        } catch (Exception e) {
+            return failureResponse("Failed to fetch property types", e.getMessage());
+        }
+    }
+
+    @PostMapping("/property-types")
+    public ResponseEntity<?> createPropertyType(@RequestBody CatalogItemRequest request) {
+        try {
+            return successResponse("Property type created", catalogService.createPropertyType(request));
+        } catch (Exception e) {
+            return failureResponse("Failed to create property type", e.getMessage());
+        }
+    }
+
+    @PutMapping("/property-types/{id}")
+    public ResponseEntity<?> updatePropertyType(@PathVariable UUID id, @RequestBody CatalogItemRequest request) {
+        try {
+            return successResponse("Property type updated", catalogService.updatePropertyType(id, request));
+        } catch (Exception e) {
+            return failureResponse("Failed to update property type", e.getMessage());
+        }
+    }
+
+    @DeleteMapping("/property-types/{id}")
+    public ResponseEntity<?> deletePropertyType(@PathVariable UUID id) {
+        try {
+            catalogService.deletePropertyType(id);
+            return successResponse("Property type deleted", null);
+        } catch (Exception e) {
+            return failureResponse("Failed to delete property type", e.getMessage());
+        }
+    }
+
+    @GetMapping("/project-natures")
+    public ResponseEntity<?> listProjectNatures() {
+        try {
+            return successResponse(catalogService.listProjectNatures());
+        } catch (Exception e) {
+            return failureResponse("Failed to fetch project natures", e.getMessage());
+        }
+    }
+
+    @PostMapping("/project-natures")
+    public ResponseEntity<?> createProjectNature(@RequestBody CatalogItemRequest request) {
+        try {
+            return successResponse("Project nature created", catalogService.createProjectNature(request));
+        } catch (Exception e) {
+            return failureResponse("Failed to create project nature", e.getMessage());
+        }
+    }
+
+    @PutMapping("/project-natures/{id}")
+    public ResponseEntity<?> updateProjectNature(@PathVariable UUID id, @RequestBody CatalogItemRequest request) {
+        try {
+            return successResponse("Project nature updated", catalogService.updateProjectNature(id, request));
+        } catch (Exception e) {
+            return failureResponse("Failed to update project nature", e.getMessage());
+        }
+    }
+
+    @DeleteMapping("/project-natures/{id}")
+    public ResponseEntity<?> deleteProjectNature(@PathVariable UUID id) {
+        try {
+            catalogService.deleteProjectNature(id);
+            return successResponse("Project nature deleted", null);
+        } catch (Exception e) {
+            return failureResponse("Failed to delete project nature", e.getMessage());
+        }
+    }
+
+    @GetMapping("/company-registrations")
+    public ResponseEntity<?> listCompanyRegistrations() {
+        try {
+            return successResponse(catalogService.listCompanyRegistrations());
+        } catch (Exception e) {
+            return failureResponse("Failed to fetch company registrations", e.getMessage());
+        }
+    }
+
+    @PostMapping("/company-registrations")
+    public ResponseEntity<?> createCompanyRegistration(@RequestBody CompanyRegistrationRequest request) {
+        try {
+            return successResponse("Company registration created", catalogService.createCompanyRegistration(request));
+        } catch (Exception e) {
+            return failureResponse("Failed to create company registration", e.getMessage());
+        }
+    }
+
+    @PutMapping("/company-registrations/{id}")
+    public ResponseEntity<?> updateCompanyRegistration(@PathVariable UUID id, @RequestBody CompanyRegistrationRequest request) {
+        try {
+            return successResponse("Company registration updated", catalogService.updateCompanyRegistration(id, request));
+        } catch (Exception e) {
+            return failureResponse("Failed to update company registration", e.getMessage());
+        }
+    }
+
+    @DeleteMapping("/company-registrations/{id}")
+    public ResponseEntity<?> deleteCompanyRegistration(@PathVariable UUID id) {
+        try {
+            catalogService.deleteCompanyRegistration(id);
+            return successResponse("Company registration deleted", null);
+        } catch (Exception e) {
+            return failureResponse("Failed to delete company registration", e.getMessage());
+        }
+    }
 }

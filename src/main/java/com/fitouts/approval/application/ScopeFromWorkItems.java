@@ -164,7 +164,7 @@ public class ScopeFromWorkItems {
         return new ProjectScopeToggles();
     }
 
-    /** Maps catalog tag codes onto the toggle fields {@link PermitTriggerRules} already understands. */
+    /** Maps catalog tag codes onto toggle fields stored on the project for display. */
     public static ProjectScopeToggles fromCodes(Collection<String> codes) {
         ProjectScopeToggles toggles = emptyToggles();
         if (codes == null || codes.isEmpty()) {

@@ -407,8 +407,7 @@ public class BillingService {
             throw new BadRequestException("Payment milestone has no due date.");
         }
 
-        LocalDate reminderDate = milestone.getDueDate().minusDays(3);
-        if (!LocalDate.now().equals(reminderDate)) {
+        if (!isReminderWindowOpen(milestone.getDueDate())) {
             throw new BadRequestException("Payment request is not yet eligible for a reminder email.");
         }
 
@@ -460,8 +459,7 @@ public class BillingService {
             return false;
         }
 
-        LocalDate reminderDate = milestone.getDueDate().minusDays(3);
-        if (!LocalDate.now().equals(reminderDate)) {
+        if (!isReminderWindowOpen(milestone.getDueDate())) {
             return false;
         }
 
@@ -710,6 +708,18 @@ public class BillingService {
             throw new ForbiddenException("Project not in your company");
         }
         return project;
+    }
+
+    /**
+     * Reminder emails may go out from T-3 through and after the due date.
+     * Exact-day matching dropped overdue CLIENT_ACCEPTED invoices forever.
+     */
+    private static boolean isReminderWindowOpen(LocalDate dueDate) {
+        if (dueDate == null) {
+            return false;
+        }
+        LocalDate reminderDate = dueDate.minusDays(3);
+        return !LocalDate.now().isBefore(reminderDate);
     }
 
     private UUID requireCompany() {

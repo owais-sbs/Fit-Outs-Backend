@@ -1,6 +1,7 @@
 package com.fitouts.approval.api;
 
 import java.util.List;
+import java.util.UUID;
 
 import lombok.Builder;
 import lombok.Getter;
@@ -14,6 +15,8 @@ public class ApprovalResolveResponse {
     private String communityName;
     private String buildingName;
     private String plotZone;
+    private UUID approvalPropertyTypeId;
+    private UUID approvalProjectNatureId;
     /** True when the community was found in the jurisdiction table. */
     private boolean jurisdictionMatched;
     /** True when the matched jurisdiction row is still a derived, unconfirmed guess. */

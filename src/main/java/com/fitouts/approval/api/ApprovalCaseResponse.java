@@ -20,6 +20,8 @@ public class ApprovalCaseResponse {
     private String permitTypeName;
     private String authorityCode;
     private String authorityName;
+    private List<String> candidateAuthorityCodes;
+    private boolean authorityManuallySet;
     private String status;
     private Long assignedToAccountId;
     private String assignedToName;

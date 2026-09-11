@@ -4,7 +4,7 @@ ALTER TABLE activity_progress_update
     ADD COLUMN IF NOT EXISTS delay_reason VARCHAR(64);
 
 -- Variation / change requests
-CREATE TABLE sc_variation_request (
+CREATE TABLE IF NOT EXISTS sc_variation_request (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     package_uuid UUID NOT NULL REFERENCES subcontractor_package(uuid) ON DELETE CASCADE,
     project_id BIGINT NOT NULL,
@@ -26,12 +26,12 @@ CREATE TABLE sc_variation_request (
     CONSTRAINT chk_sc_variation_status CHECK (status IN ('DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED'))
 );
 
-CREATE INDEX idx_sc_variation_package ON sc_variation_request(package_uuid);
-CREATE INDEX idx_sc_variation_project ON sc_variation_request(project_id);
-CREATE INDEX idx_sc_variation_company_status ON sc_variation_request(company_id, status);
+CREATE INDEX IF NOT EXISTS idx_sc_variation_package ON sc_variation_request(package_uuid);
+CREATE INDEX IF NOT EXISTS idx_sc_variation_project ON sc_variation_request(project_id);
+CREATE INDEX IF NOT EXISTS idx_sc_variation_company_status ON sc_variation_request(company_id, status);
 
 -- Delay / issue / material delivery reports
-CREATE TABLE sc_site_report (
+CREATE TABLE IF NOT EXISTS sc_site_report (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     package_uuid UUID REFERENCES subcontractor_package(uuid) ON DELETE SET NULL,
     project_id BIGINT NOT NULL,
@@ -59,12 +59,12 @@ CREATE TABLE sc_site_report (
     CONSTRAINT chk_sc_site_report_status CHECK (status IN ('OPEN', 'ACKNOWLEDGED', 'RESOLVED', 'CLOSED'))
 );
 
-CREATE INDEX idx_sc_site_report_project ON sc_site_report(project_id);
-CREATE INDEX idx_sc_site_report_company ON sc_site_report(company_id);
-CREATE INDEX idx_sc_site_report_type ON sc_site_report(company_id, report_type);
+CREATE INDEX IF NOT EXISTS idx_sc_site_report_project ON sc_site_report(project_id);
+CREATE INDEX IF NOT EXISTS idx_sc_site_report_company ON sc_site_report(company_id);
+CREATE INDEX IF NOT EXISTS idx_sc_site_report_type ON sc_site_report(company_id, report_type);
 
 -- Subcontractor invoices (AP loop)
-CREATE TABLE sc_invoice (
+CREATE TABLE IF NOT EXISTS sc_invoice (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     package_uuid UUID NOT NULL REFERENCES subcontractor_package(uuid) ON DELETE CASCADE,
     project_id BIGINT NOT NULL,
@@ -89,6 +89,6 @@ CREATE TABLE sc_invoice (
     CONSTRAINT chk_sc_invoice_status CHECK (status IN ('DRAFT', 'SUBMITTED', 'APPROVED', 'PAID', 'REJECTED'))
 );
 
-CREATE INDEX idx_sc_invoice_package ON sc_invoice(package_uuid);
-CREATE INDEX idx_sc_invoice_project ON sc_invoice(project_id);
-CREATE INDEX idx_sc_invoice_company_status ON sc_invoice(company_id, status);
+CREATE INDEX IF NOT EXISTS idx_sc_invoice_package ON sc_invoice(package_uuid);
+CREATE INDEX IF NOT EXISTS idx_sc_invoice_project ON sc_invoice(project_id);
+CREATE INDEX IF NOT EXISTS idx_sc_invoice_company_status ON sc_invoice(company_id, status);

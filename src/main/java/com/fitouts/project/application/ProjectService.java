@@ -106,6 +106,12 @@ public class ProjectService {
         if (request.getJurisdictionPackId() != null) {
             project.setJurisdictionPackId(request.getJurisdictionPackId());
         }
+        if (request.getApprovalPropertyTypeId() != null) {
+            project.setApprovalPropertyTypeId(request.getApprovalPropertyTypeId());
+        }
+        if (request.getApprovalProjectNatureId() != null) {
+            project.setApprovalProjectNatureId(request.getApprovalProjectNatureId());
+        }
         if (request.isActive() != project.isActive()) {
             project.setActive(request.isActive());
         }
