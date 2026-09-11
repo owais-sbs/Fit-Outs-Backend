@@ -71,6 +71,29 @@ class CpmEngineTest {
     }
 
     @Test
+    @DisplayName("Summer midday (5.5/8 day) makes the same duration finish later than outside summer")
+    void summerMiddayExtendsFinish() {
+        WorkingCalendar summer = new WorkingCalendar(
+                uae.workingDays(), Set.of(), true, "06-15", "09-15");
+
+        LocalDate winterStart = LocalDate.of(2026, 1, 3); // Saturday, outside summer
+        LocalDate summerStart = LocalDate.of(2026, 7, 4); // Saturday, inside summer
+
+        LocalDate winterFinish = summer.finishOf(winterStart, 8);
+        LocalDate summerFinish = summer.finishOf(summerStart, 8);
+
+        assertThat(summer.inSummerWindow(summerStart)).isTrue();
+        assertThat(summer.inSummerWindow(winterStart)).isFalse();
+        assertThat(summer.dayCapacity(summerStart)).isEqualTo(WorkingCalendar.SUMMER_DAY_FRACTION);
+        assertThat(summer.dayCapacity(winterStart)).isEqualTo(1.0);
+
+        int winterSpan = summer.workingDaysBetweenInclusive(winterStart, winterFinish);
+        int summerSpan = summer.workingDaysBetweenInclusive(summerStart, summerFinish);
+        assertThat(summerSpan).isGreaterThan(winterSpan);
+        assertThat(winterSpan).isEqualTo(8);
+    }
+
+    @Test
     @DisplayName("A five-day working week produces a longer programme than the UAE six-day week")
     void fiveDayWeekTakesLonger() {
         WorkingCalendar monToFri = new WorkingCalendar(

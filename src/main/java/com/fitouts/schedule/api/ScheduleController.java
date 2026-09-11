@@ -34,6 +34,15 @@ public class ScheduleController extends BaseController {
         }
     }
 
+    @GetMapping("/api/projects/{projectId}/schedule/published")
+    public Object getPublishedSchedule(@PathVariable Long projectId) {
+        try {
+            return successResponse(scheduleService.getPublishedSchedule(projectId));
+        } catch (Exception e) {
+            return failureResponse("Failed to load published schedule", e.getMessage());
+        }
+    }
+
     @PostMapping("/api/projects/{projectId}/schedule/activities")
     public Object createActivity(@PathVariable Long projectId, @RequestBody ScheduleActivityRequest request) {
         try {
@@ -126,6 +135,15 @@ public class ScheduleController extends BaseController {
             return successResponse(scheduleService.postProgress(activityUuid, request));
         } catch (Exception e) {
             return failureResponse("Failed to post progress", e.getMessage());
+        }
+    }
+
+    @GetMapping("/api/schedule/activities/{activityUuid}/material-summary")
+    public Object materialSummary(@PathVariable UUID activityUuid) {
+        try {
+            return successResponse(scheduleService.materialSummary(activityUuid));
+        } catch (Exception e) {
+            return failureResponse("Failed to load material summary", e.getMessage());
         }
     }
 

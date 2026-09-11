@@ -118,6 +118,18 @@ public class DurationScaler {
                 actual = toDouble(params.getFloorCount());
                 base = toDouble(params.getBaseFloorCount());
             }
+            case "BEDROOMS", "BEDROOM_COUNT" -> {
+                actual = toDouble(params.getBedrooms());
+                base = toDouble(params.getBaseBedrooms());
+            }
+            case "BATHROOMS", "BATHROOM_COUNT" -> {
+                actual = toDouble(params.getBathrooms());
+                base = toDouble(params.getBaseBathrooms());
+            }
+            case "KITCHENS", "KITCHEN_COUNT" -> {
+                actual = toDouble(params.getKitchens());
+                base = toDouble(params.getBaseKitchens());
+            }
             default -> {
                 actual = params.getAreaSqft();
                 base = params.getBaseAreaSqft();

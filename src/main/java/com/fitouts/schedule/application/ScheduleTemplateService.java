@@ -5,6 +5,7 @@ import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -16,14 +17,18 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
+import com.fitouts.approval.domain.ApprovalCase;
+import com.fitouts.approval.domain.ApprovalCaseRepository;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
 import com.fitouts.schedule.api.OrderByResponse;
+import com.fitouts.schedule.api.SaveAsTemplateRequest;
 import com.fitouts.schedule.api.ScheduleApplyResponse;
 import com.fitouts.schedule.api.SchedulePreviewRequest;
 import com.fitouts.schedule.api.SchedulePreviewResponse;
@@ -83,6 +88,7 @@ public class ScheduleTemplateService {
     private final WorkCalendarService workCalendarService;
     private final ScheduleApplyCascade cascade;
     private final ProjectService projectService;
+    private final ApprovalCaseRepository approvalCaseRepository;
     private final ObjectMapper objectMapper;
 
     // -------------------------------------------------------------- library
@@ -195,6 +201,120 @@ public class ScheduleTemplateService {
                 .build();
     }
 
+    /**
+     * Copies the live project programme into a new tenant template (published activities preferred).
+     */
+    @Transactional
+    public ScheduleTemplateResponse saveProjectAsTemplate(Long projectId, SaveAsTemplateRequest request) {
+        AuthPrincipal principal = requireStaff();
+        Project project = requireProject(projectId);
+        UUID companyId = CompanyContext.get();
+
+        String name = request != null && StringUtils.hasText(request.getName())
+                ? request.getName().trim()
+                : project.getName() + " schedule";
+        String code = request != null && StringUtils.hasText(request.getCode())
+                ? sanitizeTemplateCode(request.getCode())
+                : sanitizeTemplateCode(name);
+        if (code.length() > 32) code = code.substring(0, 32);
+
+        for (ScheduleTemplate existing : templateRepository.findVisibleByCode(code, companyId)) {
+            if (companyId.equals(existing.getCompanyId())) {
+                throw new BadRequestException("A tenant template with code '" + code + "' already exists");
+            }
+        }
+
+        List<ScheduleActivity> all = activityRepository
+                .findByProjectIdAndCompanyIdOrderBySortOrderAscStartDateAsc(projectId, companyId);
+        if (all.isEmpty()) {
+            throw new BadRequestException("This project has no schedule activities to copy");
+        }
+        List<ScheduleActivity> published = all.stream()
+                .filter(a -> a.getPublishStatus() == SchedulePublishStatus.PUBLISHED)
+                .toList();
+        List<ScheduleActivity> source = published.isEmpty() ? all : published;
+        Set<UUID> sourceIds = new LinkedHashSet<>();
+        for (ScheduleActivity a : source) sourceIds.add(a.getUuid());
+
+        ScheduleTemplate template = new ScheduleTemplate();
+        template.setCompanyId(companyId);
+        template.setCode(code);
+        template.setName(name);
+        template.setProjectType(project.getProjectType());
+        template.setDescription("Saved from project " + project.getId() + " (" + project.getName() + ")");
+        template.setSystemTemplate(false);
+        template.setWorkWeek("SAT-THU");
+        template.setCreatedBy(principal.getAccountId());
+        template.setDataQualityNotes("Copied from live programme; durations are FIXED from stored working days.");
+        ScheduleTemplate saved = templateRepository.save(template);
+
+        Map<UUID, String> codeByUuid = new HashMap<>();
+        Set<String> usedCodes = new HashSet<>();
+        int sort = 0;
+        for (ScheduleActivity a : source) {
+            String activityCode = a.getActivityCode();
+            if (!StringUtils.hasText(activityCode)) {
+                activityCode = "A" + (sort + 1);
+            }
+            activityCode = activityCode.trim();
+            if (activityCode.length() > 32) activityCode = activityCode.substring(0, 32);
+            String unique = activityCode;
+            int n = 2;
+            while (!usedCodes.add(unique)) {
+                String suffix = "_" + n++;
+                unique = activityCode.substring(0, Math.min(activityCode.length(), 32 - suffix.length())) + suffix;
+            }
+            codeByUuid.put(a.getUuid(), unique);
+
+            TemplateActivity ta = new TemplateActivity();
+            ta.setTemplateUuid(saved.getUuid());
+            ta.setActivityCode(unique);
+            ta.setWbsPhase(a.getWbsPhase());
+            ta.setName(a.getName());
+            int duration = a.getDurationWorkingDays() != null && a.getDurationWorkingDays() > 0
+                    ? a.getDurationWorkingDays()
+                    : 1;
+            ta.setBaseDurationDays(duration);
+            ta.setScalingMethod("FIXED");
+            ta.setTradePackageCode(a.getTradePackageCode());
+            ta.setMilestone(a.isMilestone());
+            ta.setCriticalSeed(a.isCritical());
+            ta.setLockedDuration(a.isLockedDuration());
+            ta.setConstraintNote(a.getConstraintNote());
+            ta.setSortOrder(a.getSortOrder() > 0 ? a.getSortOrder() : sort);
+            templateActivityRepository.save(ta);
+            sort++;
+        }
+
+        List<ScheduleDependency> deps = dependencyRepository.findByProjectIdAndCompanyId(projectId, companyId);
+        for (ScheduleDependency d : deps) {
+            if (!sourceIds.contains(d.getPredecessorUuid()) || !sourceIds.contains(d.getSuccessorUuid())) {
+                continue;
+            }
+            String pred = codeByUuid.get(d.getPredecessorUuid());
+            String succ = codeByUuid.get(d.getSuccessorUuid());
+            if (pred == null || succ == null) continue;
+            TemplateDependency td = new TemplateDependency();
+            td.setTemplateUuid(saved.getUuid());
+            td.setPredecessorCode(pred);
+            td.setSuccessorCode(succ);
+            td.setType(StringUtils.hasText(d.getDependencyType()) ? d.getDependencyType() : "FS");
+            td.setLagDays(d.getLagWorkingDays());
+            td.setLocked(d.isLocked());
+            td.setLockReason(d.getLockReason());
+            templateDependencyRepository.save(td);
+        }
+
+        return toTemplateResponse(saved);
+    }
+
+    private static String sanitizeTemplateCode(String raw) {
+        String cleaned = raw.trim().toUpperCase().replaceAll("[^A-Z0-9_-]+", "_");
+        cleaned = cleaned.replaceAll("_+", "_").replaceAll("^_|_$", "");
+        if (cleaned.isBlank()) cleaned = "FROM_PROJECT";
+        return cleaned;
+    }
+
     // -------------------------------------------------------------- preview
 
     @Transactional(readOnly = true)
@@ -206,7 +326,7 @@ public class ScheduleTemplateService {
         ScheduleParameters params = toParameters(template, request, project);
 
         TemplatePlan plan = planner.plan(template, params, calendar);
-        return toPreview(template, plan, calendar, request);
+        return toPreview(template, plan, calendar, request, project);
     }
 
     // ---------------------------------------------------------------- apply
@@ -225,7 +345,7 @@ public class ScheduleTemplateService {
         ScheduleParameters params = toParameters(template, request, project);
 
         TemplatePlan plan = planner.plan(template, params, calendar);
-        SchedulePreviewResponse preview = toPreview(template, plan, calendar, request);
+        SchedulePreviewResponse preview = toPreview(template, plan, calendar, request, project);
 
         if (!preview.getBlockers().isEmpty()) {
             throw new BadRequestException(String.join(" ", preview.getBlockers()));
@@ -348,10 +468,12 @@ public class ScheduleTemplateService {
                 .orderByRowsWritten(summary.orderByRows)
                 .note(String.format(
                         "%s applied: %d activities finishing %s (%d working days). "
-                                + "%d packages, %d billing milestones, %d hold points and %d order-by dates written.",
+                                + "%d packages, %d billing drafts, %d hold points and %d order-by dates written. "
+                                + "Finance reviews schedule-seeded billing drafts (or creates From BOQ / Manual).",
                         template.getName(), written.size(), plan.finishDate(),
                         plan.getResult().getTotalWorkingDays(), summary.packages.size(),
-                        summary.billingMilestones.size(), summary.holdPoints.size(), summary.orderByRows))
+                        summary.billingMilestones.size(),
+                        summary.holdPoints.size(), summary.orderByRows))
                 .build();
     }
 
@@ -385,7 +507,8 @@ public class ScheduleTemplateService {
     // -------------------------------------------------------------- mapping
 
     private SchedulePreviewResponse toPreview(ScheduleTemplate template, TemplatePlan plan,
-                                              WorkingCalendar calendar, SchedulePreviewRequest request) {
+                                              WorkingCalendar calendar, SchedulePreviewRequest request,
+                                              Project project) {
         LocalDate projectStart = plan.getResult().getProjectStart();
 
         List<SchedulePreviewResponse.PreviewActivity> activities = new ArrayList<>();
@@ -475,14 +598,103 @@ public class ScheduleTemplateService {
                                 .siteInfoNeeded(l.getSiteInfoNeeded())
                                 .build())
                         .toList())
-                .approvalTargets(List.of())
-                .packages(List.of())
+                .approvalTargets(previewApprovalTargets(project, plan, calendar))
+                .packages(previewPackages(plan))
                 .warnings(plan.getWarnings())
                 .blockers(plan.getBlockers())
                 .requiresFastTrackAcknowledgement(!stillUnacknowledged.isEmpty())
                 .fastTrackConditions(fastTrackConditions)
                 .canPublish(plan.getBlockers().isEmpty() && stillUnacknowledged.isEmpty())
                 .build();
+    }
+
+    /** Read-only: same date math as Apply cascade, without writing approval cases. */
+    private List<SchedulePreviewResponse.ApprovalTargetPreview> previewApprovalTargets(
+            Project project, TemplatePlan plan, WorkingCalendar calendar) {
+        if (project == null || project.getId() == null) return List.of();
+        UUID companyId = CompanyContext.get();
+        if (companyId == null) return List.of();
+
+        List<ApprovalCase> cases = approvalCaseRepository
+                .findByProjectIdAndCompanyIdOrderByCreatedAtAsc(project.getId(), companyId);
+        if (cases.isEmpty()) return List.of();
+
+        LocalDate today = LocalDate.now();
+        List<SchedulePreviewResponse.ApprovalTargetPreview> previews = new ArrayList<>();
+
+        for (ApprovalCase c : cases) {
+            List<String> blockedCodes = splitActivityCodes(c.getBlocksActivityCodes());
+            CpmActivity earliest = null;
+            for (String code : blockedCodes) {
+                CpmActivity a = plan.activity(code);
+                if (a == null || a.getEarlyStart() == null) continue;
+                if (earliest == null || a.getEarlyStart().isBefore(earliest.getEarlyStart())) earliest = a;
+            }
+            if (earliest == null) continue;
+
+            int sla = c.getSlaDays() == null ? 0 : c.getSlaDays();
+            LocalDate requiredApproval = calendar.previousWorkingDay(earliest.getEarlyStart().minusDays(1));
+            LocalDate targetSubmission = calendar.subtractWorkingDays(requiredApproval, Math.max(sla, 0));
+
+            boolean atRisk = targetSubmission.isBefore(today)
+                    && c.getStatus() != null
+                    && !c.getStatus().isTerminal();
+
+            previews.add(SchedulePreviewResponse.ApprovalTargetPreview.builder()
+                    .permitTypeCode(c.getPermitTypeCode())
+                    .permitTypeName(c.getPermitTypeName())
+                    .authorityName(c.getAuthorityName())
+                    .slaWorkingDays(c.getSlaDays())
+                    .targetSubmissionDate(targetSubmission)
+                    .requiredApprovalDate(requiredApproval)
+                    .blocksActivityCode(earliest.getCode())
+                    .atRisk(atRisk)
+                    .build());
+        }
+        return previews;
+    }
+
+    /** Package shells the Apply cascade will upsert, derived from planned trades. */
+    private List<SchedulePreviewResponse.PackagePreview> previewPackages(TemplatePlan plan) {
+        Map<String, List<CpmActivity>> byTrade = new LinkedHashMap<>();
+        for (CpmActivity a : plan.getActivities()) {
+            if (a.getTradePackageCode() == null || a.getTradePackageCode().isBlank()) continue;
+            byTrade.computeIfAbsent(a.getTradePackageCode(), k -> new ArrayList<>()).add(a);
+        }
+        List<SchedulePreviewResponse.PackagePreview> packages = new ArrayList<>();
+        for (Map.Entry<String, List<CpmActivity>> entry : byTrade.entrySet()) {
+            List<CpmActivity> acts = entry.getValue();
+            LocalDate start = acts.stream().map(CpmActivity::getEarlyStart)
+                    .filter(d -> d != null).min(LocalDate::compareTo).orElse(null);
+            LocalDate finish = acts.stream().map(CpmActivity::getEarlyFinish)
+                    .filter(d -> d != null).max(LocalDate::compareTo).orElse(null);
+            String name = entry.getKey();
+            for (CpmActivity a : acts) {
+                TemplateActivity ta = plan.getTemplateActivities().get(a.getCode());
+                if (ta != null && ta.getTradeLabel() != null && !ta.getTradeLabel().isBlank()) {
+                    name = ta.getTradeLabel();
+                    break;
+                }
+            }
+            packages.add(SchedulePreviewResponse.PackagePreview.builder()
+                    .tradePackageCode(entry.getKey())
+                    .name(name)
+                    .plannedStart(start)
+                    .plannedFinish(finish)
+                    .activityCount(acts.size())
+                    .build());
+        }
+        return packages;
+    }
+
+    private static List<String> splitActivityCodes(String raw) {
+        if (raw == null || raw.isBlank()) return List.of();
+        List<String> codes = new ArrayList<>();
+        for (String part : raw.split("[,;]")) {
+            String trimmed = part.trim();
+            if (!trimmed.isEmpty()) codes.add(trimmed);
+        }
+        return codes;
     }
 
     private ScheduleTemplateResponse toTemplateResponse(ScheduleTemplate t) {
@@ -526,6 +738,9 @@ public class ScheduleTemplateService {
                         .areaSqft(asDouble(base.get("areaSqft")))
                         .roomCount(asInt(base.get("roomCount")))
                         .floorCount(asInt(base.get("floorCount")))
+                        .bedrooms(asInt(base.get("bedrooms")))
+                        .bathrooms(asInt(base.get("bathrooms")))
+                        .kitchens(asInt(base.get("kitchens")))
                         .finishLevel(base.get("finishLevel") == null ? null : String.valueOf(base.get("finishLevel")))
                         .crewCount(asInt(base.get("crewCount")))
                         .build())
@@ -541,6 +756,9 @@ public class ScheduleTemplateService {
         if (request.getAreaSqft() != null) params.setAreaSqft(request.getAreaSqft());
         if (request.getRoomCount() != null) params.setRoomCount(request.getRoomCount());
         if (request.getFloorCount() != null) params.setFloorCount(request.getFloorCount());
+        if (request.getBedrooms() != null) params.setBedrooms(request.getBedrooms());
+        if (request.getBathrooms() != null) params.setBathrooms(request.getBathrooms());
+        if (request.getKitchens() != null) params.setKitchens(request.getKitchens());
         if (request.getFinishLevel() != null) params.setFinishLevel(request.getFinishLevel());
         if (request.getCrewCount() != null) params.setCrewCount(request.getCrewCount());
         params.setOccupiedBuilding(request.getOccupiedBuilding());
@@ -560,12 +778,18 @@ public class ScheduleTemplateService {
         params.setBaseAreaSqft(asDouble(base.get("areaSqft")));
         params.setBaseRoomCount(asInt(base.get("roomCount")));
         params.setBaseFloorCount(asInt(base.get("floorCount")));
+        params.setBaseBedrooms(asInt(base.get("bedrooms")));
+        params.setBaseBathrooms(asInt(base.get("bathrooms")));
+        params.setBaseKitchens(asInt(base.get("kitchens")));
         params.setBaseFinishLevel(base.get("finishLevel") == null ? null : String.valueOf(base.get("finishLevel")));
         params.setBaseCrewCount(asInt(base.get("crewCount")));
 
         params.setAreaSqft(params.getBaseAreaSqft());
         params.setRoomCount(params.getBaseRoomCount());
         params.setFloorCount(params.getBaseFloorCount());
+        params.setBedrooms(params.getBaseBedrooms());
+        params.setBathrooms(params.getBaseBathrooms());
+        params.setKitchens(params.getBaseKitchens());
         params.setFinishLevel(params.getBaseFinishLevel());
         params.setCrewCount(params.getBaseCrewCount());
         return params;

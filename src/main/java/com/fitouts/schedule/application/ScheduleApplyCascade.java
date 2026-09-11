@@ -19,6 +19,8 @@ import com.fitouts.approval.domain.ApprovalCaseRepository;
 import com.fitouts.billing.domain.BillingMilestone;
 import com.fitouts.billing.domain.BillingMilestoneRepository;
 import com.fitouts.billing.domain.BillingStatus;
+import com.fitouts.boq.application.BoqProjectRules;
+import com.fitouts.boq.domain.BoqDocument;
 import com.fitouts.holdpoint.domain.ActivityQualityTemplate;
 import com.fitouts.holdpoint.domain.ActivityQualityTemplateRepository;
 import com.fitouts.holdpoint.domain.QualityHoldPoint;
@@ -53,6 +55,7 @@ public class ScheduleApplyCascade {
     private final ActivityQualityTemplateRepository qualityTemplateRepository;
     private final ApprovalCaseRepository approvalCaseRepository;
     private final ScheduleOrderByRepository orderByRepository;
+    private final BoqProjectRules boqProjectRules;
 
     /**
      * @param persistedActivities the live rows just written, keyed by activity code, so the
@@ -139,59 +142,75 @@ public class ScheduleApplyCascade {
     // -------------------------------------------------------------- billing
 
     /**
-     * Creates the template's payment gates and links each to the activity that triggers it.
-     * Amounts come from the project budget; a project without one gets zero-value placeholders
-     * rather than nothing, because the gate structure is still useful.
+     * Seeds DRAFT Module 20 payment gates from the applied template presets. Non-DRAFT rows
+     * (already in the approval/payment flow) are left alone.
      */
     private List<String> upsertBillingMilestones(Project project, UUID companyId, TemplatePlan plan,
                                                  Map<String, ScheduleActivity> persisted) {
-        List<BillingMilestonePresets.Milestone> presets =
-                BillingMilestonePresets.forTemplate(plan.getTemplate().getCode());
+        String templateCode = plan.getTemplate() != null ? plan.getTemplate().getCode() : null;
+        List<BillingMilestonePresets.Milestone> presets = BillingMilestonePresets.forTemplate(templateCode);
 
-        Map<String, BillingMilestone> existingByName = new HashMap<>();
-        for (BillingMilestone m : billingMilestoneRepository
-                .findByProjectIdAndCompanyIdOrderByDueDateAscCreatedAtAsc(project.getId(), companyId)) {
-            existingByName.putIfAbsent(m.getName().toLowerCase(Locale.ROOT), m);
+        BigDecimal contractValue = project.getBudget() != null ? project.getBudget() : BigDecimal.ZERO;
+        if (contractValue.compareTo(BigDecimal.ZERO) <= 0) {
+            contractValue = boqProjectRules.findApproved(project.getId())
+                    .map(BoqDocument::getGrandTotal)
+                    .filter(t -> t != null && t.compareTo(BigDecimal.ZERO) > 0)
+                    .orElse(BigDecimal.ZERO);
         }
 
-        BigDecimal contractValue = project.getBudget() == null ? BigDecimal.ZERO : project.getBudget();
-        List<String> created = new ArrayList<>();
+        List<BillingMilestone> existing = billingMilestoneRepository
+                .findByProjectIdAndCompanyIdOrderByDueDateAscCreatedAtAsc(project.getId(), companyId);
+        Map<String, BillingMilestone> byName = new HashMap<>();
+        for (BillingMilestone m : existing) {
+            if (m.getName() != null) {
+                byName.putIfAbsent(m.getName().trim().toLowerCase(Locale.ROOT), m);
+            }
+        }
+
+        LocalDate finish = plan.finishDate();
+        List<String> written = new ArrayList<>();
 
         for (BillingMilestonePresets.Milestone preset : presets) {
-            BillingMilestone milestone = existingByName.get(preset.name().toLowerCase(Locale.ROOT));
-            boolean isNew = milestone == null;
-            if (isNew) {
+            CpmActivity trigger = BillingMilestonePresets.match(plan.getActivities(), preset.activityKeywords());
+            ScheduleActivity live = trigger != null ? persisted.get(trigger.getCode()) : null;
+
+            LocalDate due = null;
+            UUID linkedUuid = null;
+            if (live != null) {
+                due = live.getEndDate() != null ? live.getEndDate() : live.getEarlyFinish();
+                linkedUuid = live.getUuid();
+            } else if (trigger != null) {
+                due = trigger.getEarlyFinish();
+            } else if (preset.retention() && finish != null) {
+                due = finish.plusMonths(12);
+            }
+
+            BigDecimal amount = contractValue
+                    .multiply(BigDecimal.valueOf(preset.paymentPercent()))
+                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+
+            BillingMilestone milestone = byName.get(preset.name().trim().toLowerCase(Locale.ROOT));
+            if (milestone != null && milestone.getStatus() != BillingStatus.DRAFT) {
+                continue;
+            }
+            if (milestone == null) {
                 milestone = new BillingMilestone();
                 milestone.setProjectId(project.getId());
                 milestone.setCompanyId(companyId);
                 milestone.setName(preset.name());
                 milestone.setStatus(BillingStatus.DRAFT);
-            } else if (milestone.getStatus() != BillingStatus.DRAFT) {
-                // Already claimed or invoiced. Reschedule nothing; the commercial position stands.
-                continue;
             }
-
-            milestone.setAmount(contractValue.multiply(BigDecimal.valueOf(preset.paymentPercent()))
-                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
+            milestone.setAmount(amount);
+            milestone.setDueDate(due);
+            milestone.setLinkedActivityUuid(linkedUuid);
             if (preset.percentCompleteRequired() != null) {
                 milestone.setPercentCompleteRequired(BigDecimal.valueOf(preset.percentCompleteRequired()));
             }
-
-            CpmActivity trigger = BillingMilestonePresets.match(plan.getActivities(), preset.activityKeywords());
-            if (trigger != null) {
-                ScheduleActivity live = persisted.get(trigger.getCode());
-                if (live != null) milestone.setLinkedActivityUuid(live.getUuid());
-                milestone.setDueDate(trigger.getEarlyFinish());
-            } else if (preset.retention()) {
-                // Retention falls due after the DLP, not on a programme gate.
-                LocalDate finish = plan.finishDate();
-                milestone.setDueDate(finish == null ? null : finish.plusMonths(12));
-            }
-
+            milestone.setSetupSource("SCHEDULE_APPLY");
             billingMilestoneRepository.save(milestone);
-            if (isNew) created.add(preset.name());
+            written.add(preset.name());
         }
-        return created;
+        return written;
     }
 
     // ----------------------------------------------------------- hold points

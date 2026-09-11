@@ -609,6 +609,12 @@ public class ScheduleSeedImportService implements ScheduleTemplateSeedImporter {
         if (rooms != null) base.put("roomCount", rooms);
         Integer floors = intOf(node, "base_floor_count", "floor_count", "floors");
         if (floors != null) base.put("floorCount", floors);
+        Integer bedrooms = intOf(node, "base_bedrooms", "bedrooms", "bedroom_count");
+        if (bedrooms != null) base.put("bedrooms", bedrooms);
+        Integer bathrooms = intOf(node, "base_bathrooms", "bathrooms", "bathroom_count");
+        if (bathrooms != null) base.put("bathrooms", bathrooms);
+        Integer kitchens = intOf(node, "base_kitchens", "kitchens", "kitchen_count");
+        if (kitchens != null) base.put("kitchens", kitchens);
         String finish = text(node, "base_finish_level", "finish_level", "specification");
         if (finish != null) base.put("finishLevel", finish);
         Integer crews = intOf(node, "base_crew_count", "crew_count", "crews");

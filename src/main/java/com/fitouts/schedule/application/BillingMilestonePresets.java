@@ -3,11 +3,12 @@ package com.fitouts.schedule.application;
 import java.util.List;
 import java.util.Locale;
 
+import com.fitouts.schedule.domain.ScheduleActivity;
 import com.fitouts.schedule.engine.CpmActivity;
 
 /**
- * Client payment gates by template, mirroring the frontend presets so the apply cascade can
- * create the same milestones the PM would otherwise pick by hand.
+ * Client payment gates by template. Seeded as DRAFT milestones when a programme is applied
+ * (Module 43 → Module 20 cascade).
  *
  * <p>Percentages come from the spec's Part B5 (90-day) and Part B6 (60-day) schedules.
  * Retention lines carry no activity link: they fall due after the defect liability period,
@@ -60,20 +61,43 @@ public final class BillingMilestonePresets {
 
     public static List<Milestone> forTemplate(String templateCode) {
         if (templateCode == null) return GENERIC;
-        return switch (templateCode.trim().toUpperCase(Locale.ROOT)) {
-            case "A", "TEMPLATE-A", "TEMPLATE_A" -> TEMPLATE_A;
-            case "A2", "TEMPLATE-A2", "TEMPLATE_A2" -> TEMPLATE_A2;
-            default -> GENERIC;
+        String code = templateCode.trim().toUpperCase(Locale.ROOT);
+        return switch (code) {
+            case "A", "TEMPLATE-A", "TEMPLATE_A", "TPL-RENO-90", "RENO-90" -> TEMPLATE_A;
+            case "A2", "TEMPLATE-A2", "TEMPLATE_A2", "TPL-RENO-60", "RENO-60" -> TEMPLATE_A2;
+            default -> {
+                if (code.contains("60") && (code.contains("RENO") || code.contains("FAST"))) {
+                    yield TEMPLATE_A2;
+                }
+                if (code.contains("90") && code.contains("RENO")) {
+                    yield TEMPLATE_A;
+                }
+                yield GENERIC;
+            }
         };
     }
 
     /** First activity whose code or name contains one of the keywords. */
     public static CpmActivity match(List<CpmActivity> activities, List<String> keywords) {
-        if (keywords == null || keywords.isEmpty()) return null;
+        if (keywords == null || keywords.isEmpty() || activities == null) return null;
         for (String keyword : keywords) {
             String needle = keyword.toLowerCase(Locale.ROOT);
             for (CpmActivity a : activities) {
                 String code = a.getCode() == null ? "" : a.getCode().toLowerCase(Locale.ROOT);
+                String name = a.getName() == null ? "" : a.getName().toLowerCase(Locale.ROOT);
+                if (code.equals(needle) || name.contains(needle)) return a;
+            }
+        }
+        return null;
+    }
+
+    /** Same keyword match against persisted schedule activities. */
+    public static ScheduleActivity matchLive(List<ScheduleActivity> activities, List<String> keywords) {
+        if (keywords == null || keywords.isEmpty() || activities == null) return null;
+        for (String keyword : keywords) {
+            String needle = keyword.toLowerCase(Locale.ROOT);
+            for (ScheduleActivity a : activities) {
+                String code = a.getActivityCode() == null ? "" : a.getActivityCode().toLowerCase(Locale.ROOT);
                 String name = a.getName() == null ? "" : a.getName().toLowerCase(Locale.ROOT);
                 if (code.equals(needle) || name.contains(needle)) return a;
             }

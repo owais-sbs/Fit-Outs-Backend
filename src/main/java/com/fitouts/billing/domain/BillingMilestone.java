@@ -50,6 +50,12 @@ public class BillingMilestone {
     @Column(name = "percent_complete_required")
     private BigDecimal percentCompleteRequired;
 
+    /**
+     * How the milestone was created: BOQ_TEMPLATE, SCHEDULE_APPLY, or MANUAL.
+     */
+    @Column(name = "setup_source", length = 32)
+    private String setupSource;
+
     @Column(name = "created_by")
     private Long createdBy;
 

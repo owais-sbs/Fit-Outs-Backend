@@ -21,6 +21,7 @@ import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
 import com.fitouts.reporting.api.ProgressReportResponse;
+import com.fitouts.schedule.application.ActivityMaterialIssueService;
 import com.fitouts.schedule.domain.ScheduleActivity;
 import com.fitouts.schedule.domain.ScheduleActivityRepository;
 import com.fitouts.schedule.domain.ScheduleBaseline;
@@ -41,6 +42,7 @@ public class ProgressReportService {
     private final ScheduleBaselineRepository baselineRepository;
     private final ScheduleBaselineActivityRepository baselineActivityRepository;
     private final ProjectService projectService;
+    private final ActivityMaterialIssueService activityMaterialIssueService;
 
     @Transactional(readOnly = true)
     public ProgressReportResponse getReport(Long projectId) {
@@ -101,6 +103,18 @@ public class ProgressReportService {
 
         String summary = buildSummary(project.getName(), weightedCompletion, activities.size(), delayReasons.size());
 
+        List<ProgressReportResponse.MaterialVarianceRow> materialVariance =
+                activityMaterialIssueService.projectVariance(project.getId(), companyId).stream()
+                        .map(r -> ProgressReportResponse.MaterialVarianceRow.builder()
+                                .materialId(r.materialId())
+                                .materialName(r.materialName())
+                                .plannedQty(r.plannedQty())
+                                .issuedQty(r.issuedQty())
+                                .remainingQty(r.remainingQty())
+                                .unit(r.unit())
+                                .build())
+                        .toList();
+
         return ProgressReportResponse.builder()
                 .projectId(project.getId())
                 .weightedCompletionPercent(weightedCompletion)
@@ -109,6 +123,7 @@ public class ProgressReportService {
                 .summary(summary)
                 .baselineName(latestBaseline != null ? latestBaseline.getName() : null)
                 .baselineUuid(latestBaseline != null ? latestBaseline.getUuid() : null)
+                .materialVariance(materialVariance)
                 .build();
     }
 

@@ -19,6 +19,8 @@ import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
+import com.fitouts.schedule.application.ActivityMaterialIssueService;
+import com.fitouts.schedule.api.MaterialIssueResponse;
 import com.fitouts.schedule.domain.ActivityProgressUpdate;
 import com.fitouts.schedule.domain.ActivityProgressUpdateRepository;
 import com.fitouts.schedule.domain.ScheduleActivity;
@@ -55,6 +57,7 @@ public class ValidationInboxService {
     private final ProjectService projectService;
     private final AccountRepository accountRepository;
     private final SubcontractorPortalService portalService;
+    private final ActivityMaterialIssueService activityMaterialIssueService;
 
     @Transactional(readOnly = true)
     public ValidationInboxResponse inbox() {
@@ -92,9 +95,16 @@ public class ValidationInboxService {
         Map<UUID, ActivityProgressUpdate> progressUpdates = loadProgressUpdates(validations);
         Map<UUID, SubcontractorPackage> packages = loadPackages(claims, companyId);
         Map<Long, Account> accounts = loadAccounts(validations, claims);
+        Map<UUID, List<MaterialIssueResponse>> materialIssuesByProgress =
+                activityMaterialIssueService.listForProgressUpdates(
+                        validations.stream()
+                                .map(ProgressValidation::getProgressUpdateUuid)
+                                .filter(Objects::nonNull)
+                                .collect(Collectors.toSet()));
 
         List<ProgressValidationResponse> progressItems = validations.stream()
-                .map(v -> toProgressResponse(v, projects, activities, progressUpdates, accounts))
+                .map(v -> toProgressResponse(
+                        v, projects, activities, progressUpdates, accounts, materialIssuesByProgress))
                 .toList();
 
         List<SubcontractorClaimResponse> claimItems = claims.stream()
@@ -202,11 +212,15 @@ public class ValidationInboxService {
             Map<Long, Project> projects,
             Map<UUID, ScheduleActivity> activities,
             Map<UUID, ActivityProgressUpdate> progressUpdates,
-            Map<Long, Account> accounts) {
+            Map<Long, Account> accounts,
+            Map<UUID, List<MaterialIssueResponse>> materialIssuesByProgress) {
         Project project = projects.get(validation.getProjectId());
         ScheduleActivity activity = activities.get(validation.getActivityUuid());
         ActivityProgressUpdate progress = progressUpdates.get(validation.getProgressUpdateUuid());
         Account reporter = progress != null ? accounts.get(progress.getReportedBy()) : null;
+        List<MaterialIssueResponse> materialIssues = materialIssuesByProgress != null
+                ? materialIssuesByProgress.getOrDefault(validation.getProgressUpdateUuid(), List.of())
+                : List.of();
 
         return ProgressValidationResponse.builder()
                 .uuid(validation.getUuid())
@@ -225,6 +239,7 @@ public class ValidationInboxService {
                 .reportedByName(reporter != null ? displayName(reporter) : null)
                 .reportedAt(progress != null ? progress.getReportedAt() : null)
                 .photoPaths(progress != null ? progress.getPhotoPaths() : null)
+                .materialIssues(materialIssues)
                 .build();
     }
 

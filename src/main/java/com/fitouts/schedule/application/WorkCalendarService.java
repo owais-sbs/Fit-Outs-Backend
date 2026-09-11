@@ -65,6 +65,11 @@ public class WorkCalendarService {
         for (WorkCalendarHoliday h : holidayRepository.findByCalendarUuid(calendar.getUuid())) {
             holidays.add(h.getHolidayDate());
         }
-        return new WorkingCalendar(WorkingCalendar.parseWorkingDays(calendar.getWorkingDays()), holidays);
+        return new WorkingCalendar(
+                WorkingCalendar.parseWorkingDays(calendar.getWorkingDays()),
+                holidays,
+                calendar.isSummerBreakEnabled(),
+                calendar.getSummerBreakStart(),
+                calendar.getSummerBreakEnd());
     }
 }

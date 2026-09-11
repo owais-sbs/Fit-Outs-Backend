@@ -16,4 +16,6 @@ public class BillingMilestoneRequest {
     private String linkedActivityUuid;
     private BillingStatus status;
     private BigDecimal percentCompleteRequired;
+    /** BOQ_TEMPLATE, SCHEDULE_APPLY, or MANUAL. */
+    private String setupSource;
 }

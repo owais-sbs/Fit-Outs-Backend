@@ -18,6 +18,7 @@ public class ProgressReportResponse {
     private String summary;
     private String baselineName;
     private UUID baselineUuid;
+    private List<MaterialVarianceRow> materialVariance;
 
     @Data
     @Builder
@@ -31,5 +32,16 @@ public class ProgressReportResponse {
         private LocalDate baselineStart;
         private LocalDate baselineEnd;
         private String delayReason;
+    }
+
+    @Data
+    @Builder
+    public static class MaterialVarianceRow {
+        private UUID materialId;
+        private String materialName;
+        private BigDecimal plannedQty;
+        private BigDecimal issuedQty;
+        private BigDecimal remainingQty;
+        private String unit;
     }
 }

@@ -34,8 +34,10 @@ import com.fitouts.roomcollab.domain.ProjectRoom;
 import com.fitouts.roomcollab.domain.ProjectRoomRepository;
 import com.fitouts.roomcollab.domain.RoomTask;
 import com.fitouts.roomcollab.domain.RoomTaskRepository;
+import com.fitouts.schedule.api.LiveCpmSnapshot;
 import com.fitouts.schedule.api.ProgressUpdateRequest;
 import com.fitouts.schedule.api.ProgressUpdateResponse;
+import com.fitouts.schedule.api.ActivityMaterialSummaryResponse;
 import com.fitouts.schedule.api.ProjectScheduleResponse;
 import com.fitouts.schedule.api.ScheduleActivityRequest;
 import com.fitouts.schedule.api.ScheduleActivityResponse;
@@ -92,29 +94,64 @@ public class ScheduleService {
     private final FileStorageService fileStorageService;
     private final SubcontractorPackageRepository subcontractorPackageRepository;
     private final ScPortalAccessService portalAccessService;
+    private final ActivityMaterialIssueService activityMaterialIssueService;
+    private final ScheduleRescheduleService scheduleRescheduleService;
 
     @Transactional(readOnly = true)
     public ProjectScheduleResponse getSchedule(Long projectId) {
+        // Pure clients never see DRAFT bars (snags dropdown and any shared callers).
+        boolean publishedOnly = isPureClient(currentPrincipalOrNull());
+        return buildScheduleResponse(projectId, publishedOnly, !publishedOnly);
+    }
+
+    /**
+     * Published programme only — client portal Gantt and any caller that must not see drafts.
+     */
+    @Transactional(readOnly = true)
+    public ProjectScheduleResponse getPublishedSchedule(Long projectId) {
+        return buildScheduleResponse(projectId, true, false);
+    }
+
+    private ProjectScheduleResponse buildScheduleResponse(
+            Long projectId, boolean publishedOnly, boolean includeBaselines) {
         Project project = requireProject(projectId);
         UUID companyId = CompanyContext.get();
         List<ScheduleActivity> activities = activityRepository
                 .findByProjectIdAndCompanyIdOrderBySortOrderAscStartDateAsc(projectId, companyId);
-        List<ScheduleDependency> dependencies = dependencyRepository.findByProjectIdAndCompanyId(projectId, companyId);
+        if (publishedOnly) {
+            activities = activities.stream()
+                    .filter(a -> a.getPublishStatus() == SchedulePublishStatus.PUBLISHED)
+                    .toList();
+        }
+        Set<UUID> activityIds = new HashSet<>();
+        for (ScheduleActivity a : activities) {
+            activityIds.add(a.getUuid());
+        }
+        List<ScheduleDependency> dependencies = dependencyRepository
+                .findByProjectIdAndCompanyId(projectId, companyId)
+                .stream()
+                .filter(d -> activityIds.contains(d.getPredecessorUuid())
+                        && activityIds.contains(d.getSuccessorUuid()))
+                .toList();
         ActivityEnrichment enrichment = buildEnrichment(activities);
+        LiveCpmSnapshot cpm = scheduleRescheduleService.analyze(projectId, activities, dependencies);
         return ProjectScheduleResponse.builder()
                 .projectId(project.getId())
                 .ganttPublishAllowed(planningService.get(projectId).isGanttPublishAllowed())
-                .activities(activities.stream().map(a -> toActivity(a, enrichment)).toList())
+                .activities(activities.stream().map(a -> toActivity(a, enrichment, cpm)).toList())
                 .dependencies(dependencies.stream().map(this::toDependency).toList())
-                .baselines(baselineRepository
-                        .findByProjectIdAndCompanyIdOrderByCreatedAtDesc(projectId, companyId)
-                        .stream().map(this::toBaseline).toList())
-                .criticalPath(computeCriticalPath(activities, dependencies))
+                .baselines(includeBaselines
+                        ? baselineRepository
+                                .findByProjectIdAndCompanyIdOrderByCreatedAtDesc(projectId, companyId)
+                                .stream().map(this::toBaseline).toList()
+                        : List.of())
+                .criticalPath(cpm.getCriticalPath())
+                .criticalPaths(cpm.getCriticalPaths())
                 .build();
     }
 
     /**
-     * Longest path through FS dependencies by activity duration (calendar days).
+     * Primary critical path via CpmEngine (same solver as preview / reschedule).
      */
     @Transactional(readOnly = true)
     public List<UUID> computeCriticalPath(Long projectId) {
@@ -123,114 +160,7 @@ public class ScheduleService {
         List<ScheduleActivity> activities = activityRepository
                 .findByProjectIdAndCompanyIdOrderBySortOrderAscStartDateAsc(projectId, companyId);
         List<ScheduleDependency> dependencies = dependencyRepository.findByProjectIdAndCompanyId(projectId, companyId);
-        return computeCriticalPath(activities, dependencies);
-    }
-
-    private List<UUID> computeCriticalPath(List<ScheduleActivity> activities, List<ScheduleDependency> dependencies) {
-        if (activities == null || activities.isEmpty()) {
-            return List.of();
-        }
-
-        Map<UUID, ScheduleActivity> byId = new LinkedHashMap<>();
-        Map<UUID, Long> duration = new HashMap<>();
-        for (ScheduleActivity a : activities) {
-            byId.put(a.getUuid(), a);
-            long days = ChronoUnit.DAYS.between(a.getStartDate(), a.getEndDate()) + 1;
-            duration.put(a.getUuid(), Math.max(days, 1L));
-        }
-
-        Map<UUID, List<UUID>> successors = new HashMap<>();
-        Map<UUID, Integer> indegree = new HashMap<>();
-        for (UUID id : byId.keySet()) {
-            successors.put(id, new ArrayList<>());
-            indegree.put(id, 0);
-        }
-        for (ScheduleDependency dep : dependencies) {
-            if (!"FS".equalsIgnoreCase(dep.getDependencyType())) {
-                continue;
-            }
-            UUID pred = dep.getPredecessorUuid();
-            UUID succ = dep.getSuccessorUuid();
-            if (!byId.containsKey(pred) || !byId.containsKey(succ)) {
-                continue;
-            }
-            successors.get(pred).add(succ);
-            indegree.merge(succ, 1, Integer::sum);
-        }
-
-        // Longest path DP: dist[v] = max path length ending at v; prev[v] = predecessor on that path
-        Map<UUID, Long> dist = new HashMap<>();
-        Map<UUID, UUID> prev = new HashMap<>();
-        for (UUID id : byId.keySet()) {
-            dist.put(id, duration.get(id));
-            prev.put(id, null);
-        }
-
-        List<UUID> order = topologicalOrder(byId.keySet(), successors, indegree);
-        for (UUID u : order) {
-            long base = dist.getOrDefault(u, duration.get(u));
-            for (UUID v : successors.getOrDefault(u, List.of())) {
-                long candidate = base + duration.get(v);
-                if (candidate > dist.getOrDefault(v, 0L)) {
-                    dist.put(v, candidate);
-                    prev.put(v, u);
-                }
-            }
-        }
-
-        UUID end = null;
-        long best = -1L;
-        for (Map.Entry<UUID, Long> e : dist.entrySet()) {
-            if (e.getValue() > best) {
-                best = e.getValue();
-                end = e.getKey();
-            }
-        }
-        if (end == null) {
-            return List.of();
-        }
-
-        List<UUID> path = new ArrayList<>();
-        Set<UUID> seen = new HashSet<>();
-        UUID cur = end;
-        while (cur != null && seen.add(cur)) {
-            path.add(cur);
-            cur = prev.get(cur);
-        }
-        Collections.reverse(path);
-        return path;
-    }
-
-    private static List<UUID> topologicalOrder(
-            Set<UUID> nodes, Map<UUID, List<UUID>> successors, Map<UUID, Integer> indegreeIn) {
-        Map<UUID, Integer> indegree = new HashMap<>(indegreeIn);
-        List<UUID> queue = new ArrayList<>();
-        for (UUID id : nodes) {
-            if (indegree.getOrDefault(id, 0) == 0) {
-                queue.add(id);
-            }
-        }
-        List<UUID> order = new ArrayList<>();
-        int i = 0;
-        while (i < queue.size()) {
-            UUID u = queue.get(i++);
-            order.add(u);
-            for (UUID v : successors.getOrDefault(u, List.of())) {
-                int next = indegree.merge(v, -1, Integer::sum);
-                if (next == 0) {
-                    queue.add(v);
-                }
-            }
-        }
-        // Cycle fallback: append remaining nodes
-        if (order.size() < nodes.size()) {
-            for (UUID id : nodes) {
-                if (!order.contains(id)) {
-                    order.add(id);
-                }
-            }
-        }
-        return order;
+        return scheduleRescheduleService.analyze(projectId, activities, dependencies).getCriticalPath();
     }
 
     @Transactional
@@ -247,7 +177,9 @@ public class ScheduleService {
         activity.setPublishStatus(SchedulePublishStatus.DRAFT);
         activity.setCreatedBy(principal.getAccountId());
         ScheduleActivity saved = activityRepository.save(activity);
-        return toActivity(saved, buildEnrichment(List.of(saved)));
+        refreshCpmQuietly(projectId);
+        ScheduleActivity reloaded = activityRepository.findById(saved.getUuid()).orElse(saved);
+        return toActivity(reloaded, buildEnrichment(List.of(reloaded)));
     }
 
     @Transactional
@@ -301,15 +233,19 @@ public class ScheduleService {
             throw new BadRequestException("name is required");
         }
         ScheduleActivity saved = activityRepository.save(activity);
-        return toActivity(saved, buildEnrichment(List.of(saved)));
+        refreshCpmQuietly(saved.getProjectId());
+        ScheduleActivity reloaded = activityRepository.findById(saved.getUuid()).orElse(saved);
+        return toActivity(reloaded, buildEnrichment(List.of(reloaded)));
     }
 
     @Transactional
     public void deleteActivity(UUID activityUuid) {
         requireStaff();
         ScheduleActivity activity = requireActivity(activityUuid);
+        Long projectId = activity.getProjectId();
         dependencyRepository.deleteByPredecessorUuidOrSuccessorUuid(activityUuid, activityUuid);
         activityRepository.delete(activity);
+        refreshCpmQuietly(projectId);
     }
 
     @Transactional
@@ -325,13 +261,27 @@ public class ScheduleService {
         ScheduleActivity pred = requireActivityInProject(request.getPredecessorUuid(), project.getId());
         ScheduleActivity succ = requireActivityInProject(request.getSuccessorUuid(), project.getId());
 
+        String type = StringUtils.hasText(request.getDependencyType())
+                ? request.getDependencyType().trim().toUpperCase()
+                : "FS";
+        if (!Set.of("FS", "SS", "FF", "SF").contains(type)) {
+            throw new BadRequestException("dependencyType must be FS, SS, FF or SF");
+        }
+        int lag = request.getLagWorkingDays() == null ? 0 : request.getLagWorkingDays();
+        if (lag < 0) {
+            throw new BadRequestException("lagWorkingDays cannot be negative");
+        }
+
         ScheduleDependency dep = new ScheduleDependency();
         dep.setProjectId(project.getId());
         dep.setCompanyId(CompanyContext.get());
         dep.setPredecessorUuid(pred.getUuid());
         dep.setSuccessorUuid(succ.getUuid());
-        dep.setDependencyType("FS");
-        return toDependency(dependencyRepository.save(dep));
+        dep.setDependencyType(type);
+        dep.setLagWorkingDays(lag);
+        ScheduleDependency saved = dependencyRepository.save(dep);
+        refreshCpmQuietly(projectId);
+        return toDependency(saved);
     }
 
     @Transactional
@@ -340,7 +290,9 @@ public class ScheduleService {
         ScheduleDependency dep = dependencyRepository.findById(dependencyUuid)
                 .orElseThrow(() -> new NotFoundException("Dependency not found"));
         assertCompanyId(dep.getCompanyId());
+        Long projectId = dep.getProjectId();
         dependencyRepository.delete(dep);
+        refreshCpmQuietly(projectId);
     }
 
     @Transactional
@@ -455,6 +407,9 @@ public class ScheduleService {
         update.setReportedBy(principal.getAccountId());
         update = progressRepository.save(update);
 
+        activityMaterialIssueService.declareIssues(
+                activity, update.getUuid(), request.getMaterialIssues(), principal.getAccountId());
+
         // PM validation gate: activity % updates only after approve()
         progressValidationService.createPendingForProgress(update);
 
@@ -462,6 +417,13 @@ public class ScheduleService {
         billingService.evaluateTriggersForActivity(activity.getUuid());
 
         return toProgress(update);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ActivityMaterialSummaryResponse> materialSummary(UUID activityUuid) {
+        ScheduleActivity activity = requireActivity(activityUuid);
+        requireAuthenticated();
+        return activityMaterialIssueService.activitySummary(activity);
     }
 
     @Transactional(readOnly = true)
@@ -767,6 +729,24 @@ public class ScheduleService {
         return principal;
     }
 
+    private AuthPrincipal currentPrincipalOrNull() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !(auth.getPrincipal() instanceof AuthPrincipal principal)) {
+            return null;
+        }
+        return principal;
+    }
+
+    private boolean isPureClient(AuthPrincipal principal) {
+        if (principal == null || principal.getRoles() == null) {
+            return false;
+        }
+        if (!principal.getRoles().contains(Role.CLIENT)) {
+            return false;
+        }
+        return principal.getRoles().stream().allMatch(r -> r == Role.CLIENT);
+    }
+
     private AuthPrincipal requireStaff() {
         AuthPrincipal principal = requireAuthenticated();
         if (principal.getRoles() != null && principal.getRoles().stream().allMatch(r -> r == Role.CLIENT)) {
@@ -784,6 +764,10 @@ public class ScheduleService {
     }
 
     private ScheduleActivityResponse toActivity(ScheduleActivity a, ActivityEnrichment enrichment) {
+        return toActivity(a, enrichment, null);
+    }
+
+    private ScheduleActivityResponse toActivity(ScheduleActivity a, ActivityEnrichment enrichment, LiveCpmSnapshot cpm) {
         ProjectRoom room = a.getProjectRoomId() != null
                 ? enrichment.roomsById().get(a.getProjectRoomId()) : null;
         RoomTask task = a.getRoomTaskId() != null
@@ -798,6 +782,15 @@ public class ScheduleService {
                 taskRoom = projectRoomRepository.findById(task.getProjectRoomId()).orElse(null);
             }
             roomName = taskRoom != null ? taskRoom.getName() : null;
+        }
+
+        boolean critical = a.isCritical();
+        Integer totalFloat = a.getTotalFloat();
+        Integer freeFloat = a.getFreeFloat();
+        if (cpm != null && cpm.getCriticalByUuid().containsKey(a.getUuid())) {
+            critical = Boolean.TRUE.equals(cpm.getCriticalByUuid().get(a.getUuid()));
+            totalFloat = cpm.getTotalFloatByUuid().get(a.getUuid());
+            freeFloat = cpm.getFreeFloatByUuid().get(a.getUuid());
         }
 
         return ScheduleActivityResponse.builder()
@@ -826,9 +819,9 @@ public class ScheduleService {
                 .milestone(a.isMilestone())
                 .lockedDuration(a.isLockedDuration())
                 .constraintNote(a.getConstraintNote())
-                .critical(a.isCritical())
-                .totalFloat(a.getTotalFloat())
-                .freeFloat(a.getFreeFloat())
+                .critical(critical)
+                .totalFloat(totalFloat)
+                .freeFloat(freeFloat)
                 .build();
     }
 
@@ -854,6 +847,17 @@ public class ScheduleService {
 
     private ScheduleActivityResponse toActivity(ScheduleActivity a) {
         return toActivity(a, buildEnrichment(List.of(a)));
+    }
+
+    private void refreshCpmQuietly(Long projectId) {
+        if (projectId == null) return;
+        try {
+            scheduleRescheduleService.refreshNetwork(projectId);
+        } catch (BadRequestException ignored) {
+            // Empty programme or not ready for CPM yet.
+        } catch (RuntimeException ignored) {
+            // Do not fail CRUD if a one-off CPM refresh cannot run.
+        }
     }
 
     private ScheduleDependencyResponse toDependency(ScheduleDependency d) {
@@ -887,7 +891,8 @@ public class ScheduleService {
                 .delayReason(u.getDelayReason())
                 .reportedBy(u.getReportedBy())
                 .reportedAt(u.getReportedAt())
-                .photoPaths(u.getPhotoPaths());
+                .photoPaths(u.getPhotoPaths())
+                .materialIssues(activityMaterialIssueService.listForProgress(u.getUuid()));
         validationRepository.findByProgressUpdateUuid(u.getUuid()).ifPresent(v -> {
             builder.validationStatus(v.getStatus() != null ? v.getStatus().name() : null);
             builder.validationReason(v.getReason());

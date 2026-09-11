@@ -919,6 +919,47 @@
       "source__owner": "Contractor"
     }
   ],
+  "scope_toggles": [
+    {
+      "code": "STRUCTURAL_MODIFICATION",
+      "label": "Structural modification in scope?",
+      "description": "Openings, lintels and structural alterations. Off by default — permits alone take 10–25 working days.",
+      "default_on": false
+    },
+    {
+      "code": "FACADE_CHANGE",
+      "label": "Facade / external cladding change in scope?",
+      "description": "External render, cladding and facade works beyond standard aluminium.",
+      "default_on": false
+    },
+    {
+      "code": "EXTERNAL_WORKS",
+      "label": "Landscape, hardscape and external works in scope?",
+      "description": "Optional outdoor package. Excluded by default.",
+      "default_on": false
+    },
+    {
+      "code": "LANDSCAPE",
+      "label": "Landscaping and irrigation in scope?",
+      "description": "Derived optional trade package.",
+      "default_on": false
+    },
+    {
+      "code": "SWIMMING_POOL",
+      "label": "Swimming pool in scope?",
+      "default_on": false
+    },
+    {
+      "code": "SMART_HOME",
+      "label": "Smart home and AV in scope?",
+      "default_on": true
+    },
+    {
+      "code": "SECURITY_SYSTEM",
+      "label": "CCTV, access control and security in scope?",
+      "default_on": true
+    }
+  ],
   "schedule_templates": [
     {
       "code": "TPL-RENO-90",
@@ -926,6 +967,14 @@
       "total_working_days": 77,
       "calendar_days": 90,
       "work_week": 6,
+      "base_area_sqft": 6000,
+      "base_bedrooms": 5,
+      "base_bathrooms": 6,
+      "base_kitchens": 1,
+      "base_floor_count": 2,
+      "base_room_count": 11,
+      "base_finish_level": "STANDARD",
+      "base_crew_count": 1,
       "activities": [
         {
           "id": "R010",
@@ -1225,6 +1274,7 @@
           "predecessor": "R300",
           "critical": "N",
           "trade__package": "Civil",
+          "scope_toggle": "STRUCTURAL_MODIFICATION",
           "constraint__note": "Requires approved structural permit"
         },
         {
@@ -1501,6 +1551,7 @@
           "predecessor": "R430",
           "critical": "N",
           "trade__package": "Landscape",
+          "scope_toggle": "EXTERNAL_WORKS",
           "constraint__note": "Scope toggle - excluded by default"
         },
         {
@@ -1571,6 +1622,26 @@
       "total_working_days": 52,
       "calendar_days": 60,
       "work_week": 6,
+      "is_fast_track": true,
+      "base_area_sqft": 6000,
+      "base_bedrooms": 5,
+      "base_bathrooms": 6,
+      "base_kitchens": 1,
+      "base_floor_count": 2,
+      "base_room_count": 11,
+      "base_finish_level": "STANDARD",
+      "base_crew_count": 2,
+      "fast_track_conditions": [
+        "Finish specification is pre-selected and frozen at contract signature — no open selections",
+        "Aluminium is ordered by working day 4 using local stock profiles and stock colours",
+        "Joinery is a modular carcass system, not bespoke veneer or spray finish",
+        "No structural modification in scope",
+        "No imported natural stone — large-format porcelain or in-stock stone only",
+        "Rapid-set screed is specified and priced",
+        "Manpower at roughly 1.6× the 90-day plan, with two zoned crews",
+        "Community permits allow extended or out-of-hours working (permit applied for at kick-off)",
+        "No client-initiated variations after working day 20"
+      ],
       "activities": [
         {
           "id": "F010",
@@ -2311,6 +2382,7 @@
           "predecessor": "G200",
           "critical": "N",
           "trade__package": "Civil",
+          "scope_toggle": "FACADE_CHANGE",
           "constraint__note": "-"
         },
         {

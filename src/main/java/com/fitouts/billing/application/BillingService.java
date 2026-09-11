@@ -3,8 +3,10 @@ package com.fitouts.billing.application;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -93,6 +95,7 @@ public class BillingService {
         milestone.setLinkedActivityUuid(parseOptionalUuid(request.getLinkedActivityUuid(), "linkedActivityUuid"));
         milestone.setStatus(request.getStatus() != null ? request.getStatus() : BillingStatus.DRAFT);
         milestone.setPercentCompleteRequired(request.getPercentCompleteRequired());
+        milestone.setSetupSource(resolveSetupSource(request.getSetupSource(), "MANUAL"));
         milestone.setCreatedBy(principal.getAccountId());
         return toMilestoneResponse(milestoneRepository.save(milestone));
     }
@@ -616,10 +619,20 @@ public class BillingService {
                 .linkedActivityUuid(m.getLinkedActivityUuid())
                 .status(m.getStatus())
                 .percentCompleteRequired(m.getPercentCompleteRequired())
+                .setupSource(m.getSetupSource())
                 .createdBy(m.getCreatedBy())
                 .createdAt(m.getCreatedAt())
                 .updatedAt(m.getUpdatedAt())
                 .build();
+    }
+
+    private static String resolveSetupSource(String requested, String fallback) {
+        if (!StringUtils.hasText(requested)) return fallback;
+        String upper = requested.trim().toUpperCase(Locale.ROOT);
+        return switch (upper) {
+            case "BOQ_TEMPLATE", "SCHEDULE_APPLY", "MANUAL" -> upper;
+            default -> fallback;
+        };
     }
 
     private PaymentRequestResponse toPaymentResponse(PaymentRequest pr, BillingMilestone milestone) {
