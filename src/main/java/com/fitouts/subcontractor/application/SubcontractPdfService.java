@@ -10,6 +10,7 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import javax.imageio.ImageIO;
 
@@ -116,10 +117,12 @@ public class SubcontractPdfService {
         // PDF Content Stream Operators
         content.append("q\n");
         // Title
+        content.append("0 0 0 rg\n");
         content.append("BT /F1 18 Tf 50 750 Td (").append(escapePdf(title)).append(") Tj ET\n");
         content.append("0.5 0.5 0.5 RG 50 740 m 550 740 l S\n");
 
         // Contract details
+        content.append("0 0 0 rg\n");
         content.append("BT /F1 11 Tf 50 710 Td (Package Name: ").append(escapePdf(packageName)).append(") Tj ET\n");
         content.append("BT /F1 11 Tf 50 690 Td (Subcontractor: ").append(escapePdf(orgName)).append(") Tj ET\n");
         content.append("BT /F1 11 Tf 50 670 Td (Awarded Value: ").append(escapePdf(value)).append(") Tj ET\n");
@@ -127,6 +130,7 @@ public class SubcontractPdfService {
 
         // Terms section
         content.append("0.8 0.8 0.8 RG 50 630 m 550 630 l S\n");
+        content.append("0 0 0 rg\n");
         content.append("BT /F1 12 Tf 50 605 Td (TERMS & AGREEMENT DECLARATION) Tj ET\n");
         content.append("BT /F1 9 Tf 50 585 Td (1. This Subcontract Agreement incorporates all tender documents, scopes, and agreed BOQ items.) Tj ET\n");
         content.append("BT /F1 9 Tf 50 570 Td (2. The Subcontractor agrees to execute the works in strict compliance with project specifications.) Tj ET\n");
@@ -135,34 +139,37 @@ public class SubcontractPdfService {
         content.append("0.8 0.8 0.8 RG 50 535 m 550 535 l S\n");
 
         // Signature Boxes Header
+        content.append("0 0 0 rg\n");
         content.append("BT /F1 12 Tf 50 510 Td (EXECUTION & SIGNATURES) Tj ET\n");
 
-        // Box 1: Subcontractor (Left)
-        content.append("0.9 0.9 0.9 rg 50 360 230 130 re f 0.6 0.6 0.6 RG 50 360 230 130 re S\n");
-        content.append("BT /F1 10 Tf 60 475 Td (SUBCONTRACTOR) Tj ET\n");
-        if (isExecuted) {
-            content.append("BT /F1 9 Tf 60 460 Td (Signer: ").append(escapePdf(subSignerName != null ? subSignerName : orgName)).append(") Tj ET\n");
-            if (subSignerTitle != null && !subSignerTitle.isBlank()) {
-                content.append("BT /F1 9 Tf 60 448 Td (Title: ").append(escapePdf(subSignerTitle)).append(") Tj ET\n");
-            }
-            content.append("BT /F1 8 Tf 60 435 Td (Signed: ").append(escapePdf(subDateStr)).append(") Tj ET\n");
-            if (subJpeg != null) {
-                content.append("q 120 0 0 45 60 380 cm /Im2 Do Q\n");
-            }
-        } else {
-            content.append("0.5 0.5 0.5 RG BT /F1 10 Tf 60 430 Td ([ WAITING FOR SUBCONTRACTOR SIGNATURE ]) Tj ET\n");
+        // Box 1: Admin (Left)
+        content.append("0.95 0.95 0.95 rg 50 360 230 130 re f 0.7 0.7 0.7 RG 50 360 230 130 re S\n");
+        content.append("0 0 0 rg\n");
+        content.append("BT /F1 10 Tf 60 475 Td (ADMIN) Tj ET\n");
+        content.append("BT /F1 9 Tf 60 460 Td (Name: ").append(escapePdf(adminSignerName != null ? adminSignerName : "Admin")).append(") Tj ET\n");
+        if (adminSignerTitle != null && !adminSignerTitle.isBlank()) {
+            content.append("BT /F1 9 Tf 60 448 Td (Title: ").append(escapePdf(adminSignerTitle)).append(") Tj ET\n");
+        }
+        content.append("BT /F1 8 Tf 60 435 Td (Signed: ").append(escapePdf(adminDateStr)).append(") Tj ET\n");
+        if (adminJpeg != null) {
+            content.append("q 120 0 0 45 60 380 cm /Im1 Do Q\n");
         }
 
-        // Box 2: Main Contractor / Admin (Right)
-        content.append("0.9 0.9 0.9 rg 310 360 230 130 re f 0.6 0.6 0.6 RG 310 360 230 130 re S\n");
-        content.append("BT /F1 10 Tf 320 475 Td (MAIN CONTRACTOR / ADMIN) Tj ET\n");
-        content.append("BT /F1 9 Tf 320 460 Td (Signer: ").append(escapePdf(adminSignerName != null ? adminSignerName : "Main Contractor")).append(") Tj ET\n");
-        if (adminSignerTitle != null && !adminSignerTitle.isBlank()) {
-            content.append("BT /F1 9 Tf 320 448 Td (Title: ").append(escapePdf(adminSignerTitle)).append(") Tj ET\n");
-        }
-        content.append("BT /F1 8 Tf 320 435 Td (Signed: ").append(escapePdf(adminDateStr)).append(") Tj ET\n");
-        if (adminJpeg != null) {
-            content.append("q 120 0 0 45 320 380 cm /Im1 Do Q\n");
+        // Box 2: Subcontractor (Right)
+        content.append("0.95 0.95 0.95 rg 310 360 230 130 re f 0.7 0.7 0.7 RG 310 360 230 130 re S\n");
+        content.append("0 0 0 rg\n");
+        content.append("BT /F1 10 Tf 320 475 Td (SUBCONTRACTOR) Tj ET\n");
+        if (isExecuted) {
+            content.append("BT /F1 9 Tf 320 460 Td (Name: ").append(escapePdf(subSignerName != null ? subSignerName : orgName)).append(") Tj ET\n");
+            if (subSignerTitle != null && !subSignerTitle.isBlank()) {
+                content.append("BT /F1 9 Tf 320 448 Td (Title: ").append(escapePdf(subSignerTitle)).append(") Tj ET\n");
+            }
+            content.append("BT /F1 8 Tf 320 435 Td (Signed: ").append(escapePdf(subDateStr)).append(") Tj ET\n");
+            if (subJpeg != null) {
+                content.append("q 120 0 0 45 320 380 cm /Im2 Do Q\n");
+            }
+        } else {
+            content.append("0.4 0.4 0.4 rg BT /F1 10 Tf 320 430 Td ([ WAITING FOR SUBCONTRACTOR SIGNATURE ]) Tj ET\n");
         }
 
         content.append("Q\n");
@@ -179,54 +186,71 @@ public class SubcontractPdfService {
 
         try {
             ByteArrayOutputStream pdfOut = new ByteArrayOutputStream();
-            List<Long> xrefPositions = new java.util.ArrayList<>();
+            List<Long> xrefPositions = new ArrayList<>();
 
             writeString(pdfOut, "%PDF-1.4\n");
 
+            // Dynamic PDF object ID assignments
+            int nextObj = 1;
+            int catalogObjId = nextObj++;   // 1
+            int pagesObjId = nextObj++;     // 2
+            int pageObjId = nextObj++;      // 3
+            int fontObjId = nextObj++;      // 4
+
+            Integer adminImgObjId = null;
+            if (adminJpeg != null) {
+                adminImgObjId = nextObj++;
+            }
+
+            Integer subImgObjId = null;
+            if (subJpeg != null) {
+                subImgObjId = nextObj++;
+            }
+
+            int contentObjId = nextObj++;
+
             // Object 1: Catalog
             xrefPositions.add((long) pdfOut.size());
-            writeString(pdfOut, "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+            writeString(pdfOut, catalogObjId + " 0 obj\n<< /Type /Catalog /Pages " + pagesObjId + " 0 R >>\nendobj\n");
 
             // Object 2: Pages
             xrefPositions.add((long) pdfOut.size());
-            writeString(pdfOut, "2 0 obj\n<< /Type /Pages /Count 1 /Kids [3 0 R] >>\nendobj\n");
+            writeString(pdfOut, pagesObjId + " 0 obj\n<< /Type /Pages /Count 1 /Kids [" + pageObjId + " 0 R] >>\nendobj\n");
 
-            // Object 3: Page
-            xrefPositions.add((long) pdfOut.size());
+            // Resource dictionary
             StringBuilder resDict = new StringBuilder();
-            resDict.append("<< /Font << /F1 4 0 R >> /XObject << ");
-            if (adminJpeg != null) {
-                resDict.append("/Im1 5 0 R ");
+            resDict.append("<< /Font << /F1 ").append(fontObjId).append(" 0 R >> /XObject << ");
+            if (adminImgObjId != null) {
+                resDict.append("/Im1 ").append(adminImgObjId).append(" 0 R ");
             }
-            if (subJpeg != null) {
-                resDict.append("/Im2 ").append(adminJpeg != null ? "6 0 R " : "5 0 R ");
+            if (subImgObjId != null) {
+                resDict.append("/Im2 ").append(subImgObjId).append(" 0 R ");
             }
             resDict.append(">> >>");
 
-            writeString(pdfOut, "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources "
-                    + resDict.toString() + " /Contents 7 0 R >>\nendobj\n");
+            // Object 3: Page (pointing to actual contentObjId)
+            xrefPositions.add((long) pdfOut.size());
+            writeString(pdfOut, pageObjId + " 0 obj\n<< /Type /Page /Parent " + pagesObjId + " 0 R /MediaBox [0 0 595 842] /Resources "
+                    + resDict.toString() + " /Contents " + contentObjId + " 0 R >>\nendobj\n");
 
             // Object 4: Font F1
             xrefPositions.add((long) pdfOut.size());
-            writeString(pdfOut, "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n");
+            writeString(pdfOut, fontObjId + " 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n");
 
             // Object 5 & 6: Images (if present)
-            int currentObj = 5;
-            if (adminJpeg != null) {
+            if (adminImgObjId != null) {
                 xrefPositions.add((long) pdfOut.size());
-                writeImageObj(pdfOut, currentObj, adminJpeg, adminDim);
-                currentObj++;
+                writeImageObj(pdfOut, adminImgObjId, adminJpeg, adminDim);
             }
-            if (subJpeg != null) {
+            if (subImgObjId != null) {
                 xrefPositions.add((long) pdfOut.size());
-                writeImageObj(pdfOut, currentObj, subJpeg, subDim);
-                currentObj++;
+                writeImageObj(pdfOut, subImgObjId, subJpeg, subDim);
             }
 
-            // Object 7 (or currentObj): Content Stream
+            // Object contentObjId: Content Stream
             xrefPositions.add((long) pdfOut.size());
             byte[] contentBytes = contentStream.getBytes(StandardCharsets.ISO_8859_1);
-            writeString(pdfOut, currentObj + " 0 obj\n<< /Length " + contentBytes.length + " >>\nstream\n");
+            writeString(pdfOut, contentObjId + " 0 obj\n<< /Length " + contentBytes.length + " >>\nstream\n");
             pdfOut.write(contentBytes);
             writeString(pdfOut, "\nendstream\nendobj\n");
 
@@ -239,7 +263,7 @@ public class SubcontractPdfService {
             }
 
             // Trailer
-            writeString(pdfOut, "trailer\n<< /Size " + (xrefPositions.size() + 1) + " /Root 1 0 R >>\n");
+            writeString(pdfOut, "trailer\n<< /Size " + (xrefPositions.size() + 1) + " /Root " + catalogObjId + " 0 R >>\n");
             writeString(pdfOut, "startxref\n" + startXref + "\n%%EOF\n");
 
             return pdfOut.toByteArray();
