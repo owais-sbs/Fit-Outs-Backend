@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.fitouts.approval.domain.ApprovalCase;
 import com.fitouts.approval.domain.ApprovalCaseRepository;
+import com.fitouts.schedule.api.LiveCpmSnapshot;
 import com.fitouts.schedule.api.RescheduleRequest;
 import com.fitouts.schedule.api.RescheduleResponse;
 import com.fitouts.schedule.domain.ProjectSchedule;
@@ -113,6 +114,70 @@ public class ScheduleRescheduleService {
                 .approvalTargetsUpdated(casesUpdated)
                 .refusals(refusals)
                 .warnings(result.getWarnings())
+                .build();
+    }
+
+    /** Re-solves the live network with no bar edit (after dependency / duration changes). */
+    @Transactional
+    public RescheduleResponse refreshNetwork(Long projectId) {
+        return reschedule(projectId, new RescheduleRequest());
+    }
+
+    /**
+     * Read-only CPM analysis for GET schedule — same engine as preview, no persistence.
+     */
+    @Transactional(readOnly = true)
+    public LiveCpmSnapshot analyze(Long projectId, List<ScheduleActivity> activities,
+                                   List<ScheduleDependency> dependencies) {
+        if (activities == null || activities.isEmpty()) {
+            return LiveCpmSnapshot.builder().build();
+        }
+        ProjectSchedule schedule = projectScheduleRepository.findByProjectId(projectId).orElse(null);
+        WorkingCalendar calendar = workCalendarService.resolve(
+                schedule == null ? null : schedule.getWorkCalendarUuid());
+        LocalDate projectStart = activities.stream()
+                .map(ScheduleActivity::getStartDate)
+                .filter(java.util.Objects::nonNull)
+                .min(LocalDate::compareTo)
+                .orElse(LocalDate.now());
+
+        CpmResult result = solve(activities, dependencies, projectStart, calendar);
+
+        Map<String, UUID> uuidByCode = new HashMap<>();
+        for (ScheduleActivity a : activities) {
+            String code = a.getActivityCode() != null ? a.getActivityCode() : a.getUuid().toString();
+            uuidByCode.put(code, a.getUuid());
+        }
+
+        Map<UUID, Boolean> criticalByUuid = new HashMap<>();
+        Map<UUID, Integer> totalFloatByUuid = new HashMap<>();
+        Map<UUID, Integer> freeFloatByUuid = new HashMap<>();
+        for (CpmActivity node : result.getActivities()) {
+            UUID id = uuidByCode.get(node.getCode());
+            if (id == null) continue;
+            criticalByUuid.put(id, node.isCritical());
+            totalFloatByUuid.put(id, node.getTotalFloat());
+            freeFloatByUuid.put(id, node.getFreeFloat());
+        }
+
+        List<List<UUID>> pathUuids = new ArrayList<>();
+        for (List<String> path : result.getCriticalPaths()) {
+            List<UUID> uuids = new ArrayList<>();
+            for (String code : path) {
+                UUID id = uuidByCode.get(code);
+                if (id != null) uuids.add(id);
+            }
+            if (!uuids.isEmpty()) pathUuids.add(uuids);
+        }
+
+        List<UUID> primary = pathUuids.isEmpty() ? List.of() : pathUuids.get(0);
+
+        return LiveCpmSnapshot.builder()
+                .criticalPath(primary)
+                .criticalPaths(pathUuids)
+                .criticalByUuid(criticalByUuid)
+                .totalFloatByUuid(totalFloatByUuid)
+                .freeFloatByUuid(freeFloatByUuid)
                 .build();
     }
 

@@ -19,6 +19,7 @@ import com.fitouts.schedule.domain.ActivityProgressUpdate;
 import com.fitouts.schedule.domain.ActivityProgressUpdateRepository;
 import com.fitouts.schedule.domain.ScheduleActivity;
 import com.fitouts.schedule.domain.ScheduleActivityRepository;
+import com.fitouts.schedule.application.ActivityMaterialIssueService;
 import com.fitouts.shared.context.CompanyContext;
 import com.fitouts.shared.error.BadRequestException;
 import com.fitouts.shared.error.ForbiddenException;
@@ -40,6 +41,7 @@ public class ProgressValidationService {
     private final ScheduleActivityRepository activityRepository;
     private final ProjectService projectService;
     private final BillingService billingService;
+    private final ActivityMaterialIssueService activityMaterialIssueService;
 
     @Transactional
     public ProgressValidation createPendingForProgress(ActivityProgressUpdate update) {
@@ -109,6 +111,9 @@ public class ProgressValidationService {
                 .findByUuidAndCompanyId(validation.getActivityUuid(), requireCompany())
                 .orElseThrow(() -> new NotFoundException("Activity not found"));
 
+        // Post stock first; insufficient stock throws and rolls back the whole approve
+        activityMaterialIssueService.postDeclaredToStock(progress.getUuid());
+
         activity.setPercentComplete(progress.getPercentComplete());
         activityRepository.save(activity);
 
@@ -129,6 +134,7 @@ public class ProgressValidationService {
             throw new BadRequestException("reason is required");
         }
         ProgressValidation validation = requirePending(uuid);
+        activityMaterialIssueService.voidDeclared(validation.getProgressUpdateUuid());
         validation.setStatus(ProgressValidationStatus.REJECTED);
         validation.setDecidedBy(principal.getAccountId());
         validation.setDecidedAt(OffsetDateTime.now());
@@ -156,6 +162,7 @@ public class ProgressValidationService {
                 .decidedAt(v.getDecidedAt())
                 .reason(v.getReason())
                 .createdAt(v.getCreatedAt())
+                .materialIssues(activityMaterialIssueService.listForProgress(v.getProgressUpdateUuid()))
                 .build();
     }
 

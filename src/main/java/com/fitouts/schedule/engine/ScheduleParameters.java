@@ -30,6 +30,15 @@ public class ScheduleParameters {
     private Integer floorCount;
     private Integer baseFloorCount;
 
+    private Integer bedrooms;
+    private Integer baseBedrooms;
+
+    private Integer bathrooms;
+    private Integer baseBathrooms;
+
+    private Integer kitchens;
+    private Integer baseKitchens;
+
     /** Standard, premium, ultra-luxury. Higher specification means slower, more careful work. */
     private String finishLevel;
     private String baseFinishLevel;

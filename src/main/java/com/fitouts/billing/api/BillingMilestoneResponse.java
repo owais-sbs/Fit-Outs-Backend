@@ -22,6 +22,7 @@ public class BillingMilestoneResponse {
     private UUID linkedActivityUuid;
     private BillingStatus status;
     private BigDecimal percentCompleteRequired;
+    private String setupSource;
     private Long createdBy;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;

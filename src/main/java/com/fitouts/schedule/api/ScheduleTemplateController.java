@@ -91,4 +91,16 @@ public class ScheduleTemplateController extends BaseController {
             return failureResponse("Failed to reschedule", e.getMessage());
         }
     }
+
+    /** Copies the live programme into a new tenant template. */
+    @PostMapping("/api/projects/{projectId}/schedule/save-as-template")
+    public Object saveAsTemplate(@PathVariable Long projectId,
+                                 @RequestBody(required = false) SaveAsTemplateRequest request) {
+        try {
+            return successResponse(templateService.saveProjectAsTemplate(
+                    projectId, request != null ? request : new SaveAsTemplateRequest()));
+        } catch (Exception e) {
+            return failureResponse("Failed to save schedule as template", e.getMessage());
+        }
+    }
 }

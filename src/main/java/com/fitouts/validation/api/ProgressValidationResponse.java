@@ -1,8 +1,10 @@
 package com.fitouts.validation.api;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
+import com.fitouts.schedule.api.MaterialIssueResponse;
 import com.fitouts.validation.domain.ProgressValidationStatus;
 
 import lombok.Builder;
@@ -29,4 +31,5 @@ public class ProgressValidationResponse {
     private String reportedByName;
     private OffsetDateTime reportedAt;
     private String photoPaths;
+    private List<MaterialIssueResponse> materialIssues;
 }

@@ -2,6 +2,7 @@ package com.fitouts.schedule.api;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import lombok.Builder;
@@ -25,4 +26,6 @@ public class ProgressUpdateResponse {
     /** PENDING, APPROVED, REJECTED — from linked progress_validation */
     private String validationStatus;
     private String validationReason;
+
+    private List<MaterialIssueResponse> materialIssues;
 }

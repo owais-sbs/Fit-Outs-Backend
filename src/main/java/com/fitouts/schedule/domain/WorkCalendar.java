@@ -32,8 +32,8 @@ public class WorkCalendar {
     private String workingDays = "6,7,1,2,3,4";
 
     /**
-     * The summer midday break restricts when work can happen, not whether the day counts.
-     * Durations are unaffected; a productivity penalty would be a separate, explicit decision.
+     * When enabled, working days inside the summer window count as 5.5/8 of a normal day
+     * (midday removes 2.5h from an 8h day) for duration consumption in the CPM engine.
      */
     @Column(name = "summer_break_enabled", nullable = false)
     private boolean summerBreakEnabled = true;

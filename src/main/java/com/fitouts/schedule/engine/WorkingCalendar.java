@@ -2,6 +2,9 @@ package com.fitouts.schedule.engine;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.MonthDay;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashSet;
@@ -14,22 +17,37 @@ import java.util.Set;
  * only thing that knows what a working day is, so all date maths goes through here rather than
  * being reimplemented with {@code plusDays} at each call site.
  *
- * <p>UAE default is Saturday through Thursday. The summer midday break shortens the day; it does
- * not remove it, so it deliberately has no effect on the arithmetic.
+ * <p>UAE default is Saturday through Thursday. When summer midday break is enabled, each working
+ * day inside the summer window contributes {@code 5.5/8} of a normal day (midday removes 2.5h
+ * from an 8h day), so the same duration finishes later in summer than outside it.
  */
 public final class WorkingCalendar {
 
     private static final int MAX_SKIP_DAYS = 3650;
+    /** Midday removes 2.5h from an 8h day → 5.5 productive hours. */
+    public static final double SUMMER_DAY_FRACTION = 5.5 / 8.0;
+    private static final DateTimeFormatter MD = DateTimeFormatter.ofPattern("MM-dd");
 
     private final Set<DayOfWeek> workingDays;
     private final Set<LocalDate> holidays;
+    private final boolean summerBreakEnabled;
+    private final MonthDay summerBreakStart;
+    private final MonthDay summerBreakEnd;
 
     public WorkingCalendar(Set<DayOfWeek> workingDays, Set<LocalDate> holidays) {
+        this(workingDays, holidays, false, null, null);
+    }
+
+    public WorkingCalendar(Set<DayOfWeek> workingDays, Set<LocalDate> holidays,
+                           boolean summerBreakEnabled, String summerBreakStart, String summerBreakEnd) {
         if (workingDays == null || workingDays.isEmpty()) {
             throw new IllegalArgumentException("A calendar needs at least one working day");
         }
         this.workingDays = Collections.unmodifiableSet(EnumSet.copyOf(workingDays));
         this.holidays = Collections.unmodifiableSet(new HashSet<>(holidays == null ? Set.of() : holidays));
+        this.summerBreakEnabled = summerBreakEnabled;
+        this.summerBreakStart = parseMonthDay(summerBreakStart);
+        this.summerBreakEnd = parseMonthDay(summerBreakEnd);
     }
 
     /** UAE standard six-day week, Saturday to Thursday. */
@@ -75,6 +93,31 @@ public final class WorkingCalendar {
         return holidays;
     }
 
+    public boolean isSummerBreakEnabled() {
+        return summerBreakEnabled;
+    }
+
+    /**
+     * Productive fraction of a working day. Non-working days contribute 0; summer midday days
+     * contribute {@link #SUMMER_DAY_FRACTION}; otherwise 1.
+     */
+    public double dayCapacity(LocalDate date) {
+        if (!isWorkingDay(date)) return 0;
+        return inSummerWindow(date) ? SUMMER_DAY_FRACTION : 1.0;
+    }
+
+    public boolean inSummerWindow(LocalDate date) {
+        if (!summerBreakEnabled || summerBreakStart == null || summerBreakEnd == null || date == null) {
+            return false;
+        }
+        MonthDay md = MonthDay.from(date);
+        if (!summerBreakStart.isAfter(summerBreakEnd)) {
+            return !md.isBefore(summerBreakStart) && !md.isAfter(summerBreakEnd);
+        }
+        // Window wraps year-end (e.g. Nov–Feb).
+        return !md.isBefore(summerBreakStart) || !md.isAfter(summerBreakEnd);
+    }
+
     /** The given date if it works, otherwise the next working day after it. */
     public LocalDate nextWorkingDay(LocalDate date) {
         LocalDate cursor = date;
@@ -98,12 +141,19 @@ public final class WorkingCalendar {
     /**
      * The finish date of an activity that starts on {@code start} and runs for
      * {@code durationWorkingDays} working days, inclusive of both ends. A one-day activity
-     * starts and finishes on the same day.
+     * starts and finishes on the same day. Summer midday days consume less capacity, so the
+     * same duration spans more calendar working days.
      */
     public LocalDate finishOf(LocalDate start, int durationWorkingDays) {
-        LocalDate first = nextWorkingDay(start);
-        if (durationWorkingDays <= 1) return first;
-        return addWorkingDays(first, durationWorkingDays - 1);
+        if (durationWorkingDays <= 0) return nextWorkingDay(start);
+        LocalDate cursor = nextWorkingDay(start);
+        double remaining = durationWorkingDays - dayCapacity(cursor);
+        int guard = 0;
+        while (remaining > 1e-9 && guard++ < MAX_SKIP_DAYS) {
+            cursor = nextWorkingDay(cursor.plusDays(1));
+            remaining -= dayCapacity(cursor);
+        }
+        return cursor;
     }
 
     /**
@@ -111,19 +161,26 @@ public final class WorkingCalendar {
      * {@code durationWorkingDays} working days, inclusive.
      */
     public LocalDate startOf(LocalDate finish, int durationWorkingDays) {
-        LocalDate last = previousWorkingDay(finish);
-        if (durationWorkingDays <= 1) return last;
-        return subtractWorkingDays(last, durationWorkingDays - 1);
+        if (durationWorkingDays <= 0) return previousWorkingDay(finish);
+        LocalDate cursor = previousWorkingDay(finish);
+        double remaining = durationWorkingDays - dayCapacity(cursor);
+        int guard = 0;
+        while (remaining > 1e-9 && guard++ < MAX_SKIP_DAYS) {
+            cursor = previousWorkingDay(cursor.minusDays(1));
+            remaining -= dayCapacity(cursor);
+        }
+        return cursor;
     }
 
     /** Moves {@code days} working days forward from a date, skipping non-working days. */
     public LocalDate addWorkingDays(LocalDate from, int days) {
         if (days < 0) return subtractWorkingDays(from, -days);
         LocalDate cursor = nextWorkingDay(from);
-        int remaining = days;
-        while (remaining > 0) {
+        double remaining = days;
+        int guard = 0;
+        while (remaining > 1e-9 && guard++ < MAX_SKIP_DAYS) {
             cursor = nextWorkingDay(cursor.plusDays(1));
-            remaining--;
+            remaining -= dayCapacity(cursor);
         }
         return cursor;
     }
@@ -132,10 +189,11 @@ public final class WorkingCalendar {
     public LocalDate subtractWorkingDays(LocalDate from, int days) {
         if (days < 0) return addWorkingDays(from, -days);
         LocalDate cursor = previousWorkingDay(from);
-        int remaining = days;
-        while (remaining > 0) {
+        double remaining = days;
+        int guard = 0;
+        while (remaining > 1e-9 && guard++ < MAX_SKIP_DAYS) {
             cursor = previousWorkingDay(cursor.minusDays(1));
-            remaining--;
+            remaining -= dayCapacity(cursor);
         }
         return cursor;
     }
@@ -160,5 +218,14 @@ public final class WorkingCalendar {
         }
         int inclusive = workingDaysBetweenInclusive(early, late);
         return inclusive == 0 ? 0 : inclusive - 1;
+    }
+
+    private static MonthDay parseMonthDay(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return MonthDay.parse(value.trim(), MD);
+        } catch (DateTimeParseException ignored) {
+            return null;
+        }
     }
 }

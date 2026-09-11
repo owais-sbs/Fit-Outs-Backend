@@ -21,6 +21,9 @@ public class SchedulePreviewRequest {
     private Double areaSqft;
     private Integer roomCount;
     private Integer floorCount;
+    private Integer bedrooms;
+    private Integer bathrooms;
+    private Integer kitchens;
     private String finishLevel;
     private Integer crewCount;
     private Boolean occupiedBuilding;
