@@ -1,3 +1,4 @@
+-- Renumbered from V73 after merging main (main owns V73–V80 for subcontractor portal).
 -- V71 was repaired into flyway_schema_history without always executing DDL
 -- (DB already at 72). Hibernate then failed to add NOT NULL columns.
 -- Idempotent: fill nulls, then enforce constraints and create missing objects.

@@ -1,3 +1,4 @@
+-- Renumbered from V83 after merging main (main owns V73–V80 for subcontractor portal).
 -- Withdrawn is no longer a permit status. Reopen those cases so they can be worked again.
 -- Drop withdrawn rows that would collide with a live (or older withdrawn) duplicate.
 
