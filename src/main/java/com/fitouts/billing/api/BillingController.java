@@ -123,6 +123,15 @@ public class BillingController extends BaseController {
         }
     }
 
+    @PostMapping("/api/billing/payment-requests/{uuid}/accept")
+    public Object accept(@PathVariable UUID uuid) {
+        try {
+            return successResponse(billingService.acceptPaymentRequest(uuid));
+        } catch (Exception e) {
+            return failureResponse("Failed to accept payment request", e.getMessage());
+        }
+    }
+
     @PostMapping("/api/billing/payment-requests/{uuid}/reject")
     public Object reject(
             @PathVariable UUID uuid,
@@ -141,6 +150,15 @@ public class BillingController extends BaseController {
             return successResponse(billingService.markPaid(uuid));
         } catch (Exception e) {
             return failureResponse("Failed to mark payment request paid", e.getMessage());
+        }
+    }
+
+    @PostMapping("/api/billing/payment-requests/{uuid}/send-reminder")
+    public Object sendReminder(@PathVariable UUID uuid) {
+        try {
+            return successResponse(billingService.sendReminder(uuid));
+        } catch (Exception e) {
+            return failureResponse("Failed to send payment reminder", e.getMessage());
         }
     }
 

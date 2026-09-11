@@ -1,8 +1,10 @@
 package com.fitouts.drawing.api;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
 import org.springframework.core.io.Resource;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -26,20 +28,36 @@ public class ProjectDrawingController extends BaseController {
     public ResponseEntity<?> upload(
             @PathVariable Long projectId,
             @RequestParam("category") DrawingCategory category,
-            @RequestParam("file") MultipartFile file) {
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "drawingNumber", required = false) String drawingNumber,
+            @RequestParam(value = "revisionCode", required = false) String revisionCode,
+            @RequestParam(value = "revisionDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate revisionDate) {
         try {
-            return successResponse("Drawing uploaded", drawingService.upload(projectId, category, file));
+            return successResponse("Drawing uploaded", drawingService.upload(projectId, category, file, drawingNumber, revisionCode, revisionDate));
         } catch (Exception e) {
             return failureResponse("Failed to upload drawing", e.getMessage());
         }
     }
 
     @GetMapping
-    public ResponseEntity<?> list(@PathVariable Long projectId) {
+    public ResponseEntity<?> list(
+            @PathVariable Long projectId,
+            @RequestParam(value = "includeSuperseded", defaultValue = "false") boolean includeSuperseded) {
         try {
-            return successResponse(drawingService.listByProject(projectId));
+            return successResponse(drawingService.listByProject(projectId, includeSuperseded));
         } catch (Exception e) {
             return failureResponse("Failed to list drawings", e.getMessage());
+        }
+    }
+
+    @GetMapping("/revisions")
+    public ResponseEntity<?> history(
+            @PathVariable Long projectId,
+            @RequestParam("drawingNumber") String drawingNumber) {
+        try {
+            return successResponse(drawingService.getRevisionHistory(projectId, drawingNumber));
+        } catch (Exception e) {
+            return failureResponse("Failed to fetch drawing revision history", e.getMessage());
         }
     }
 

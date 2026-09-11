@@ -4,5 +4,8 @@ public enum SubcontractorClaimStatus {
     DRAFT,
     SUBMITTED,
     APPROVED,
-    REJECTED
+    REJECTED,
+    MEASURED,
+    CERTIFIED,
+    PAID
 }

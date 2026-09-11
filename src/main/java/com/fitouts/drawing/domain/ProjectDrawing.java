@@ -6,7 +6,7 @@ import java.util.UUID;
 import com.fitouts.project.domain.Project;
 import com.fitouts.shared.enums.DrawingCategory;
 import com.fitouts.shared.enums.DrawingStatus;
-
+import java.time.*;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -69,6 +69,44 @@ public class ProjectDrawing {
 
     @Column(name = "updated_by")
     private UUID updatedBy;
+    @Column(name = "drawing_number", length = 128)
+    private String drawingNumber;
+
+    @Column(name = "revision_no")
+    @Builder.Default
+    private Integer revisionNo = 1;
+
+    @Column(name = "revision_code", length = 32)
+    private String revisionCode;
+
+    @Column(name = "revision_date")
+    private LocalDate revisionDate;
+
+    @Column(name = "is_latest")
+    @Builder.Default
+    private Boolean isLatest = true;
+
+    @Column(name = "is_superseded")
+    @Builder.Default
+    private Boolean isSuperseded = false;
+
+    @Column(name = "superseded_at")
+    private LocalDateTime supersededAt;
+
+    @Column(name = "superseded_by_id")
+    private UUID supersededById;
+
+    public Integer getRevisionNo() {
+        return revisionNo != null ? revisionNo : 1;
+    }
+
+    public Boolean getIsLatest() {
+        return isLatest != null ? isLatest : true;
+    }
+
+    public Boolean getIsSuperseded() {
+        return isSuperseded != null ? isSuperseded : false;
+    }
 
     @PrePersist
     void onCreate() {

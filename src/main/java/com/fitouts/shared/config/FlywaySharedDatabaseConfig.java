@@ -4,6 +4,7 @@ import org.springframework.boot.autoconfigure.flyway.FlywayConfigurationCustomiz
 import org.springframework.boot.autoconfigure.flyway.FlywayMigrationStrategy;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.flywaydb.core.Flyway;
 
 @Configuration
 public class FlywaySharedDatabaseConfig {
@@ -22,9 +23,8 @@ public class FlywaySharedDatabaseConfig {
 
     @Bean
     public FlywayMigrationStrategy flywayMigrationStrategy() {
-        return flyway -> {
-            flyway.repair();
-            flyway.migrate();
-        };
+        return Flyway::migrate;
     }
-}
+    
+    }
+

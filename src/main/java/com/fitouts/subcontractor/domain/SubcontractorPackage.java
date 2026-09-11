@@ -35,6 +35,10 @@ public class SubcontractorPackage {
     @Column(name = "boq_section_code")
     private String boqSectionCode;
 
+    /** When set, this package maps to a single BOQ line for per-item subcontractor assignment. */
+    @Column(name = "boq_line_id")
+    private UUID boqLineId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private SubcontractorPackageStatus status = SubcontractorPackageStatus.OPEN;
@@ -61,6 +65,33 @@ public class SubcontractorPackage {
     /** Comma-separated activity codes covered by this package. */
     @Column(name = "activity_codes", columnDefinition = "text")
     private String activityCodes;
+
+    // --- Wave 6 tender fields ------------------------------------------------
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tender_status", length = 32)
+    private ScTenderStatus tenderStatus;
+
+    @Column(name = "tender_deadline")
+    private OffsetDateTime tenderDeadline;
+
+    @Column(name = "tender_issued_at")
+    private OffsetDateTime tenderIssuedAt;
+
+    @Column(name = "quote_validity_days")
+    private Integer quoteValidityDays;
+
+    @Column(name = "payment_terms", length = 128)
+    private String paymentTerms;
+
+    @Column(name = "retention_pct", precision = 5, scale = 2)
+    private java.math.BigDecimal retentionPct;
+
+    @Column(name = "site_visit_at")
+    private OffsetDateTime siteVisitAt;
+
+    @Column(name = "tender_description", columnDefinition = "TEXT")
+    private String tenderDescription;
 
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;

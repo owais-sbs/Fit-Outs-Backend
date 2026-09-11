@@ -45,12 +45,15 @@ public class PaymentRequest {
 
     @Column(name = "requested_by")
     private Long requestedBy;
+    
 
     @Column(name = "decided_by")
     private Long decidedBy;
 
     @Column(name = "decided_at")
     private OffsetDateTime decidedAt;
+    @Column(name = "reminder_sent_at")
+    private OffsetDateTime reminderSentAt;
 
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
