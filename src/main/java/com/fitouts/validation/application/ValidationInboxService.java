@@ -27,6 +27,9 @@ import com.fitouts.shared.context.CompanyContext;
 import com.fitouts.shared.error.BadRequestException;
 import com.fitouts.shared.error.ForbiddenException;
 import com.fitouts.subcontractor.api.SubcontractorClaimResponse;
+import com.fitouts.subcontractor.api.ScInvoiceResponse;
+import com.fitouts.subcontractor.api.ScVariationResponse;
+import com.fitouts.subcontractor.application.SubcontractorPortalService;
 import com.fitouts.subcontractor.domain.SubcontractorClaim;
 import com.fitouts.subcontractor.domain.SubcontractorClaimRepository;
 import com.fitouts.subcontractor.domain.SubcontractorClaimStatus;
@@ -51,6 +54,7 @@ public class ValidationInboxService {
     private final ScheduleActivityRepository activityRepository;
     private final ProjectService projectService;
     private final AccountRepository accountRepository;
+    private final SubcontractorPortalService portalService;
 
     @Transactional(readOnly = true)
     public ValidationInboxResponse inbox() {
@@ -97,11 +101,18 @@ public class ValidationInboxService {
                 .map(c -> toClaimResponse(c, projects, packages, accounts))
                 .toList();
 
+        List<ScVariationResponse> variationItems = portalService.pendingVariationsForInbox();
+        List<ScInvoiceResponse> invoiceItems = portalService.pendingInvoicesForInbox();
+
         return ValidationInboxResponse.builder()
                 .progressItems(progressItems)
                 .claimItems(claimItems)
+                .variationItems(variationItems)
+                .invoiceItems(invoiceItems)
                 .pendingProgressCount(progressItems.size())
                 .pendingClaimCount(claimItems.size())
+                .pendingVariationCount(variationItems.size())
+                .pendingInvoiceCount(invoiceItems.size())
                 .build();
     }
 

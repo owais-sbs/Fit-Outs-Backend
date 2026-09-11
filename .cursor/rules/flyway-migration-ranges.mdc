@@ -1,0 +1,24 @@
+---
+description: Flyway version ranges per developer — never collide migration numbers
+globs: **/db/migration/**
+alwaysApply: false
+---
+
+# Flyway migration version ranges
+
+When creating a new `V*__*.sql` under `src/main/resources/db/migration/`:
+
+| Developer | Allowed versions |
+|-----------|------------------|
+| Abdul Moid | 100–349 |
+| Nameera | 350–599 |
+| Humaid | 600–849 |
+| Abdul Mannan | 850–1099 |
+
+## Rules
+
+- Use the next free integer **inside your own range** (scan existing files in `db/migration/` first).
+- Never use V1–V99 for new work (reserved / already used history on `main`).
+- Never edit a migration after it is on `main`; add a new migration instead.
+- Ask which developer you are if unclear; do not guess another person's range.
+- Example: Abdul Moid's next migration after `V100__foo.sql` is `V101__bar.sql`.

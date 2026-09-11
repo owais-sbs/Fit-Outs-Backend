@@ -1,11 +1,17 @@
 package com.fitouts.billing.application;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -50,6 +56,7 @@ public class BillingService {
     private final ScheduleActivityRepository activityRepository;
     private final BillingPaymentEmailService billingPaymentEmailService;
     private final AccountRepository accountRepository;
+    private final Set<UUID> activeReminderProcessing = ConcurrentHashMap.newKeySet();
 
     @Transactional(readOnly = true)
     public List<BillingMilestoneResponse> listMilestones(Long projectId) {
@@ -253,8 +260,19 @@ public class BillingService {
             paymentRequestRepository.save(pr);
             milestoneRepository.save(milestone);
             recordEvent(pr, "APPROVED", "DIRECTOR", principal.getAccountId(), comments);
-            BillingPaymentEmailService.SendResult email =
-                    billingPaymentEmailService.notifyClient(project, milestone, pr);
+
+            boolean alreadyNotifiedForProject = paymentRequestRepository
+                    .findByCompanyIdAndStatusInOrderByCreatedAtDesc(
+                            pr.getCompanyId(),
+                            EnumSet.of(BillingStatus.ISSUED, BillingStatus.CLIENT_ACCEPTED, BillingStatus.PAID))
+                    .stream()
+                    .anyMatch(otherPr -> !otherPr.getUuid().equals(pr.getUuid()) && otherPr.getProjectId().equals(pr.getProjectId()));
+
+            BillingPaymentEmailService.SendResult email = BillingPaymentEmailService.SendResult.skipped();
+            if (!alreadyNotifiedForProject) {
+                email = billingPaymentEmailService.notifyClient(project, milestone, pr);
+            }
+
             pr.setDecidedBy(principal.getAccountId());
             pr.setDecidedAt(OffsetDateTime.now());
             return toPaymentResponse(
@@ -262,8 +280,16 @@ public class BillingService {
                     milestone,
                     email.sent(),
                     email.clientEmail());
+        } else if (pr.getStatus() == BillingStatus.ISSUED) {
+            pr.setStatus(BillingStatus.CLIENT_ACCEPTED);
+            milestone.setStatus(BillingStatus.CLIENT_ACCEPTED);
+            recordEvent(pr, "APPROVED", "CLIENT", principal.getAccountId(), comments);
+        } else if (pr.getStatus() == BillingStatus.CLIENT_ACCEPTED) {
+            recordEvent(pr, "APPROVED", "CLIENT", principal.getAccountId(), comments);
+        } else if (pr.getStatus() == BillingStatus.PAID) {
+            return toPaymentResponse(pr, milestone);
         } else {
-            throw new BadRequestException("Payment request is not awaiting approval");
+            throw new BadRequestException("Payment request is not in a valid state for approval: " + pr.getStatus());
         }
 
         pr.setDecidedBy(principal.getAccountId());
@@ -274,20 +300,61 @@ public class BillingService {
     }
 
     @Transactional
+    public PaymentRequestResponse acceptPaymentRequest(UUID paymentRequestUuid) {
+        AuthPrincipal principal = requireAuthenticated();
+        PaymentRequest pr = requirePayment(paymentRequestUuid);
+        BillingMilestone milestone = requireMilestoneByUuid(pr.getMilestoneUuid());
+        Project project = requireProject(milestone.getProjectId());
+
+        // Client acceptance is a one-time transition.
+        // Only ISSUED proposals can be accepted.
+        if (pr.getStatus() != BillingStatus.ISSUED) {
+            throw new BadRequestException(
+                    "Only ISSUED payment requests can be accepted by client"
+            );
+        }
+
+        // Client acceptance:
+        // ISSUED -> CLIENT_ACCEPTED
+        pr.setStatus(BillingStatus.CLIENT_ACCEPTED);
+        milestone.setStatus(BillingStatus.CLIENT_ACCEPTED);
+
+        pr.setDecidedBy(principal.getAccountId());
+        pr.setDecidedAt(OffsetDateTime.now());
+
+        recordEvent(
+                pr,
+                "APPROVED",
+                "CLIENT",
+                principal.getAccountId(),
+                null
+        );
+
+        paymentRequestRepository.save(pr);
+        milestoneRepository.save(milestone);
+
+        return toPaymentResponse(pr, milestone);
+    }
+
+    @Transactional
     public PaymentRequestResponse reject(UUID paymentRequestUuid, PaymentRejectRequest request) {
         AuthPrincipal principal = requireAuthenticated();
         if (request == null || !StringUtils.hasText(request.getReason())) {
             throw new BadRequestException("reason is required");
         }
         PaymentRequest pr = requirePayment(paymentRequestUuid);
+        String rejectStep = "CLIENT";
         if (pr.getStatus() == BillingStatus.PENDING_PM) {
             requireProjectManagerRole(principal);
+            rejectStep = "PM";
         } else if (pr.getStatus() == BillingStatus.PENDING_DIRECTOR) {
             requireDirectorRole(principal);
+            rejectStep = "DIRECTOR";
+        } else if (pr.getStatus() == BillingStatus.ISSUED) {
+            rejectStep = "CLIENT";
         } else {
             throw new BadRequestException("Only pending payment requests can be rejected");
         }
-        String rejectStep = pr.getStatus() == BillingStatus.PENDING_PM ? "PM" : "DIRECTOR";
         pr.setStatus(BillingStatus.DRAFT);
         pr.setNotes(appendReason(pr.getNotes(), request.getReason().trim()));
         pr.setDecidedBy(principal.getAccountId());
@@ -304,8 +371,8 @@ public class BillingService {
     public PaymentRequestResponse markPaid(UUID paymentRequestUuid) {
         AuthPrincipal principal = requireFinanceOrAdmin();
         PaymentRequest pr = requirePayment(paymentRequestUuid);
-        if (pr.getStatus() != BillingStatus.ISSUED && pr.getStatus() != BillingStatus.PART_PAID) {
-            throw new BadRequestException("Only ISSUED or PART_PAID payment requests can be marked paid");
+        if (pr.getStatus() != BillingStatus.CLIENT_ACCEPTED && pr.getStatus() != BillingStatus.PART_PAID) {
+            throw new BadRequestException("Only CLIENT_ACCEPTED or PART_PAID payment requests can be marked paid");
         }
         pr.setStatus(BillingStatus.PAID);
         pr.setDecidedBy(principal.getAccountId());
@@ -314,8 +381,104 @@ public class BillingService {
         milestone.setStatus(BillingStatus.PAID);
         milestoneRepository.save(milestone);
         PaymentRequest saved = paymentRequestRepository.save(pr);
-        recordEvent(saved, "APPROVED", "CLIENT", principal.getAccountId(), "Marked paid");
+        recordEvent(saved, "PAID", "FINANCE", principal.getAccountId(), "Marked paid");
         return toPaymentResponse(saved, milestone);
+    }
+
+    @Transactional
+    public PaymentRequestResponse sendReminder(UUID paymentRequestUuid) {
+        AuthPrincipal principal = requireStaff();
+        PaymentRequest pr = requirePayment(paymentRequestUuid);
+
+        if (pr.getReminderSentAt() != null) {
+            throw new BadRequestException("Payment reminder email has already been sent for this payment request.");
+        }
+
+        if (pr.getStatus() != BillingStatus.CLIENT_ACCEPTED) {
+            throw new BadRequestException("Payment reminder can only be sent for CLIENT_ACCEPTED payment requests.");
+        }
+
+        BillingMilestone milestone = requireMilestoneByUuid(pr.getMilestoneUuid());
+        if (milestone.getStatus() != BillingStatus.CLIENT_ACCEPTED) {
+            throw new BadRequestException("Payment milestone is not in CLIENT_ACCEPTED state.");
+        }
+
+        if (milestone.getDueDate() == null) {
+            throw new BadRequestException("Payment milestone has no due date.");
+        }
+
+        LocalDate reminderDate = milestone.getDueDate().minusDays(3);
+        if (!LocalDate.now().equals(reminderDate)) {
+            throw new BadRequestException("Payment request is not yet eligible for a reminder email.");
+        }
+
+        Project project = requireProject(milestone.getProjectId());
+
+        BillingPaymentEmailService.SendResult emailResult =
+                billingPaymentEmailService.notifyClient(project, milestone, pr);
+
+        if (!emailResult.sent()) {
+            throw new BadRequestException("Failed to send reminder email to client: " + (emailResult.clientEmail() != null ? emailResult.clientEmail() : "No email address found"));
+        }
+
+        pr.setReminderSentAt(OffsetDateTime.now());
+        paymentRequestRepository.save(pr);
+        recordEvent(pr, "REMINDER_SENT", "FINANCE", principal.getAccountId(), "Sent 3-day payment reminder email to client once.");
+
+        return toPaymentResponse(pr, milestone, emailResult.sent(), emailResult.clientEmail());
+    }
+
+    @Scheduled(cron = "0 0 9 * * *")
+    public void processAutomated3DayPaymentReminders() {
+        List<PaymentRequest> eligibleRequests = paymentRequestRepository
+                .findByStatusAndReminderSentAtIsNull(BillingStatus.CLIENT_ACCEPTED);
+
+        for (PaymentRequest pr : eligibleRequests) {
+            if (activeReminderProcessing.add(pr.getUuid())) {
+                try {
+                    processSinglePaymentReminder(pr.getUuid());
+                } catch (Exception ignored) {
+                } finally {
+                    activeReminderProcessing.remove(pr.getUuid());
+                }
+            }
+        }
+    }
+
+    @Transactional
+    public boolean processSinglePaymentReminder(UUID paymentRequestUuid) {
+        PaymentRequest pr = paymentRequestRepository.findById(paymentRequestUuid).orElse(null);
+        if (pr == null || pr.getReminderSentAt() != null || pr.getStatus() != BillingStatus.CLIENT_ACCEPTED) {
+            return false;
+        }
+
+        BillingMilestone milestone = milestoneRepository
+                .findByUuidAndCompanyId(pr.getMilestoneUuid(), pr.getCompanyId())
+                .orElse(null);
+
+        if (milestone == null || milestone.getDueDate() == null || milestone.getStatus() != BillingStatus.CLIENT_ACCEPTED) {
+            return false;
+        }
+
+        LocalDate reminderDate = milestone.getDueDate().minusDays(3);
+        if (!LocalDate.now().equals(reminderDate)) {
+            return false;
+        }
+
+        Project project = projectService.getById(milestone.getProjectId());
+        if (project == null) {
+            return false;
+        }
+
+        BillingPaymentEmailService.SendResult result = billingPaymentEmailService.notifyClient(project, milestone, pr);
+
+        if (result.sent()) {
+            pr.setReminderSentAt(OffsetDateTime.now());
+            paymentRequestRepository.save(pr);
+            recordEvent(pr, "REMINDER_SENT", "SYSTEM", null, "Automated 3-day payment reminder email sent once.");
+            return true;
+        }
+        return false;
     }
 
     @Transactional(readOnly = true)

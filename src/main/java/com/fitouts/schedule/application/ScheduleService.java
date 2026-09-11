@@ -61,6 +61,10 @@ import com.fitouts.shared.context.CompanyContext;
 import com.fitouts.shared.error.BadRequestException;
 import com.fitouts.shared.error.ForbiddenException;
 import com.fitouts.shared.error.NotFoundException;
+import com.fitouts.subcontractor.application.ScPortalAccessService;
+import com.fitouts.subcontractor.domain.SubcontractorPackage;
+import com.fitouts.subcontractor.domain.SubcontractorPackageRepository;
+import com.fitouts.subcontractor.domain.SubcontractorPackageStatus;
 import com.fitouts.validation.application.ProgressValidationService;
 import com.fitouts.validation.domain.ProgressValidation;
 import com.fitouts.validation.domain.ProgressValidationRepository;
@@ -86,6 +90,8 @@ public class ScheduleService {
     private final RoomTaskRepository roomTaskRepository;
     private final AccountRepository accountRepository;
     private final FileStorageService fileStorageService;
+    private final SubcontractorPackageRepository subcontractorPackageRepository;
+    private final ScPortalAccessService portalAccessService;
 
     @Transactional(readOnly = true)
     public ProjectScheduleResponse getSchedule(Long projectId) {
@@ -441,6 +447,11 @@ public class ScheduleService {
         update.setPercentComplete(pct);
         update.setNotes(request.getNotes());
         update.setLabourHours(request.getLabourHours());
+        if (StringUtils.hasText(request.getDelayReason())) {
+            update.setDelayReason(request.getDelayReason().trim());
+            activity.setDelayReason(request.getDelayReason().trim());
+            activityRepository.save(activity);
+        }
         update.setReportedBy(principal.getAccountId());
         update = progressRepository.save(update);
 
@@ -506,13 +517,82 @@ public class ScheduleService {
     public List<ScheduleActivityResponse> myActivities() {
         AuthPrincipal principal = requireAuthenticated();
         UUID companyId = CompanyContext.get();
-        List<ScheduleActivity> activities = activityRepository
+        Set<UUID> seen = new HashSet<>();
+        List<ScheduleActivity> activities = new ArrayList<>();
+
+        activityRepository
                 .findByAssigneeAccountIdAndCompanyIdOrderByStartDateAsc(principal.getAccountId(), companyId)
                 .stream()
                 .filter(a -> a.getPublishStatus() == SchedulePublishStatus.PUBLISHED)
-                .toList();
+                .forEach(a -> {
+                    activities.add(a);
+                    seen.add(a.getUuid());
+                });
+
+        if (isSubcontractor(principal)) {
+            List<SubcontractorPackage> packages = subcontractorPackageRepository
+                    .findByAppointedAccountIdAndCompanyIdOrderByCreatedAtDesc(principal.getAccountId(), companyId)
+                    .stream()
+                    .filter(p -> p.getStatus() != SubcontractorPackageStatus.OPEN)
+                    .toList();
+
+            Map<Long, List<SubcontractorPackage>> byProject = new LinkedHashMap<>();
+            for (SubcontractorPackage pkg : packages) {
+                byProject.computeIfAbsent(pkg.getProjectId(), k -> new ArrayList<>()).add(pkg);
+            }
+
+            for (Map.Entry<Long, List<SubcontractorPackage>> entry : byProject.entrySet()) {
+                List<ScheduleActivity> projectActs = activityRepository
+                        .findByProjectIdAndCompanyIdOrderBySortOrderAscStartDateAsc(entry.getKey(), companyId);
+                for (ScheduleActivity activity : projectActs) {
+                    if (activity.getPublishStatus() != SchedulePublishStatus.PUBLISHED || seen.contains(activity.getUuid())) {
+                        continue;
+                    }
+                    if (matchesSubcontractorActivity(activity, entry.getValue(), principal.getAccountId())) {
+                        activities.add(activity);
+                        seen.add(activity.getUuid());
+                    }
+                }
+            }
+        }
+
+        activities.sort((a, b) -> {
+            if (a.getStartDate() == null && b.getStartDate() == null) return 0;
+            if (a.getStartDate() == null) return 1;
+            if (b.getStartDate() == null) return -1;
+            return a.getStartDate().compareTo(b.getStartDate());
+        });
+
         ActivityEnrichment enrichment = buildEnrichment(activities);
         return activities.stream().map(a -> toActivity(a, enrichment)).toList();
+    }
+
+    private boolean matchesSubcontractorActivity(
+            ScheduleActivity activity,
+            List<SubcontractorPackage> packages,
+            Long accountId) {
+        if (activity.getAssigneeAccountId() != null && activity.getAssigneeAccountId().equals(accountId)) {
+            return true;
+        }
+        String actName = activity.getName() != null ? activity.getName().trim().toLowerCase() : "";
+        for (SubcontractorPackage pkg : packages) {
+            String pkgName = pkg.getName() != null ? pkg.getName().trim().toLowerCase() : "";
+            if (!pkgName.isEmpty()
+                    && (actName.equals(pkgName) || actName.contains(pkgName) || pkgName.contains(actName))) {
+                return true;
+            }
+            if (StringUtils.hasText(pkg.getBoqSectionCode())) {
+                String section = pkg.getBoqSectionCode().trim().toLowerCase();
+                if (actName.contains(section)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean isSubcontractor(AuthPrincipal principal) {
+        return principal.getRoles() != null && principal.getRoles().contains(Role.SUBCONTRACTOR);
     }
 
     private void validateAndApplyRoomLinks(ScheduleActivity activity, ScheduleActivityRequest request, Long projectId) {
@@ -649,17 +729,34 @@ public class ScheduleService {
     }
 
     private void assertCanReportProgress(AuthPrincipal principal, ScheduleActivity activity) {
-        if (isPmOrAdmin(principal)) return;
+        if (isPmOrAdmin(principal)) {
+            return;
+        }
+        if (isSubcontractor(principal)) {
+            portalAccessService.requireExecutionAccess(principal);
+        }
         if (activity.getAssigneeAccountId() != null
                 && activity.getAssigneeAccountId().equals(principal.getAccountId())) {
             return;
         }
-        if (principal.getRoles() != null && principal.getRoles().contains(Role.SUBCONTRACTOR)
-                && activity.getAssigneeAccountId() != null
-                && activity.getAssigneeAccountId().equals(principal.getAccountId())) {
+        if (isSubcontractor(principal) && canSubcontractorReportOnActivity(principal, activity)) {
             return;
         }
         throw new ForbiddenException("Only the assignee or PM/Admin can post progress");
+    }
+
+    private boolean canSubcontractorReportOnActivity(AuthPrincipal principal, ScheduleActivity activity) {
+        UUID companyId = CompanyContext.get();
+        if (companyId == null) {
+            return false;
+        }
+        List<SubcontractorPackage> packages = subcontractorPackageRepository
+                .findByAppointedAccountIdAndCompanyIdOrderByCreatedAtDesc(principal.getAccountId(), companyId)
+                .stream()
+                .filter(p -> p.getProjectId().equals(activity.getProjectId()))
+                .filter(p -> p.getStatus() != SubcontractorPackageStatus.OPEN)
+                .toList();
+        return matchesSubcontractorActivity(activity, packages, principal.getAccountId());
     }
 
     private AuthPrincipal requireAuthenticated() {
@@ -787,6 +884,7 @@ public class ScheduleService {
                 .percentComplete(u.getPercentComplete())
                 .notes(u.getNotes())
                 .labourHours(u.getLabourHours())
+                .delayReason(u.getDelayReason())
                 .reportedBy(u.getReportedBy())
                 .reportedAt(u.getReportedAt())
                 .photoPaths(u.getPhotoPaths());

@@ -1,5 +1,7 @@
 package com.fitouts.drawing.application;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -9,6 +11,7 @@ import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.fitouts.drawing.api.ProjectDrawingResponse;
@@ -37,6 +40,16 @@ public class ProjectDrawingService {
     private final ProjectDocumentService projectDocumentService;
 
     public ProjectDrawingResponse upload(Long projectId, DrawingCategory category, MultipartFile file) {
+        return upload(projectId, category, file, null, null, null);
+    }
+
+    public ProjectDrawingResponse upload(
+            Long projectId,
+            DrawingCategory category,
+            MultipartFile file,
+            String drawingNumber,
+            String revisionCode,
+            LocalDate revisionDate) {
         UUID companyId = CompanyContext.get();
         Project project = projectService.getById(projectId);
 
@@ -51,6 +64,19 @@ public class ProjectDrawingService {
             throw new BadRequestException("Only PDF and DWG files are supported");
         }
 
+        String trimmedNumber = StringUtils.hasText(drawingNumber) ? drawingNumber.trim() : null;
+        int revisionNo = 1;
+        ProjectDrawing previousLatest = null;
+
+        if (trimmedNumber != null) {
+            List<ProjectDrawing> existingDrawings = drawingRepository
+                    .findByProjectIdAndDrawingNumberAndDeletedFalseOrderByRevisionNoDesc(projectId, trimmedNumber);
+            if (!existingDrawings.isEmpty()) {
+                previousLatest = existingDrawings.get(0);
+                revisionNo = previousLatest.getRevisionNo() + 1;
+            }
+        }
+
         String storedPath = fileStorageService.store(file, companyId, projectId, "drawings");
         ProjectDrawing drawing = ProjectDrawing.builder()
                 .project(project)
@@ -61,32 +87,50 @@ public class ProjectDrawingService {
                 .mimeType(file.getContentType())
                 .fileSize(file.getSize())
                 .status(DrawingStatus.UPLOADED)
+                .drawingNumber(trimmedNumber)
+                .revisionNo(revisionNo)
+                .revisionCode(revisionCode)
+                .revisionDate(revisionDate)
+                .isLatest(true)
+                .isSuperseded(false)
                 .build();
 
+        ProjectDrawing saved;
         if (isPdf) {
             drawing.setPreviewPdfPath(storedPath);
             drawing.setStatus(DrawingStatus.READY);
-            ProjectDrawing saved = drawingRepository.save(drawing);
+            saved = drawingRepository.save(drawing);
             projectDocumentService.registerFromDrawing(saved);
-            return mapToResponse(saved);
+        } else {
+            drawing.setStatus(DrawingStatus.CONVERTING);
+            ProjectDrawing initialSaved = drawingRepository.save(drawing);
+            String previewPath = dwgConversionService.convertToPreview(storedPath);
+            if (previewPath != null) {
+                initialSaved.setPreviewPdfPath(previewPath);
+                initialSaved.setStatus(DrawingStatus.READY);
+            } else {
+                initialSaved.setStatus(DrawingStatus.FAILED);
+            }
+            saved = drawingRepository.save(initialSaved);
+            projectDocumentService.registerFromDrawing(saved);
         }
 
-        drawing.setStatus(DrawingStatus.CONVERTING);
-        ProjectDrawing saved = drawingRepository.save(drawing);
-        String previewPath = dwgConversionService.convertToPreview(storedPath);
-        if (previewPath != null) {
-            saved.setPreviewPdfPath(previewPath);
-            saved.setStatus(DrawingStatus.READY);
-        } else {
-            saved.setStatus(DrawingStatus.FAILED);
+        if (previousLatest != null) {
+            previousLatest.setIsLatest(false);
+            previousLatest.setIsSuperseded(true);
+            previousLatest.setSupersededAt(LocalDateTime.now());
+            previousLatest.setSupersededById(saved.getId());
+            drawingRepository.save(previousLatest);
         }
-        ProjectDrawing finalDrawing = drawingRepository.save(saved);
-        projectDocumentService.registerFromDrawing(finalDrawing);
-        return mapToResponse(finalDrawing);
+
+        return mapToResponse(saved);
     }
 
     public ProjectDrawingResponse reconvert(UUID id) {
         ProjectDrawing drawing = find(id);
+        if (Boolean.TRUE.equals(drawing.getIsSuperseded())) {
+            throw new BadRequestException("Cannot reconvert superseded drawing revision");
+        }
         String originalPath = drawing.getOriginalPath();
         if (originalPath == null || !originalPath.toLowerCase(Locale.ROOT).endsWith(".dwg")) {
             throw new BadRequestException("Only DWG drawings can be reconverted");
@@ -110,8 +154,34 @@ public class ProjectDrawingService {
 
     @Transactional(readOnly = true)
     public List<ProjectDrawingResponse> listByProject(Long projectId) {
-        return drawingRepository.findByProjectIdAndDeletedFalseOrderByCreatedAtDesc(projectId)
-                .stream().map(this::mapToResponse).collect(Collectors.toList());
+        return listByProject(projectId, false);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProjectDrawingResponse> listByProject(Long projectId, boolean includeSuperseded) {
+        List<ProjectDrawing> allDrawings = drawingRepository
+                .findByProjectIdAndDeletedFalseOrderByCreatedAtDesc(projectId);
+
+        if (includeSuperseded) {
+            return allDrawings.stream().map(this::mapToResponse).collect(Collectors.toList());
+        }
+
+        return allDrawings.stream()
+                .filter(d -> !Boolean.TRUE.equals(d.getIsSuperseded()))
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProjectDrawingResponse> getRevisionHistory(Long projectId, String drawingNumber) {
+        if (!StringUtils.hasText(drawingNumber)) {
+            throw new BadRequestException("Drawing number required");
+        }
+        return drawingRepository
+                .findByProjectIdAndDrawingNumberAndDeletedFalseOrderByRevisionNoDesc(projectId, drawingNumber.trim())
+                .stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
@@ -122,6 +192,9 @@ public class ProjectDrawingService {
     @Transactional(readOnly = true)
     public Resource getPreviewResource(UUID id) {
         ProjectDrawing drawing = find(id);
+        if (Boolean.TRUE.equals(drawing.getIsSuperseded())) {
+            throw new BadRequestException("Cannot preview superseded drawing revision");
+        }
         String path = drawing.getPreviewPdfPath();
         if (path == null || path.isBlank()) {
             throw new BadRequestException("Preview not available for this drawing");
@@ -131,7 +204,11 @@ public class ProjectDrawingService {
 
     @Transactional(readOnly = true)
     public MediaType getPreviewMediaType(UUID id) {
-        String path = find(id).getPreviewPdfPath();
+        ProjectDrawing drawing = find(id);
+        if (Boolean.TRUE.equals(drawing.getIsSuperseded())) {
+            throw new BadRequestException("Cannot preview superseded drawing revision");
+        }
+        String path = drawing.getPreviewPdfPath();
         if (path == null) {
             return MediaType.APPLICATION_OCTET_STREAM;
         }
@@ -172,6 +249,14 @@ public class ProjectDrawingService {
                 .fileSize(d.getFileSize())
                 .status(d.getStatus())
                 .previewAvailable(d.getPreviewPdfPath() != null && !d.getPreviewPdfPath().isBlank())
+                .drawingNumber(d.getDrawingNumber())
+                .revisionNo(d.getRevisionNo())
+                .revisionCode(d.getRevisionCode())
+                .revisionDate(d.getRevisionDate())
+                .isLatest(d.getIsLatest())
+                .isSuperseded(d.getIsSuperseded())
+                .supersededAt(d.getSupersededAt())
+                .supersededById(d.getSupersededById())
                 .createdAt(d.getCreatedAt())
                 .updatedAt(d.getUpdatedAt())
                 .build();

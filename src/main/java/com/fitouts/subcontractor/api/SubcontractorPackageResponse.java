@@ -16,6 +16,11 @@ public class SubcontractorPackageResponse {
     private UUID companyId;
     private String name;
     private String boqSectionCode;
+    private UUID boqLineId;
+    private String boqLineDescription;
+    private String boqLineUnit;
+    private String boqRoomLabel;
+    private String boqFloorLabel;
     private SubcontractorPackageStatus status;
     private Long appointedAccountId;
     private String appointedCompanyName;
@@ -34,4 +39,13 @@ public class SubcontractorPackageResponse {
     private String projectStatus;
     private String projectType;
     private String assignedManager;
+
+    private String tenderStatus;
+    private OffsetDateTime tenderDeadline;
+    private OffsetDateTime tenderIssuedAt;
+    private Integer quoteValidityDays;
+    private String paymentTerms;
+    private java.math.BigDecimal retentionPct;
+    private OffsetDateTime siteVisitAt;
+    private String tenderDescription;
 }

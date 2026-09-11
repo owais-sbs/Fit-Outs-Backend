@@ -15,4 +15,6 @@ public class SubcontractorProjectSummary {
     private Integer progress;
     private int packageCount;
     private int activePackageCount;
+    /** Packages awaiting subcontractor acceptance (APPOINTED). */
+    private int pendingAcceptanceCount;
 }

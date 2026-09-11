@@ -247,6 +247,27 @@ public class AccountService {
     }
 
     /**
+     * Creates or updates a subcontractor login with a known password (manual onboarding — no invite email).
+     */
+    @Transactional
+    public ClientAccountConversionResult createOrUpdateSubcontractorAccountWithPassword(
+            String fullName,
+            String email,
+            String phone,
+            String companyName,
+            String rawPassword) {
+        if (rawPassword == null || rawPassword.isBlank()) {
+            throw new BadRequestException("Password is required");
+        }
+        ClientAccountConversionResult result = createOrUpdateSubcontractorAccount(
+                fullName, email, phone, companyName);
+        Account account = getAccount(result.clientAccountId());
+        account.setPassword(passwordEncoder.encode(rawPassword.trim()));
+        repository.save(account);
+        return new ClientAccountConversionResult(result.clientAccountCreated(), account.getId(), account.getEmail(), null);
+    }
+
+    /**
      * Ensures an existing account can be appointed as a subcontractor (adds role if missing).
      */
     @Transactional

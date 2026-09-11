@@ -42,15 +42,15 @@ public class BillingPaymentEmailService {
     private String publicUrl;
 
     public record SendResult(boolean sent, String clientEmail) {
-        static SendResult skipped() {
+      public  static SendResult skipped() {
             return new SendResult(false, null);
         }
 
-        static SendResult failed(String email) {
+       public static SendResult failed(String email) {
             return new SendResult(false, email);
         }
 
-        static SendResult ok(String email) {
+       public static SendResult ok(String email) {
             return new SendResult(true, email);
         }
     }

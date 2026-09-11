@@ -11,6 +11,8 @@ import com.fitouts.projectdoc.domain.ProjectDocumentRepository;
 import com.fitouts.shared.context.CompanyContext;
 import com.fitouts.shared.error.ForbiddenException;
 import com.fitouts.shared.security.PortalAccessHelper;
+import com.fitouts.subcontractor.domain.ScPortalUser;
+import com.fitouts.subcontractor.domain.ScPortalUserRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -25,15 +27,22 @@ public class FileAccessService {
 
     private final PortalAccessHelper portalAccessHelper;
     private final ProjectDocumentRepository documentRepository;
+    private final ScPortalUserRepository portalUserRepository;
 
     public void assertCanDownload(String relativePath) {
         AuthPrincipal principal = portalAccessHelper.requirePrincipal();
+        String path = normalize(relativePath);
+
+        if (path.startsWith("sc-signatures/")) {
+            assertCanDownloadSignature(path, principal);
+            return;
+        }
+
         UUID companyId = CompanyContext.get();
         if (companyId == null) {
             throw new ForbiddenException("Company context required");
         }
 
-        String path = normalize(relativePath);
         String companyPrefix = companyId + "/";
         if (!path.startsWith(companyPrefix)) {
             throw new ForbiddenException("Access denied");
@@ -55,6 +64,33 @@ public class FileAccessService {
         if (doc == null || !doc.isPublishedToClient()) {
             throw new ForbiddenException("This document is not shared with you");
         }
+    }
+
+    private void assertCanDownloadSignature(String path, AuthPrincipal principal) {
+        String[] parts = path.split("/");
+        if (parts.length < 2) {
+            throw new ForbiddenException("Invalid signature file path");
+        }
+        UUID targetPortalUserUuid;
+        try {
+            targetPortalUserUuid = UUID.fromString(parts[1]);
+        } catch (IllegalArgumentException e) {
+            throw new ForbiddenException("Invalid signature file path");
+        }
+
+        ScPortalUser targetPortalUser = portalUserRepository.findById(targetPortalUserUuid)
+                .orElseThrow(() -> new ForbiddenException("Signature not found"));
+
+        if (principal.getAccountId() != null && principal.getAccountId().equals(targetPortalUser.getAccountId())) {
+            return;
+        }
+
+        UUID companyId = CompanyContext.get();
+        if (companyId != null && !portalAccessHelper.isPureClient(principal)) {
+            return;
+        }
+
+        throw new ForbiddenException("Access denied to signature file");
     }
 
     private static String normalize(String relativePath) {
