@@ -18,6 +18,9 @@ import org.springframework.util.StringUtils;
 
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
+import com.fitouts.commercialapproval.application.CommercialApprovalService;
+import com.fitouts.commercialapproval.domain.CommercialApprovalRun;
+import com.fitouts.commercialapproval.domain.CommercialEventType;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
 import com.fitouts.shared.context.CompanyContext;
@@ -77,6 +80,7 @@ public class ScWave7CommercialService {
     private final ScCompanyProfileRepository profileRepository;
     private final ScPortalAccessService portalAccessService;
     private final ProjectService projectService;
+    private final CommercialApprovalService commercialApprovalService;
 
     @Transactional
     public SubcontractorClaim measureClaim(Long projectId, UUID claimUuid, ScMeasureClaimRequest request) {
@@ -143,19 +147,79 @@ public class ScWave7CommercialService {
         cert.setRetentionHeld(retentionHeld);
         cert.setBackChargesApplied(backCharges);
         cert.setNetPayable(netPayable);
-        cert.setStatus(ScPaymentCertificateStatus.ISSUED);
+        cert.setStatus(ScPaymentCertificateStatus.DRAFT);
         if (request != null) {
             cert.setAccountingRef(trimToNull(request.getAccountingRef()));
         }
         final ScPaymentCertificate savedCert = certificateRepository.save(cert);
         final UUID savedCertUuid = savedCert.getUuid();
 
+        // Module 23: optional SC certificate matrix — if a band matches, hold as DRAFT until approved
+        var runOpt = commercialApprovalService.startRun(
+                CommercialEventType.SC_CERTIFICATE,
+                savedCertUuid,
+                claim.getProjectId(),
+                netPayable,
+                principal.getAccountId());
+        if (runOpt.isPresent()) {
+            claim.setCertifiedValue(certifiedValue);
+            claim.setCertificateUuid(savedCertUuid);
+            claimRepository.save(claim);
+            return toCertificateResponse(savedCert);
+        }
+
+        issueCertificate(savedCert, claim, principal.getAccountId(), applicableStatuses);
+        return toCertificateResponse(savedCert);
+    }
+
+    /** Finalize DRAFT certificate after matrix approval (or immediate when no matrix). */
+    @Transactional
+    public void issueCertificateAfterMatrix(UUID certificateUuid) {
+        ScPaymentCertificate cert = certificateRepository.findById(certificateUuid)
+                .orElseThrow(() -> new NotFoundException("Payment certificate not found"));
+        if (cert.getStatus() != ScPaymentCertificateStatus.DRAFT) {
+            return;
+        }
+        SubcontractorClaim claim = claimRepository.findById(cert.getClaimUuid())
+                .orElseThrow(() -> new NotFoundException("Claim not found"));
+        List<ScBackChargeStatus> applicableStatuses = List.of(
+                ScBackChargeStatus.OPEN, ScBackChargeStatus.ACKNOWLEDGED);
+        issueCertificate(cert, claim, null, applicableStatuses);
+    }
+
+    @Transactional
+    public void cancelCertificateAfterMatrixReject(UUID certificateUuid, String comment) {
+        ScPaymentCertificate cert = certificateRepository.findById(certificateUuid).orElse(null);
+        if (cert == null || cert.getStatus() != ScPaymentCertificateStatus.DRAFT) {
+            return;
+        }
+        SubcontractorClaim claim = claimRepository.findById(cert.getClaimUuid()).orElse(null);
+        if (claim != null && cert.getUuid().equals(claim.getCertificateUuid())) {
+            claim.setCertificateUuid(null);
+            claim.setCertifiedValue(null);
+            claimRepository.save(claim);
+        }
+        certificateRepository.delete(cert);
+    }
+
+    private void issueCertificate(
+            ScPaymentCertificate cert,
+            SubcontractorClaim claim,
+            Long decidedBy,
+            List<ScBackChargeStatus> applicableStatuses) {
+        final UUID savedCertUuid = cert.getUuid();
+        UUID orgUuid = cert.getOrganizationUuid();
+        BigDecimal retentionHeld = cert.getRetentionHeld() != null ? cert.getRetentionHeld() : BigDecimal.ZERO;
+
+        cert.setStatus(ScPaymentCertificateStatus.ISSUED);
+        certificateRepository.save(cert);
+
         if (orgUuid != null && retentionHeld.compareTo(BigDecimal.ZERO) > 0) {
             ScRetentionLedger ledger = new ScRetentionLedger();
-            ledger.setPackageUuid(pkg.getUuid());
+            ledger.setPackageUuid(cert.getPackageUuid());
             ledger.setOrganizationUuid(orgUuid);
-            ledger.setCompanyId(claim.getCompanyId());
-            ledger.setProjectId(claim.getProjectId());
+            ledger.setCompanyId(cert.getCompanyId());
+            ledger.setProjectId(cert.getProjectId());
             ledger.setAmountHeld(retentionHeld);
             ledger.setStatus(ScRetentionStatus.HELD);
             ledger.setCertificateUuid(savedCertUuid);
@@ -164,7 +228,8 @@ public class ScWave7CommercialService {
 
         if (orgUuid != null) {
             backChargeRepository
-                    .findByPackageUuidAndOrganizationUuidAndStatusIn(pkg.getUuid(), orgUuid, applicableStatuses)
+                    .findByPackageUuidAndOrganizationUuidAndStatusIn(
+                            cert.getPackageUuid(), orgUuid, applicableStatuses)
                     .forEach(charge -> {
                         charge.setStatus(ScBackChargeStatus.APPLIED);
                         charge.setAppliedToCertificateUuid(savedCertUuid);
@@ -172,13 +237,14 @@ public class ScWave7CommercialService {
                     });
         }
 
-        claim.setCertifiedValue(certifiedValue);
+        claim.setCertifiedValue(cert.getCertifiedValue());
         claim.setCertificateUuid(savedCertUuid);
         claim.setStatus(SubcontractorClaimStatus.CERTIFIED);
-        claim.setDecidedBy(principal.getAccountId());
+        if (decidedBy != null) {
+            claim.setDecidedBy(decidedBy);
+        }
         claim.setDecidedAt(OffsetDateTime.now());
         claimRepository.save(claim);
-        return toCertificateResponse(savedCert);
     }
 
     @Transactional

@@ -316,18 +316,28 @@ public class ScheduleService {
     @Transactional
     public ScheduleBaselineResponse createBaseline(Long projectId, ScheduleBaselineRequest request) {
         AuthPrincipal principal = requireStaff();
-        Project project = requireProject(projectId);
         UUID companyId = CompanyContext.get();
         String name = StringUtils.hasText(request.getName())
                 ? request.getName().trim()
+                : "Baseline " + (baselineRepository
+                        .findByProjectIdAndCompanyIdOrderByCreatedAtDesc(projectId, companyId).size() + 1);
+        return createBaselineForSystem(projectId, name, principal.getAccountId());
+    }
+
+    @Transactional
+    public ScheduleBaselineResponse createBaselineForSystem(Long projectId, String name, Long actorAccountId) {
+        Project project = requireProject(projectId);
+        UUID companyId = CompanyContext.get();
+        String finalName = StringUtils.hasText(name)
+                ? name.trim()
                 : "Baseline " + (baselineRepository
                         .findByProjectIdAndCompanyIdOrderByCreatedAtDesc(projectId, companyId).size() + 1);
 
         ScheduleBaseline baseline = new ScheduleBaseline();
         baseline.setProjectId(project.getId());
         baseline.setCompanyId(companyId);
-        baseline.setName(name);
-        baseline.setCreatedBy(principal.getAccountId());
+        baseline.setName(finalName);
+        baseline.setCreatedBy(actorAccountId);
         baseline = baselineRepository.save(baseline);
 
         List<ScheduleActivity> activities = activityRepository
