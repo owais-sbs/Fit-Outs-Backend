@@ -56,7 +56,7 @@ public class FlywaySharedDatabaseConfig {
     public FlywayMigrationStrategy flywayMigrationStrategy(DataSource dataSource) {
         return flyway -> {
             boolean remapped = remapHdevVersionCollisions(dataSource);
-            if (remapped) {
+            if (remapped || hasFailedMigration(dataSource)) {
                 flyway.repair();
             }
             flyway.migrate();
@@ -100,6 +100,19 @@ public class FlywaySharedDatabaseConfig {
             return remapped;
         } catch (SQLException ex) {
             throw new IllegalStateException("Failed to remap Flyway history after merge collision", ex);
+        }
+    }
+
+    private static boolean hasFailedMigration(DataSource dataSource) {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement query = connection.prepareStatement(
+                     "SELECT 1 FROM flyway_schema_history WHERE success = FALSE")) {
+            try (ResultSet rs = query.executeQuery()) {
+                return rs.next();
+            }
+        } catch (SQLException ex) {
+            log.warn("Could not check Flyway failed migrations: {}", ex.getMessage());
+            return false;
         }
     }
 
