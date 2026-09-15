@@ -910,6 +910,71 @@ public class ApprovalCaseService {
         approvalCase.setStatus(to);
         caseRepository.save(approvalCase);
         recordEvent(approvalCase, from, to, "STATUS_CHANGE", request.getReason(), principal.getAccountId());
+        notifyApprovalStatusChange(approvalCase, from, to, companyId);
+    }
+
+    /** In-app alert for the assignee (and company-wide when unassigned) on meaningful status moves. */
+    private void notifyApprovalStatusChange(ApprovalCase approvalCase, ApprovalCaseStatus from,
+                                            ApprovalCaseStatus to, UUID companyId) {
+        String projectName = projectName(approvalCase.getProjectId());
+        String permit = StringUtils.hasText(approvalCase.getPermitTypeName())
+                ? approvalCase.getPermitTypeName()
+                : "Permit";
+        String caseLabel = StringUtils.hasText(approvalCase.getCaseNumber())
+                ? approvalCase.getCaseNumber()
+                : approvalCase.getUuid().toString();
+
+        String category;
+        String severity;
+        String title;
+        String body = permit + " on " + (projectName != null ? projectName : "project")
+                + " moved from " + from + " to " + to + " (" + caseLabel + ").";
+
+        switch (to) {
+            case APPROVED -> {
+                category = "APPROVAL_APPROVED";
+                severity = "INFO";
+                title = "Authority approved: " + permit;
+            }
+            case ISSUED -> {
+                category = "APPROVAL_ISSUED";
+                severity = "INFO";
+                title = "Permit issued: " + permit;
+            }
+            case REJECTED -> {
+                category = "APPROVAL_REJECTED";
+                severity = "WARNING";
+                title = "Permit rejected: " + permit;
+            }
+            case COMMENTS_RECEIVED -> {
+                category = "APPROVAL_COMMENTS";
+                severity = "WARNING";
+                title = "Authority comments: " + permit;
+            }
+            case SUBMITTED, RESUBMITTED -> {
+                category = "APPROVAL_STATUS";
+                severity = "INFO";
+                title = "Permit submitted: " + permit;
+            }
+            default -> {
+                category = "APPROVAL_STATUS";
+                severity = "INFO";
+                title = "Approval update: " + permit + " → " + to;
+            }
+        }
+
+        notificationService.raise(new NotificationService.Alert(
+                companyId,
+                approvalCase.getAssignedToAccountId(),
+                category,
+                severity,
+                title,
+                body,
+                "/admin/projects/" + approvalCase.getProjectId() + "/approvals",
+                "APPROVAL_CASE",
+                approvalCase.getUuid(),
+                "status:" + approvalCase.getUuid() + ":" + from + ":" + to,
+                false));
     }
 
     private void requireAuthorityBound(ApprovalCase approvalCase) {

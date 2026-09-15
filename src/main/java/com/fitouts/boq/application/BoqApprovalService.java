@@ -13,9 +13,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import com.fitouts.account.domain.Account;
+import com.fitouts.account.domain.AccountRepository;
+import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.boq.api.*;
 import com.fitouts.boq.domain.*;
+import com.fitouts.notification.application.NotificationService;
 import com.fitouts.shared.context.CompanyContext;
 import com.fitouts.shared.enums.BoqApprovalAction;
 import com.fitouts.shared.enums.BoqApprovalStep;
@@ -39,6 +43,8 @@ public class BoqApprovalService {
     private final BoqService boqService;
     private final PortalAccessHelper portalAccess;
     private final BoqProjectRules boqProjectRules;
+    private final NotificationService notificationService;
+    private final AccountRepository accountRepository;
 
     public BoqDocumentResponse submitForApproval(UUID boqId) {
         AuthPrincipal principal = boqAuthHelper.requirePrincipal();
@@ -64,6 +70,7 @@ public class BoqApprovalService {
         boqProjectRules.obsoleteOthers(doc.getProject().getId(), doc.getId());
 
         appendLog(doc, BoqApprovalStep.QS_SUBMIT, BoqApprovalAction.SUBMITTED, principal, null);
+        notifyBoqPending(doc, BoqDocumentStatus.PENDING_SENIOR_QS);
         return boqService.getById(boqId);
     }
 
@@ -98,6 +105,11 @@ public class BoqApprovalService {
         boqDocumentRepository.save(doc);
 
         appendLog(doc, step, BoqApprovalAction.APPROVED, principal, comments);
+        if (next == BoqDocumentStatus.APPROVED) {
+            notifyBoqApproved(doc);
+        } else {
+            notifyBoqPending(doc, next);
+        }
         return boqService.getById(boqId);
     }
 
@@ -118,7 +130,94 @@ public class BoqApprovalService {
         boqDocumentRepository.save(doc);
 
         appendLog(doc, step, BoqApprovalAction.REJECTED, principal, comments.trim());
+        notifyBoqRejected(doc, comments.trim());
         return boqService.getById(boqId);
+    }
+
+    private void notifyBoqPending(BoqDocument doc, BoqDocumentStatus status) {
+        String projectName = projectName(doc);
+        String title = "BOQ awaiting approval: " + projectName;
+        String body = "Version " + doc.getVersion() + " is pending "
+                + status.name().toLowerCase().replace('_', ' ') + ".";
+        String link = inboxLinkForStatus(status);
+
+        if (status == BoqDocumentStatus.PENDING_CLIENT) {
+            Long clientId = doc.getProject() != null ? doc.getProject().getClientId() : null;
+            if (clientId != null) {
+                raiseBoqAlert(doc, clientId, "BOQ_PENDING", "INFO", title, body, link,
+                        "boq-pending:" + doc.getId() + ":" + status);
+            }
+            return;
+        }
+
+        Role role = boqAuthHelper.approverRoleForStatus(status);
+        if (role == null) {
+            return;
+        }
+        for (Account account : accountRepository.findAllByCompanyUuidAndRole(doc.getCompanyId(), role)) {
+            raiseBoqAlert(doc, account.getId(), "BOQ_PENDING", "INFO", title, body, link,
+                    "boq-pending:" + doc.getId() + ":" + status + ":" + account.getId());
+        }
+    }
+
+    private void notifyBoqApproved(BoqDocument doc) {
+        String projectName = projectName(doc);
+        String title = "BOQ approved: " + projectName;
+        String body = "Version " + doc.getVersion() + " was fully approved.";
+        String link = "/admin/boq/" + doc.getId();
+        if (doc.getSubmittedBy() != null) {
+            raiseBoqAlert(doc, doc.getSubmittedBy(), "BOQ_APPROVED", "INFO", title, body, link,
+                    "boq-approved:" + doc.getId() + ":submitter");
+        }
+        Long clientId = doc.getProject() != null ? doc.getProject().getClientId() : null;
+        if (clientId != null && !Objects.equals(clientId, doc.getSubmittedBy())) {
+            raiseBoqAlert(doc, clientId, "BOQ_APPROVED", "INFO", title, body,
+                    "/client/boq/" + doc.getId(),
+                    "boq-approved:" + doc.getId() + ":client");
+        }
+    }
+
+    private void notifyBoqRejected(BoqDocument doc, String comments) {
+        if (doc.getSubmittedBy() == null) {
+            return;
+        }
+        String projectName = projectName(doc);
+        raiseBoqAlert(doc, doc.getSubmittedBy(), "BOQ_REJECTED", "WARNING",
+                "BOQ returned: " + projectName,
+                comments,
+                "/admin/boq/" + doc.getId(),
+                "boq-rejected:" + doc.getId() + ":" + System.currentTimeMillis());
+    }
+
+    private void raiseBoqAlert(BoqDocument doc, Long accountId, String category, String severity,
+                               String title, String body, String link, String dedupeKey) {
+        notificationService.raise(new NotificationService.Alert(
+                doc.getCompanyId(),
+                accountId,
+                category,
+                severity,
+                title,
+                body,
+                link,
+                "BOQ",
+                doc.getId(),
+                dedupeKey,
+                false));
+    }
+
+    private static String projectName(BoqDocument doc) {
+        return doc.getProject() != null && StringUtils.hasText(doc.getProject().getName())
+                ? doc.getProject().getName()
+                : "Project";
+    }
+
+    private static String inboxLinkForStatus(BoqDocumentStatus status) {
+        return switch (status) {
+            case PENDING_PM -> "/project-manager/boq/inbox";
+            case PENDING_DIRECTOR -> "/business-owner/boq/inbox";
+            case PENDING_CLIENT -> "/client/boq-approvals";
+            default -> "/admin/boq/inbox";
+        };
     }
 
     public BoqDocumentResponse createRevision(UUID boqId, String revisionLabel) {
