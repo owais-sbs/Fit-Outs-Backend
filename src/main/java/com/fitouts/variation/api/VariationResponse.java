@@ -45,6 +45,8 @@ public class VariationResponse {
     private String triageNote;
     private String rejectComment;
     private UUID approvalRunUuid;
+    private UUID sourceBoqId;
+    private UUID resultBoqId;
     private ApprovalRunResponse approvalRun;
     private BigDecimal currentContractValue;
     private BigDecimal proposedContractValue;
@@ -88,6 +90,7 @@ public class VariationResponse {
     public static class AttachmentResponse {
         private UUID uuid;
         private String filePath;
+        private String downloadUrl;
         private String originalName;
         private Long uploadedBy;
         private OffsetDateTime createdAt;

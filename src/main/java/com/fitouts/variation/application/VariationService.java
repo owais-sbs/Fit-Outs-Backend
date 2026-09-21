@@ -11,6 +11,7 @@ import java.util.UUID;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -38,6 +39,7 @@ import com.fitouts.shared.error.ForbiddenException;
 import com.fitouts.shared.error.NotFoundException;
 import com.fitouts.variation.api.ProjectCommercialResponse;
 import com.fitouts.variation.api.VariationDecisionRequest;
+import com.fitouts.variation.api.VariationBoqChangeResponse;
 import com.fitouts.variation.api.VariationResponse;
 import com.fitouts.variation.api.VariationTriageRequest;
 import com.fitouts.variation.api.VariationUpsertRequest;
@@ -45,6 +47,7 @@ import com.fitouts.variation.domain.ProjectCommercial;
 import com.fitouts.variation.domain.ProjectCommercialRepository;
 import com.fitouts.variation.domain.VariationAttachment;
 import com.fitouts.variation.domain.VariationAttachmentRepository;
+import com.fitouts.variation.domain.VariationBoqChangeRepository;
 import com.fitouts.variation.domain.VariationCostMode;
 import com.fitouts.variation.domain.VariationEvent;
 import com.fitouts.variation.domain.VariationEventRepository;
@@ -94,6 +97,8 @@ public class VariationService implements CommercialApprovalCompletionHandler {
     private final NotificationService notificationService;
     private final AccountRepository accountRepository;
     private final VariationRebaselineService variationRebaselineService;
+    private final VariationBoqApplyService variationBoqApplyService;
+    private final VariationBoqChangeRepository variationBoqChangeRepository;
 
     @Override
     public CommercialEventType supports() {
@@ -110,6 +115,7 @@ public class VariationService implements CommercialApprovalCompletionHandler {
         }
         VariationStatus from = vr.getStatus();
         vr.setStatus(VariationStatus.ISSUED_TO_CLIENT);
+        vr.setIssuedBy(resolveMatrixIssuer(runUuid));
         vr.setIssuedAt(OffsetDateTime.now());
         vr.setApprovalRunUuid(runUuid);
         variationRepository.save(vr);
@@ -373,6 +379,22 @@ public class VariationService implements CommercialApprovalCompletionHandler {
 
         VariationRebaselineService.RebaselineResult rebaselineResult =
                 variationRebaselineService.rebaseline(projectId, vr, principal.getAccountId());
+        try {
+            UUID resultBoqId = variationBoqApplyService.apply(vr, principal.getAccountId());
+            appendEvent(vr, "BOQ_APPLIED", VariationStatus.APPROVED.name(),
+                    VariationStatus.APPROVED.name(), principal.getAccountId(),
+                    "Created approved BOQ revision " + resultBoqId);
+        } catch (BadRequestException e) {
+            String action = e.getMessage() != null && e.getMessage().contains("No approved BOQ")
+                    ? "BOQ_SKIPPED_NO_APPROVED" : "BOQ_APPLY_FAILED";
+            log.warn("Could not apply variation {} to BOQ: {}", vr.getUuid(), e.getMessage());
+            appendEvent(vr, action, VariationStatus.APPROVED.name(),
+                    VariationStatus.APPROVED.name(), principal.getAccountId(), e.getMessage());
+        } catch (Exception e) {
+            log.warn("Could not apply variation {} to BOQ: {}", vr.getUuid(), e.getMessage());
+            appendEvent(vr, "BOQ_APPLY_FAILED", VariationStatus.APPROVED.name(),
+                    VariationStatus.APPROVED.name(), principal.getAccountId(), e.getMessage());
+        }
 
         VariationEvent event = new VariationEvent();
         event.setVariationUuid(vr.getUuid());
@@ -473,6 +495,56 @@ public class VariationService implements CommercialApprovalCompletionHandler {
                 .currentMargin(c.getCurrentMargin())
                 .build();
     }
+
+    @Transactional(readOnly = true)
+    public List<VariationBoqChangeResponse> getBoqChanges(Long projectId, UUID uuid) {
+        requireStaff();
+        requireProject(projectId);
+        VariationRequest vr = requireVariation(uuid, projectId);
+        return variationBoqChangeRepository.findByVariationUuidOrderByCreatedAtAsc(vr.getUuid()).stream()
+                .map(c -> VariationBoqChangeResponse.builder()
+                        .uuid(c.getUuid())
+                        .variationLineUuid(c.getVariationLineUuid())
+                        .sourceBoqUuid(c.getSourceBoqUuid())
+                        .resultingBoqUuid(c.getResultingBoqUuid())
+                        .sourceBoqLineId(c.getSourceBoqLineId())
+                        .resultingBoqLineId(c.getResultingBoqLineId())
+                        .changeType(c.getChangeType())
+                        .description(c.getDescription())
+                        .unit(c.getUnit())
+                        .previousQuantity(c.getPreviousQuantity())
+                        .newQuantity(c.getNewQuantity())
+                        .previousRate(c.getPreviousRate())
+                        .newRate(c.getNewRate())
+                        .previousAmount(c.getPreviousAmount())
+                        .newAmount(c.getNewAmount())
+                        .deltaAmount(c.getDeltaAmount())
+                        .appliedBy(c.getAppliedBy())
+                        .createdAt(c.getCreatedAt())
+                        .build())
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public AttachmentDownload downloadAttachment(Long projectId, UUID variationUuid, UUID attachmentUuid) {
+        AuthPrincipal principal = requirePrincipal();
+        Project project = requireProject(projectId);
+        VariationRequest vr = requireVariation(variationUuid, projectId);
+        if (isPureClient(principal)) {
+            assertClientOwns(project, principal);
+            if (!clientVisible(vr)) throw new ForbiddenException("Variation not visible to client");
+        } else {
+            requireStaff();
+        }
+        VariationAttachment attachment = attachmentRepository
+                .findByUuidAndVariationUuid(attachmentUuid, variationUuid)
+                .orElseThrow(() -> new NotFoundException("Attachment not found"));
+        return new AttachmentDownload(
+                fileStorageService.loadAsResource(attachment.getFilePath()),
+                attachment.getOriginalName());
+    }
+
+    public record AttachmentDownload(Resource resource, String filename) {}
 
     // ── Internals ────────────────────────────────────────────────────────────
 
@@ -666,6 +738,8 @@ public class VariationService implements CommercialApprovalCompletionHandler {
                 .triageNote(vr.getTriageNote())
                 .rejectComment(vr.getRejectComment())
                 .approvalRunUuid(vr.getApprovalRunUuid())
+                .sourceBoqId(vr.getSourceBoqId())
+                .resultBoqId(vr.getResultBoqId())
                 .approvalRun(run)
                 .currentContractValue(currentContract)
                 .proposedContractValue(proposedContract)
@@ -703,6 +777,7 @@ public class VariationService implements CommercialApprovalCompletionHandler {
                             .map(a -> VariationResponse.AttachmentResponse.builder()
                                     .uuid(a.getUuid())
                                     .filePath(a.getFilePath())
+                                    .downloadUrl(attachmentDownloadUrl(vr, a))
                                     .originalName(a.getOriginalName())
                                     .uploadedBy(a.getUploadedBy())
                                     .createdAt(a.getCreatedAt())
@@ -737,6 +812,29 @@ public class VariationService implements CommercialApprovalCompletionHandler {
         event.setActorId(actorId);
         event.setDetail(detail);
         eventRepository.save(event);
+    }
+
+    private Long resolveMatrixIssuer(UUID runUuid) {
+        try {
+            ApprovalRunResponse run = commercialApprovalService.getRunInternal(runUuid);
+            if (run != null && run.getTasks() != null) {
+                return run.getTasks().stream()
+                        .filter(t -> t.getDecidedBy() != null)
+                        .max(java.util.Comparator.comparingInt(ApprovalRunResponse.TaskResponse::getStepOrder))
+                        .map(ApprovalRunResponse.TaskResponse::getDecidedBy)
+                        .orElse(null);
+            }
+        } catch (Exception e) {
+            log.warn("Could not resolve issuer from approval run {}: {}", runUuid, e.getMessage());
+        }
+        return null;
+    }
+
+    private String attachmentDownloadUrl(VariationRequest vr, VariationAttachment attachment) {
+        String publicUrl = fileStorageService.publicUrl(attachment.getFilePath());
+        return publicUrl != null ? publicUrl
+                : "/api/projects/" + vr.getProjectId() + "/variations/" + vr.getUuid()
+                + "/attachments/" + attachment.getUuid();
     }
 
     private void notifyClient(VariationRequest vr, String category, String title, String body, String link) {
