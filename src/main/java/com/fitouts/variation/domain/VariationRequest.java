@@ -100,6 +100,12 @@ public class VariationRequest {
     @Column(name = "approval_run_uuid")
     private UUID approvalRunUuid;
 
+    @Column(name = "source_boq_id")
+    private UUID sourceBoqId;
+
+    @Column(name = "result_boq_id")
+    private UUID resultBoqId;
+
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
