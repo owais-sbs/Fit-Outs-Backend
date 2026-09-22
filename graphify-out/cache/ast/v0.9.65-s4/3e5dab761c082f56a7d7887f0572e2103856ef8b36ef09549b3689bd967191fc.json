@@ -1,1 +1,0 @@
-{"nodes": [{"id": "$graphify-root$_src_main_resources_db_migration_v80_reset_demo_invited_vendor_passwords_sql", "label": "V80__reset_demo_invited_vendor_passwords.sql", "file_type": "code", "source_file": "src/main/resources/db/migration/V80__reset_demo_invited_vendor_passwords.sql", "source_location": null}], "edges": []}

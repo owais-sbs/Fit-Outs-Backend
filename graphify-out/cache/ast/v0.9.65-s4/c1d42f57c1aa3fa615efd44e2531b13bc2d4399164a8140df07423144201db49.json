@@ -1,1 +1,0 @@
-{"nodes": [{"id": "$graphify-root$_src_main_resources_db_migration_v35_seed_layout_rooms_and_work_items_sql", "label": "V35__seed_layout_rooms_and_work_items.sql", "file_type": "code", "source_file": "src/main/resources/db/migration/V35__seed_layout_rooms_and_work_items.sql", "source_location": null}], "edges": []}

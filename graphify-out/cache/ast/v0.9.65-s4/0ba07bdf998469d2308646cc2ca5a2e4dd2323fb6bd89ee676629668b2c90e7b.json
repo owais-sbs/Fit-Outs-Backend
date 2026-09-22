@@ -1,1 +1,0 @@
-{"nodes": [{"id": "$graphify-root$_src_main_resources_db_migration_v60_seed_approval_config_sql", "label": "V60__seed_approval_config.sql", "file_type": "code", "source_file": "src/main/resources/db/migration/V60__seed_approval_config.sql", "source_location": null}], "edges": []}

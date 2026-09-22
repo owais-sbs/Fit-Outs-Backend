@@ -1,1 +1,0 @@
-{"nodes": [{"id": "$graphify-root$_src_main_resources_db_migration_v52_one_live_boq_per_project_sql", "label": "V52__one_live_boq_per_project.sql", "file_type": "code", "source_file": "src/main/resources/db/migration/V52__one_live_boq_per_project.sql", "source_location": null}], "edges": []}
