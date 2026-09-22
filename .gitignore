@@ -37,3 +37,4 @@ build/
 .env
 /.apt_generated_tests/
 =
+graphify-out/
