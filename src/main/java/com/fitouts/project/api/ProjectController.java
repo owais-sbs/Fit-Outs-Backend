@@ -20,7 +20,7 @@ public class ProjectController extends BaseController {
         try {
             return successResponse(projectService.create(request));
         } catch (Exception e) {
-            return failureResponse("Failed to create project", e.getMessage());
+            return failureResponse("Failed to create project", safeClientError(e));
         }
     }
 
@@ -29,7 +29,7 @@ public class ProjectController extends BaseController {
         try {
             return successResponse(projectService.getAll());
         } catch (Exception e) {
-            return failureResponse("Failed to fetch projects", e.getMessage());
+            return failureResponse("Failed to fetch projects", safeClientError(e));
         }
     }
 
@@ -38,7 +38,7 @@ public class ProjectController extends BaseController {
         try {
             return successResponse(projectService.getById(id));
         } catch (Exception e) {
-            return failureResponse("Failed to fetch project", e.getMessage());
+            return failureResponse("Failed to fetch project", safeClientError(e));
         }
     }
 
@@ -47,7 +47,7 @@ public class ProjectController extends BaseController {
         try {
             return successResponse(projectService.update(id, request));
         } catch (Exception e) {
-            return failureResponse("Failed to update project", e.getMessage());
+            return failureResponse("Failed to update project", safeClientError(e));
         }
     }
 
@@ -56,7 +56,19 @@ public class ProjectController extends BaseController {
         try {
             return successResponse(projectService.delete(id));
         } catch (Exception e) {
-            return failureResponse("Failed to delete project", e.getMessage());
+            return failureResponse("Failed to delete project", safeClientError(e));
         }
+    }
+
+    private static String safeClientError(Exception e) {
+        if (e instanceof com.fitouts.shared.error.ApiException api) {
+            return api.getMessage();
+        }
+        String msg = e.getMessage();
+        if (msg != null && (msg.contains("JDBC") || msg.contains("SQL")
+                || msg.contains("does not exist") || msg.contains("PSQLException"))) {
+            return "Unable to load projects right now. Please try again shortly.";
+        }
+        return msg != null && !msg.isBlank() ? msg : "Unexpected server error";
     }
 }

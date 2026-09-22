@@ -28,6 +28,7 @@ import com.fitouts.commercialapproval.application.CommercialApprovalCompletionHa
 import com.fitouts.commercialapproval.application.CommercialApprovalService;
 import com.fitouts.commercialapproval.domain.CommercialApprovalRun;
 import com.fitouts.commercialapproval.domain.CommercialEventType;
+import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.drawing.application.FileStorageService;
 import com.fitouts.notification.application.NotificationService;
 import com.fitouts.project.application.ProjectService;
@@ -94,6 +95,7 @@ public class VariationService implements CommercialApprovalCompletionHandler {
     private final NotificationService notificationService;
     private final AccountRepository accountRepository;
     private final VariationRebaselineService variationRebaselineService;
+    private final CommercialLifecycleService commercialLifecycleService;
 
     @Override
     public CommercialEventType supports() {
@@ -105,6 +107,7 @@ public class VariationService implements CommercialApprovalCompletionHandler {
     public void onApproved(UUID entityUuid, UUID runUuid) {
         VariationRequest vr = variationRepository.findById(entityUuid)
                 .orElseThrow(() -> new NotFoundException("Variation not found"));
+        commercialLifecycleService.assertCommercialMutable(vr.getProjectId());
         if (vr.getStatus() != VariationStatus.INTERNAL_REVIEW) {
             return;
         }
@@ -124,6 +127,7 @@ public class VariationService implements CommercialApprovalCompletionHandler {
     public void onRejected(UUID entityUuid, UUID runUuid, String comment) {
         VariationRequest vr = variationRepository.findById(entityUuid)
                 .orElseThrow(() -> new NotFoundException("Variation not found"));
+        commercialLifecycleService.assertCommercialMutable(vr.getProjectId());
         if (vr.getStatus() != VariationStatus.INTERNAL_REVIEW) {
             return;
         }
@@ -178,6 +182,7 @@ public class VariationService implements CommercialApprovalCompletionHandler {
     @Transactional
     public VariationResponse create(Long projectId, VariationUpsertRequest request) {
         AuthPrincipal principal = requirePrincipal();
+        commercialLifecycleService.assertCommercialMutable(projectId);
         Project project = requireProject(projectId);
         boolean byClient = isPureClient(principal);
         if (byClient) {
@@ -229,6 +234,7 @@ public class VariationService implements CommercialApprovalCompletionHandler {
     @Transactional
     public VariationResponse update(Long projectId, UUID uuid, VariationUpsertRequest request) {
         AuthPrincipal principal = requirePrincipal();
+        commercialLifecycleService.assertCommercialMutable(projectId);
         Project project = requireProject(projectId);
         VariationRequest vr = requireVariation(uuid, projectId);
         assertEditable(vr);
@@ -268,6 +274,7 @@ public class VariationService implements CommercialApprovalCompletionHandler {
     @Transactional
     public VariationResponse triage(Long projectId, UUID uuid, VariationTriageRequest request) {
         AuthPrincipal principal = requireStaff(TRIAGE_ROLES);
+        commercialLifecycleService.assertCommercialMutable(projectId);
         Project project = requireProject(projectId);
         VariationRequest vr = requireVariation(uuid, projectId);
         if (vr.getStatus() != VariationStatus.AWAITING_TRIAGE) {
@@ -295,6 +302,7 @@ public class VariationService implements CommercialApprovalCompletionHandler {
     @Transactional
     public VariationResponse submitReview(Long projectId, UUID uuid) {
         AuthPrincipal principal = requireStaff(STAFF_RAISE);
+        commercialLifecycleService.assertCommercialMutable(projectId);
         Project project = requireProject(projectId);
         VariationRequest vr = requireVariation(uuid, projectId);
         if (vr.getStatus() != VariationStatus.DRAFT && vr.getStatus() != VariationStatus.REVISED) {
@@ -343,6 +351,7 @@ public class VariationService implements CommercialApprovalCompletionHandler {
     @Transactional
     public VariationResponse clientApprove(Long projectId, UUID uuid) {
         AuthPrincipal principal = requireClient();
+        commercialLifecycleService.assertCommercialMutable(projectId);
         Project project = requireProject(projectId);
         assertClientOwns(project, principal);
         VariationRequest vr = requireVariation(uuid, projectId);
@@ -396,6 +405,7 @@ public class VariationService implements CommercialApprovalCompletionHandler {
     @Transactional
     public VariationResponse clientReject(Long projectId, UUID uuid, VariationDecisionRequest request) {
         AuthPrincipal principal = requireClient();
+        commercialLifecycleService.assertCommercialMutable(projectId);
         Project project = requireProject(projectId);
         assertClientOwns(project, principal);
         VariationRequest vr = requireVariation(uuid, projectId);
@@ -424,6 +434,7 @@ public class VariationService implements CommercialApprovalCompletionHandler {
     @Transactional
     public VariationResponse uploadAttachment(Long projectId, UUID uuid, MultipartFile file) {
         AuthPrincipal principal = requirePrincipal();
+        commercialLifecycleService.assertCommercialMutable(projectId);
         Project project = requireProject(projectId);
         VariationRequest vr = requireVariation(uuid, projectId);
         if (isPureClient(principal)) {

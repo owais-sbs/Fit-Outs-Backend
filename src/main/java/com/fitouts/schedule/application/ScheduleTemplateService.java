@@ -25,6 +25,7 @@ import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.approval.domain.ApprovalCase;
 import com.fitouts.approval.domain.ApprovalCaseRepository;
+import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
 import com.fitouts.schedule.api.OrderByResponse;
@@ -90,6 +91,7 @@ public class ScheduleTemplateService {
     private final ProjectService projectService;
     private final ApprovalCaseRepository approvalCaseRepository;
     private final ObjectMapper objectMapper;
+    private final CommercialLifecycleService commercialLifecycleService;
 
     // -------------------------------------------------------------- library
 
@@ -207,6 +209,7 @@ public class ScheduleTemplateService {
     @Transactional
     public ScheduleTemplateResponse saveProjectAsTemplate(Long projectId, SaveAsTemplateRequest request) {
         AuthPrincipal principal = requireStaff();
+        commercialLifecycleService.assertNotArchived(projectId);
         Project project = requireProject(projectId);
         UUID companyId = CompanyContext.get();
 
@@ -338,6 +341,7 @@ public class ScheduleTemplateService {
     @Transactional
     public ScheduleApplyResponse apply(Long projectId, SchedulePreviewRequest request) {
         AuthPrincipal principal = requireStaff();
+        commercialLifecycleService.assertNotArchived(projectId);
         Project project = requireProject(projectId);
         UUID companyId = CompanyContext.get();
         ScheduleTemplate template = resolveTemplate(request);

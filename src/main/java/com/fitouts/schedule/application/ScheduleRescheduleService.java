@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.fitouts.approval.domain.ApprovalCase;
 import com.fitouts.approval.domain.ApprovalCaseRepository;
+import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.schedule.api.LiveCpmSnapshot;
 import com.fitouts.schedule.api.RescheduleRequest;
 import com.fitouts.schedule.api.RescheduleResponse;
@@ -55,9 +56,11 @@ public class ScheduleRescheduleService {
     private final ApprovalCaseRepository approvalCaseRepository;
     private final WorkCalendarService workCalendarService;
     private final CpmEngine cpmEngine;
+    private final CommercialLifecycleService commercialLifecycleService;
 
     @Transactional
     public RescheduleResponse reschedule(Long projectId, RescheduleRequest request) {
+        commercialLifecycleService.assertNotArchived(projectId);
         UUID companyId = CompanyContext.get();
         List<ScheduleActivity> activities = activityRepository
                 .findByProjectIdAndCompanyIdOrderBySortOrderAscStartDateAsc(projectId, companyId);

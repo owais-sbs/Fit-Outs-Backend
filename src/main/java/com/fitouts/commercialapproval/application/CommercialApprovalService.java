@@ -27,6 +27,7 @@ import com.fitouts.commercialapproval.api.ApprovalRunResponse;
 import com.fitouts.commercialapproval.api.MatrixResponse;
 import com.fitouts.commercialapproval.api.MatrixUpsertRequest;
 import com.fitouts.commercialapproval.api.TaskDecisionRequest;
+import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.commercialapproval.domain.ApprovalStepMode;
 import com.fitouts.commercialapproval.domain.CommercialApprovalBand;
 import com.fitouts.commercialapproval.domain.CommercialApprovalBandRepository;
@@ -74,6 +75,7 @@ public class CommercialApprovalService {
     private final AccountRepository accountRepository;
     private final NotificationService notificationService;
     private final List<CommercialApprovalCompletionHandler> completionHandlers;
+    private final CommercialLifecycleService commercialLifecycleService;
 
     public CommercialApprovalService(
             CommercialApprovalMatrixRepository matrixRepository,
@@ -85,7 +87,8 @@ public class CommercialApprovalService {
             CommercialApprovalEventRepository eventRepository,
             AccountRepository accountRepository,
             NotificationService notificationService,
-            @Lazy List<CommercialApprovalCompletionHandler> completionHandlers) {
+            @Lazy List<CommercialApprovalCompletionHandler> completionHandlers,
+            @Lazy CommercialLifecycleService commercialLifecycleService) {
         this.matrixRepository = matrixRepository;
         this.bandRepository = bandRepository;
         this.stepRepository = stepRepository;
@@ -96,6 +99,7 @@ public class CommercialApprovalService {
         this.accountRepository = accountRepository;
         this.notificationService = notificationService;
         this.completionHandlers = completionHandlers != null ? completionHandlers : List.of();
+        this.commercialLifecycleService = commercialLifecycleService;
     }
 
     // ── Matrix config ────────────────────────────────────────────────────────
@@ -318,6 +322,9 @@ public class CommercialApprovalService {
         CommercialApprovalRun run = runRepository.findById(task.getRunUuid())
                 .orElseThrow(() -> new NotFoundException("Approval run not found"));
         assertCompany(run.getCompanyId());
+        if (run.getProjectId() != null) {
+            commercialLifecycleService.assertCommercialMutable(run.getProjectId());
+        }
         if (run.getStatus() != CommercialApprovalRunStatus.IN_PROGRESS) {
             throw new BadRequestException("Approval run is not in progress");
         }
@@ -351,6 +358,9 @@ public class CommercialApprovalService {
         CommercialApprovalRun run = runRepository.findById(task.getRunUuid())
                 .orElseThrow(() -> new NotFoundException("Approval run not found"));
         assertCompany(run.getCompanyId());
+        if (run.getProjectId() != null) {
+            commercialLifecycleService.assertCommercialMutable(run.getProjectId());
+        }
         if (run.getStatus() != CommercialApprovalRunStatus.IN_PROGRESS) {
             throw new BadRequestException("Approval run is not in progress");
         }

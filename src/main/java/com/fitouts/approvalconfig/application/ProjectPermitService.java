@@ -32,6 +32,7 @@ import com.fitouts.approvalconfig.domain.ProjectPermitCase;
 import com.fitouts.approvalconfig.domain.ProjectPermitCaseRepository;
 import com.fitouts.approvalconfig.domain.ProjectPermitDocument;
 import com.fitouts.approvalconfig.domain.ProjectPermitDocumentRepository;
+import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.project.domain.Project;
 import com.fitouts.shared.context.CompanyContext;
 import com.fitouts.shared.error.NotFoundException;
@@ -55,6 +56,7 @@ public class ProjectPermitService {
     private final ApprovalDocumentTypeRepository documentTypeRepository;
     private final ProjectPermitCaseRepository caseRepository;
     private final ProjectPermitDocumentRepository caseDocumentRepository;
+    private final CommercialLifecycleService commercialLifecycleService;
 
     @Transactional
     public void instantiateForProject(Project project) {
@@ -165,6 +167,7 @@ public class ProjectPermitService {
         UUID companyId = CompanyContext.get();
         ProjectPermitCase permitCase = caseRepository.findByIdAndCompanyId(caseId, companyId)
                 .orElseThrow(() -> new NotFoundException("Permit case not found"));
+        commercialLifecycleService.assertNotArchived(permitCase.getProjectId());
         if (StringUtils.hasText(request.getStatus())) {
             if (!CASE_STATUSES.contains(request.getStatus())) {
                 throw new IllegalArgumentException("Invalid case status");
@@ -187,6 +190,7 @@ public class ProjectPermitService {
                 .orElseThrow(() -> new NotFoundException("Permit document not found"));
         ProjectPermitCase permitCase = caseRepository.findByIdAndCompanyId(document.getCaseId(), CompanyContext.get())
                 .orElseThrow(() -> new NotFoundException("Permit document not found"));
+        commercialLifecycleService.assertNotArchived(permitCase.getProjectId());
         if (!StringUtils.hasText(request.getStatus()) || !DOC_STATUSES.contains(request.getStatus())) {
             throw new IllegalArgumentException("Invalid document status");
         }

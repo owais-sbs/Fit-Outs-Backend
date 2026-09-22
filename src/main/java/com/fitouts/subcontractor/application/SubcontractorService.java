@@ -65,6 +65,7 @@ import com.fitouts.subcontractor.domain.ScPackageBidderRepository;
 import com.fitouts.subcontractor.domain.ScPortalRole;
 import com.fitouts.subcontractor.domain.ScPortalUser;
 import com.fitouts.subcontractor.domain.ScPortalUserRepository;
+import com.fitouts.completion.application.CommercialLifecycleService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -91,6 +92,7 @@ public class SubcontractorService {
     private final ScPackageBidderRepository bidderRepository;
     private final ScCompanyProfileRepository profileRepository;
     private final ScOrganizationRepository organizationRepository;
+    private final CommercialLifecycleService commercialLifecycleService;
 
     @Transactional(readOnly = true)
     public List<SubcontractorPackageResponse> listPackages(Long projectId) {
@@ -112,6 +114,7 @@ public class SubcontractorService {
 
     @Transactional
     public SubcontractorPackageResponse createPackage(Long projectId, SubcontractorPackageRequest request) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requireStaff();
         Project project = requireProject(projectId);
         if (request == null || !StringUtils.hasText(request.getName())) {
@@ -131,6 +134,7 @@ public class SubcontractorService {
 
     @Transactional
     public SubcontractorPackageResponse updatePackage(Long projectId, UUID uuid, SubcontractorPackageRequest request) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requireStaff();
         requireProject(projectId);
         SubcontractorPackage pkg = requirePackageForProject(uuid, projectId);
@@ -153,6 +157,7 @@ public class SubcontractorService {
 
     @Transactional
     public void deletePackage(Long projectId, UUID uuid) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requireStaff();
         requireProject(projectId);
         SubcontractorPackage pkg = requirePackageForProject(uuid, projectId);
@@ -163,6 +168,7 @@ public class SubcontractorService {
 
     @Transactional
     public SubcontractorPackageResponse appoint(Long projectId, UUID uuid, AppointSubcontractorRequest request) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requireStaff();
         requireProject(projectId);
         if (request == null) {
@@ -266,6 +272,7 @@ public class SubcontractorService {
         UUID companyId = requireCompany();
         SubcontractorPackage pkg = packageRepository.findByUuidAndCompanyId(uuid, companyId)
                 .orElseThrow(() -> new NotFoundException("Package not found"));
+        commercialLifecycleService.assertNotArchived(pkg.getProjectId());
         if (!isPackageVisibleToPortalUser(principal, pkg)) {
             throw new ForbiddenException("Not appointed to this package");
         }
@@ -292,6 +299,7 @@ public class SubcontractorService {
         SubcontractorPackage pkg = packageRepository.findByUuidAndCompanyId(packageUuid, companyId)
                 .orElseThrow(() -> new NotFoundException("Package not found"));
         assertCanClaimOnPackage(principal, pkg);
+        commercialLifecycleService.assertNotArchived(pkg.getProjectId());
 
         BigDecimal plannedQty = resolvePlannedQty(pkg, request);
         BigDecimal claimedQty = request != null && request.getClaimedQty() != null
@@ -343,6 +351,7 @@ public class SubcontractorService {
                 .orElseThrow(() -> new NotFoundException("Package not found"));
         assertCanClaimOnPackage(principal, pkg);
         holdPointGuardService.assertClaimAllowed(claim.getProjectId());
+        commercialLifecycleService.assertNotArchived(claim.getProjectId());
 
         if (claim.getStatus() != SubcontractorClaimStatus.DRAFT
                 && claim.getStatus() != SubcontractorClaimStatus.REJECTED) {
@@ -376,6 +385,7 @@ public class SubcontractorService {
         SubcontractorPackage pkg = packageRepository.findByUuidAndCompanyId(claim.getPackageUuid(), claim.getCompanyId())
                 .orElseThrow(() -> new NotFoundException("Package not found"));
         assertCanClaimOnPackage(principal, pkg);
+        commercialLifecycleService.assertNotArchived(claim.getProjectId());
         if (claim.getStatus() != SubcontractorClaimStatus.DRAFT
                 && claim.getStatus() != SubcontractorClaimStatus.REJECTED) {
             throw new BadRequestException("Attachments can only be added to DRAFT or REJECTED claims");
@@ -388,6 +398,7 @@ public class SubcontractorService {
 
     @Transactional
     public SubcontractorClaimResponse approveClaim(Long projectId, UUID claimUuid) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requirePmOrAdmin();
         requireProject(projectId);
         SubcontractorClaim claim = requireSubmittedClaim(claimUuid, projectId);
@@ -404,6 +415,7 @@ public class SubcontractorService {
 
     @Transactional
     public SubcontractorClaimResponse rejectClaim(Long projectId, UUID claimUuid, ClaimRejectRequest request) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requirePmOrAdmin();
         requireProject(projectId);
         if (request == null || !StringUtils.hasText(request.getReason())) {
@@ -419,6 +431,7 @@ public class SubcontractorService {
 
     @Transactional
     public List<SubcontractorPackageResponse> generateFromBoq(Long projectId) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requireStaff();
         Project project = requireProject(projectId);
         UUID companyId = CompanyContext.get();
