@@ -22,4 +22,6 @@ public class InboxItemResponse {
     private UUID projectRoomId;
     private UUID roomTaskId;
     private String contextLabel;
+    /** Plain-text body for EMAIL outbox items (not used for live channels). */
+    private String emailBody;
 }

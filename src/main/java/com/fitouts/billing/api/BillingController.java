@@ -21,6 +21,15 @@ public class BillingController extends BaseController {
 
     private final BillingService billingService;
 
+    @GetMapping("/api/billing/company-summary")
+    public Object companySummary() {
+        try {
+            return successResponse(billingService.getCompanySummary());
+        } catch (Exception e) {
+            return failureResponse("Failed to load company billing summary", e.getMessage());
+        }
+    }
+
     @GetMapping("/api/projects/{projectId}/billing-milestones")
     public Object listMilestones(@PathVariable Long projectId) {
         try {
