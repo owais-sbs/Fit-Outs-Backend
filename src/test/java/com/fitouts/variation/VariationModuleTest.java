@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -48,10 +49,12 @@ import com.fitouts.shared.context.CompanyContext;
 import com.fitouts.shared.error.BadRequestException;
 import com.fitouts.variation.api.VariationUpsertRequest;
 import com.fitouts.variation.application.VariationRebaselineService;
+import com.fitouts.variation.application.VariationBoqApplyService;
 import com.fitouts.variation.application.VariationService;
 import com.fitouts.variation.domain.ProjectCommercial;
 import com.fitouts.variation.domain.ProjectCommercialRepository;
 import com.fitouts.variation.domain.VariationAttachmentRepository;
+import com.fitouts.variation.domain.VariationBoqChangeRepository;
 import com.fitouts.variation.domain.VariationEvent;
 import com.fitouts.variation.domain.VariationEventRepository;
 import com.fitouts.variation.domain.VariationLine;
@@ -80,6 +83,8 @@ class VariationModuleTest {
     private ScheduleRescheduleService scheduleRescheduleService;
     private ScheduleService scheduleService;
     private VariationRebaselineService rebaselineService;
+    private VariationBoqApplyService variationBoqApplyService;
+    private VariationBoqChangeRepository variationBoqChangeRepository;
     private VariationService service;
 
     private final UUID companyId = UUID.randomUUID();
@@ -113,6 +118,10 @@ class VariationModuleTest {
                 variationRepository, linkRepository, eventRepository, activityRepository,
                 scheduleRescheduleService, scheduleService, notificationService,
                 accountRepository, new ObjectMapper());
+        variationBoqApplyService = mock(VariationBoqApplyService.class);
+        variationBoqChangeRepository = mock(VariationBoqChangeRepository.class);
+        when(variationBoqChangeRepository.findByVariationUuidOrderByCreatedAtAsc(any()))
+                .thenReturn(List.of());
 
         CommercialLifecycleService commercialLifecycleService = mock(CommercialLifecycleService.class);
         org.mockito.Mockito.doNothing().when(commercialLifecycleService).assertCommercialMutable(any());
@@ -122,7 +131,8 @@ class VariationModuleTest {
                 eventRepository, commercialRepository, projectService, boqProjectRules,
                 boqLineRepository, workItemRepository, fileStorageService,
                 commercialApprovalService, notificationService, accountRepository,
-                rebaselineService, commercialLifecycleService);
+                rebaselineService, commercialLifecycleService,
+                variationBoqApplyService, variationBoqChangeRepository);
 
         Project project = new Project();
         project.setId(projectId);
@@ -257,6 +267,30 @@ class VariationModuleTest {
         assertThat(approved.getLockedAt()).isNotNull();
         assertThat(commercial.getCurrentContractValue()).isEqualByComparingTo("1010000");
         assertThat(commercial.getCurrentCost()).isEqualByComparingTo("4000");
+        verify(variationBoqApplyService).apply(vr, 99L);
+        assertThat(recordedEvents).anyMatch(e -> e.getAction().equals("BOQ_APPLIED"));
+    }
+
+    @Test
+    @DisplayName("missing approved BOQ is non-fatal and audited as skipped")
+    void clientApprove_boqApplyFailure_stillApprovesAndAudits() {
+        auth(Role.QS, 5L);
+        VariationUpsertRequest req = new VariationUpsertRequest();
+        req.setTitle("CR without approved BOQ");
+        var created = service.create(projectId, req);
+        VariationRequest vr = store.get(0);
+        vr.setStatus(VariationStatus.ISSUED_TO_CLIENT);
+        vr.setSellDelta(new BigDecimal("100"));
+        vr.setCostDelta(BigDecimal.ZERO);
+        doThrow(new BadRequestException("No approved BOQ exists for this project"))
+                .when(variationBoqApplyService).apply(vr, 99L);
+
+        auth(Role.CLIENT, 99L);
+        var approved = service.clientApprove(projectId, created.getUuid());
+
+        assertThat(approved.getStatus()).isEqualTo(VariationStatus.APPROVED);
+        assertThat(recordedEvents).anyMatch(e -> e.getAction().equals("BOQ_SKIPPED_NO_APPROVED")
+                && e.getDetail().contains("No approved BOQ"));
     }
 
     @Test
