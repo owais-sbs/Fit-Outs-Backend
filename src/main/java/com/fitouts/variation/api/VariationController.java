@@ -3,6 +3,9 @@ package com.fitouts.variation.api;
 import java.util.UUID;
 
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
+import org.springframework.core.io.Resource;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -114,6 +117,30 @@ public class VariationController extends BaseController {
             return successResponse(variationService.uploadAttachment(projectId, uuid, file));
         } catch (Exception e) {
             return failureResponse("Failed to upload attachment", e.getMessage());
+        }
+    }
+
+    @GetMapping("/api/projects/{projectId}/variations/{uuid}/attachments/{attachmentUuid}")
+    public ResponseEntity<Resource> downloadAttachment(
+            @PathVariable Long projectId,
+            @PathVariable UUID uuid,
+            @PathVariable UUID attachmentUuid) {
+        VariationService.AttachmentDownload download =
+                variationService.downloadAttachment(projectId, uuid, attachmentUuid);
+        String filename = download.filename() == null ? attachmentUuid.toString()
+                : download.filename().replace("\"", "");
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + filename + "\"")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(download.resource());
+    }
+
+    @GetMapping("/api/projects/{projectId}/variations/{uuid}/boq-changes")
+    public Object boqChanges(@PathVariable Long projectId, @PathVariable UUID uuid) {
+        try {
+            return successResponse(variationService.getBoqChanges(projectId, uuid));
+        } catch (Exception e) {
+            return failureResponse("Failed to load BOQ changes", e.getMessage());
         }
     }
 
