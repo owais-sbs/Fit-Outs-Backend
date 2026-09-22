@@ -38,6 +38,7 @@ import com.fitouts.commercialapproval.domain.CommercialEventType;
 import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.drawing.application.FileStorageService;
 import com.fitouts.notification.application.NotificationService;
+import com.fitouts.profitloss.application.PnlCalculationService;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
 import com.fitouts.schedule.api.ScheduleBaselineResponse;
@@ -132,7 +133,8 @@ class VariationModuleTest {
                 boqLineRepository, workItemRepository, fileStorageService,
                 commercialApprovalService, notificationService, accountRepository,
                 rebaselineService, commercialLifecycleService,
-                variationBoqApplyService, variationBoqChangeRepository);
+                variationBoqApplyService, variationBoqChangeRepository,
+                mock(PnlCalculationService.class));
 
         Project project = new Project();
         project.setId(projectId);

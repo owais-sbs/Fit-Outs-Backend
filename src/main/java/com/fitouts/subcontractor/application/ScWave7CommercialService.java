@@ -21,6 +21,7 @@ import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.commercialapproval.application.CommercialApprovalService;
 import com.fitouts.commercialapproval.domain.CommercialApprovalRun;
 import com.fitouts.commercialapproval.domain.CommercialEventType;
+import com.fitouts.profitloss.application.PnlCalculationService;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
 import com.fitouts.shared.context.CompanyContext;
@@ -83,6 +84,7 @@ public class ScWave7CommercialService {
     private final ProjectService projectService;
     private final CommercialApprovalService commercialApprovalService;
     private final CommercialLifecycleService commercialLifecycleService;
+    private final PnlCalculationService pnlCalculationService;
 
     @Transactional
     public SubcontractorClaim measureClaim(Long projectId, UUID claimUuid, ScMeasureClaimRequest request) {
@@ -251,6 +253,8 @@ public class ScWave7CommercialService {
         }
         claim.setDecidedAt(OffsetDateTime.now());
         claimRepository.save(claim);
+
+        pnlCalculationService.recalculateSafe(cert.getProjectId(), cert.getCompanyId());
     }
 
     @Transactional
@@ -271,7 +275,9 @@ public class ScWave7CommercialService {
         }
         certificateRepository.save(cert);
         claim.setStatus(SubcontractorClaimStatus.PAID);
-        return claimRepository.save(claim);
+        SubcontractorClaim saved = claimRepository.save(claim);
+        pnlCalculationService.recalculateSafe(cert.getProjectId(), cert.getCompanyId());
+        return saved;
     }
 
     @Transactional(readOnly = true)
