@@ -194,6 +194,7 @@ public class CommunicationService {
                     .lastMessageAt(out.getSentAt())
                     .unreadCount(0)
                     .contextLabel("Sent email")
+                    .emailBody(out.getBody())
                     .build()));
         }
 
@@ -205,8 +206,22 @@ public class CommunicationService {
 
     @Transactional(readOnly = true)
     public List<ChannelMessageResponse> getMessages(UUID channelUuid) {
-        CommunicationChannel channel = getChannel(channelUuid);
         AuthPrincipal principal = requirePrincipal();
+
+        // Sent-email inbox rows use the outbox UUID as channelUuid — not a live channel.
+        var outboxOpt = outboxRepository.findById(channelUuid);
+        if (outboxOpt.isPresent()) {
+            CommunicationOutbox out = outboxOpt.get();
+            boolean allowed = Objects.equals(out.getSentBy(), principal.getAccountId())
+                    || (principal.getEmail() != null
+                            && principal.getEmail().equalsIgnoreCase(out.getRecipientEmail()));
+            if (!allowed) {
+                throw new ForbiddenException("Not allowed to view this email");
+            }
+            return List.of(mapOutboxMessage(out));
+        }
+
+        CommunicationChannel channel = getChannel(channelUuid);
         assertMember(channel, principal.getAccountId());
 
         if (channel.getChannelType() == ChannelType.PROJECT_ROOM && channel.getProjectRoomId() != null) {
@@ -441,6 +456,30 @@ public class CommunicationService {
         Map<Long, String> names = new HashMap<>();
         accountRepository.findAllById(ids).forEach(a -> names.put(a.getId(), a.getFullName()));
         return names;
+    }
+
+    private ChannelMessageResponse mapOutboxMessage(CommunicationOutbox out) {
+        StringBuilder body = new StringBuilder();
+        if (StringUtils.hasText(out.getSubject())) {
+            body.append("Subject: ").append(out.getSubject().trim());
+        }
+        if (StringUtils.hasText(out.getBody())) {
+            if (body.length() > 0) {
+                body.append("\n\n");
+            }
+            body.append(out.getBody().trim());
+        }
+        Map<Long, String> names = out.getSentBy() != null
+                ? loadSenderNames(Set.of(out.getSentBy()))
+                : Map.of();
+        return ChannelMessageResponse.builder()
+                .uuid(out.getUuid())
+                .channelUuid(out.getUuid())
+                .senderAccountId(out.getSentBy())
+                .senderName(names.getOrDefault(out.getSentBy(), "Sent email"))
+                .body(body.toString())
+                .createdAt(out.getSentAt())
+                .build();
     }
 
     private ChannelMessageResponse mapCommMessage(

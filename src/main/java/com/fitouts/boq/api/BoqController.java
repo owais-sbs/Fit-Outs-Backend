@@ -46,6 +46,15 @@ public class BoqController extends BaseController {
         }
     }
 
+    @GetMapping("/company-portfolio")
+    public ResponseEntity<?> companyPortfolio() {
+        try {
+            return successResponse(boqService.listCompanyPortfolio());
+        } catch (Exception e) {
+            return failureResponse("Failed to fetch company BOQ portfolio", e.getMessage());
+        }
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<?> get(@PathVariable UUID id) {
         try {

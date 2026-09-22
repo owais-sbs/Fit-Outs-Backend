@@ -384,4 +384,41 @@ class BillingModuleTest {
         assertThat(pr.getStatus()).isEqualTo(BillingStatus.PAID);
         assertThat(m.getStatus()).isEqualTo(BillingStatus.PAID);
     }
+
+    @Test
+    @DisplayName("company-summary groups billing by project_id without per-project list calls")
+    void companySummary_groupsByProject() {
+        authenticateFinance();
+        Project project = new Project();
+        project.setId(projectId);
+        project.setName("Fit-out A");
+
+        UUID billedUuid = UUID.randomUUID();
+        BillingMilestone billed = createMilestone(billedUuid, "Advance", LocalDate.now(), BillingStatus.ISSUED);
+        billed.setAmount(new BigDecimal("400.00"));
+        BillingMilestone paid = createMilestone(UUID.randomUUID(), "Retention", LocalDate.now(), BillingStatus.PAID);
+        paid.setAmount(new BigDecimal("100.00"));
+
+        when(projectService.getAll()).thenReturn(List.of(project));
+        when(milestoneRepository.aggregateAmountByProjectAndStatus(companyId)).thenReturn(List.of(
+                new Object[]{projectId, BillingStatus.ISSUED, new BigDecimal("400.00"), 1L},
+                new Object[]{projectId, BillingStatus.PAID, new BigDecimal("100.00"), 1L}
+        ));
+        when(paymentRequestRepository.findByCompanyIdOrderByCreatedAtDesc(companyId)).thenReturn(List.of());
+        when(milestoneRepository.findByCompanyIdOrderByDueDateAscCreatedAtAsc(companyId))
+                .thenReturn(List.of(billed, paid));
+
+        var summary = billingService.getCompanySummary();
+
+        assertThat(summary).hasSize(1);
+        assertThat(summary.get(0).getProjectId()).isEqualTo(projectId);
+        assertThat(summary.get(0).getBilledAmount()).isEqualByComparingTo("500.00");
+        assertThat(summary.get(0).getPaidAmount()).isEqualByComparingTo("100.00");
+        assertThat(summary.get(0).getOutstandingAmount()).isEqualByComparingTo("400.00");
+        assertThat(summary.get(0).getMilestoneCount()).isEqualTo(2);
+        assertThat(summary.get(0).getMilestones()).hasSize(2);
+        verify(milestoneRepository).aggregateAmountByProjectAndStatus(companyId);
+        verify(milestoneRepository, never())
+                .findByProjectIdAndCompanyIdOrderByDueDateAscCreatedAtAsc(any(), any());
+    }
 }

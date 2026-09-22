@@ -19,6 +19,7 @@ import com.fitouts.procurement.api.*;
 import com.fitouts.procurement.domain.*;
 import com.fitouts.project.domain.Project;
 import com.fitouts.project.domain.ProjectRepository;
+import com.fitouts.profitloss.application.PnlCalculationService;
 import com.fitouts.shared.context.CompanyContext;
 import com.fitouts.shared.enums.StockMovementType;
 import com.fitouts.shared.error.BadRequestException;
@@ -36,6 +37,7 @@ public class StockService {
     private final MaterialService materialService;
     private final CompanyService companyService;
     private final ProjectRepository projectRepository;
+    private final PnlCalculationService pnlCalculationService;
 
     @Transactional(readOnly = true)
     public List<StockBalanceResponse> listBalances() {
@@ -97,6 +99,9 @@ public class StockService {
 
         StockMovement movement = saveMovement(material, StockMovementType.ISSUE, request.getQuantity(),
                 unitCost, total, project, request.getReferenceNo(), request.getNotes(), request.getMovementDate());
+        if (project != null) {
+            pnlCalculationService.recalculateSafe(project.getId(), CompanyContext.get());
+        }
         return mapMovement(movement);
     }
 
