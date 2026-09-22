@@ -15,6 +15,7 @@ import com.fitouts.account.domain.Account;
 import com.fitouts.account.domain.AccountRepository;
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
+import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.project.api.ProjectTeamAssignmentItemRequest;
 import com.fitouts.project.api.ProjectTeamAssignmentResponse;
 import com.fitouts.project.api.ProjectTeamAssignmentSyncRequest;
@@ -39,6 +40,7 @@ public class ProjectTeamAssignmentService {
     private final ProjectTeamAssignmentRepository assignmentRepository;
     private final ProjectRepository projectRepository;
     private final AccountRepository accountRepository;
+    private final CommercialLifecycleService commercialLifecycleService;
 
     @Transactional(readOnly = true)
     public List<ProjectTeamAssignmentResponse> list(Long projectId) {
@@ -55,6 +57,7 @@ public class ProjectTeamAssignmentService {
     @Transactional
     public List<ProjectTeamAssignmentResponse> sync(Long projectId, ProjectTeamAssignmentSyncRequest request) {
         requireStaff();
+        commercialLifecycleService.assertNotArchived(projectId);
         Project project = requireProject(projectId);
         UUID companyId = CompanyContext.get();
 

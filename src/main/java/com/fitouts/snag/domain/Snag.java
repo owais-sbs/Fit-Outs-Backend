@@ -56,6 +56,10 @@ public class Snag {
     @Column(nullable = false, length = 20)
     private SnagSeverity severity = SnagSeverity.MEDIUM;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private SnagCategory category = SnagCategory.STANDARD;
+
     @Column(name = "due_date")
     private LocalDate dueDate;
 

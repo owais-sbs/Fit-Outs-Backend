@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
+import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.planning.application.PlanningService;
 import com.fitouts.planning.domain.PlanAreaStatus;
 import com.fitouts.project.application.ProjectService;
@@ -43,6 +44,7 @@ public class CrewAssignmentService {
     private final ScheduleActivityRepository activityRepository;
     private final ProjectService projectService;
     private final PlanningService planningService;
+    private final CommercialLifecycleService commercialLifecycleService;
 
     @Transactional(readOnly = true)
     public List<CrewAssignmentResponse> list(Long projectId) {
@@ -58,6 +60,7 @@ public class CrewAssignmentService {
     @Transactional
     public CrewAssignmentResponse create(Long projectId, CrewAssignmentRequest request) {
         AuthPrincipal principal = requireStaff();
+        commercialLifecycleService.assertNotArchived(projectId);
         Project project = requireProject(projectId);
         UUID companyId = CompanyContext.get();
 
@@ -106,6 +109,7 @@ public class CrewAssignmentService {
     @Transactional
     public void delete(Long projectId, UUID assignmentUuid) {
         AuthPrincipal principal = requireStaff();
+        commercialLifecycleService.assertNotArchived(projectId);
         Project project = requireProject(projectId);
         UUID companyId = CompanyContext.get();
 

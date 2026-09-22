@@ -13,6 +13,7 @@ import org.springframework.util.StringUtils;
 import com.fitouts.billing.application.BillingService;
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
+import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
 import com.fitouts.schedule.domain.ActivityProgressUpdate;
@@ -42,9 +43,13 @@ public class ProgressValidationService {
     private final ProjectService projectService;
     private final BillingService billingService;
     private final ActivityMaterialIssueService activityMaterialIssueService;
+    private final CommercialLifecycleService commercialLifecycleService;
 
     @Transactional
     public ProgressValidation createPendingForProgress(ActivityProgressUpdate update) {
+        if (update.getProjectId() != null) {
+            commercialLifecycleService.assertNotArchived(update.getProjectId());
+        }
         if (validationRepository.existsByProgressUpdateUuid(update.getUuid())) {
             return validationRepository.findByProgressUpdateUuid(update.getUuid()).orElseThrow();
         }
@@ -64,6 +69,7 @@ public class ProgressValidationService {
 
         ScheduleActivity activity = activityRepository.findByUuidAndCompanyId(activityUuid, companyId)
                 .orElseThrow(() -> new NotFoundException("Activity not found"));
+        commercialLifecycleService.assertNotArchived(activity.getProjectId());
 
         ActivityProgressUpdate progress = progressRepository.findById(progressUuid)
                 .orElseThrow(() -> new NotFoundException("Progress update not found"));
@@ -105,6 +111,7 @@ public class ProgressValidationService {
     public ProgressValidationResponse approve(UUID uuid) {
         AuthPrincipal principal = requirePmOrAdmin();
         ProgressValidation validation = requirePending(uuid);
+        commercialLifecycleService.assertNotArchived(validation.getProjectId());
         ActivityProgressUpdate progress = progressRepository.findById(validation.getProgressUpdateUuid())
                 .orElseThrow(() -> new NotFoundException("Progress update not found"));
         ScheduleActivity activity = activityRepository
@@ -134,6 +141,7 @@ public class ProgressValidationService {
             throw new BadRequestException("reason is required");
         }
         ProgressValidation validation = requirePending(uuid);
+        commercialLifecycleService.assertNotArchived(validation.getProjectId());
         activityMaterialIssueService.voidDeclared(validation.getProgressUpdateUuid());
         validation.setStatus(ProgressValidationStatus.REJECTED);
         validation.setDecidedBy(principal.getAccountId());

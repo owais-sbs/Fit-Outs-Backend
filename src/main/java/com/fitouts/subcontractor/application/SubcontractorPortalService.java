@@ -60,6 +60,7 @@ import com.fitouts.subcontractor.domain.SubcontractorClaimStatus;
 import com.fitouts.subcontractor.domain.SubcontractorPackage;
 import com.fitouts.subcontractor.domain.SubcontractorPackageRepository;
 import com.fitouts.subcontractor.domain.SubcontractorPackageStatus;
+import com.fitouts.completion.application.CommercialLifecycleService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -79,6 +80,7 @@ public class SubcontractorPortalService {
     private final ScBankDetailRepository bankDetailRepository;
     private final ScCompanyProfileRepository profileRepository;
     private final SnagRepository snagRepository;
+    private final CommercialLifecycleService commercialLifecycleService;
 
     // ── Snags ────────────────────────────────────────────────────────────────
 
@@ -125,6 +127,7 @@ public class SubcontractorPortalService {
         AuthPrincipal principal = requireScPortalUser();
         portalAccessService.requireCommercialAccess(principal);
         SubcontractorPackage pkg = requireAppointedPackage(principal, packageUuid);
+        commercialLifecycleService.assertNotArchived(pkg.getProjectId());
         if (body == null || !StringUtils.hasText(body.getTitle())) {
             throw new BadRequestException("title is required");
         }
@@ -149,6 +152,7 @@ public class SubcontractorPortalService {
         if (row.getStatus() != ScVariationStatus.DRAFT && row.getStatus() != ScVariationStatus.REJECTED) {
             throw new BadRequestException("Only DRAFT or REJECTED variations can be submitted");
         }
+        commercialLifecycleService.assertNotArchived(row.getProjectId());
         row.setStatus(ScVariationStatus.SUBMITTED);
         row.setSubmittedBy(principal.getAccountId());
         row.setSubmittedAt(OffsetDateTime.now());
@@ -166,12 +170,14 @@ public class SubcontractorPortalService {
         if (row.getStatus() != ScVariationStatus.DRAFT && row.getStatus() != ScVariationStatus.REJECTED) {
             throw new BadRequestException("Attachments only on DRAFT or REJECTED variations");
         }
+        commercialLifecycleService.assertNotArchived(row.getProjectId());
         row.setAttachmentPaths(appendPath(row.getAttachmentPaths(), storeFile(file, row)));
         return toVariationResponse(variationRepository.save(row));
     }
 
     @Transactional
     public ScVariationResponse approveVariation(Long projectId, UUID uuid) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requirePmOrAdmin();
         requireProject(projectId);
         ScVariationRequest row = requireSubmittedVariation(uuid, projectId);
@@ -184,6 +190,7 @@ public class SubcontractorPortalService {
 
     @Transactional
     public ScVariationResponse rejectVariation(Long projectId, UUID uuid, ClaimRejectRequest request) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requirePmOrAdmin();
         requireProject(projectId);
         if (request == null || !StringUtils.hasText(request.getReason())) {
@@ -230,6 +237,7 @@ public class SubcontractorPortalService {
             throw new BadRequestException("projectId is required");
         }
         assertProjectAppointed(principal, body.getProjectId());
+        commercialLifecycleService.assertNotArchived(body.getProjectId());
         if (body.getPackageUuid() != null) {
             requireAppointedPackage(principal, body.getPackageUuid());
         }
@@ -253,6 +261,7 @@ public class SubcontractorPortalService {
 
     @Transactional
     public ScSiteReportResponse acknowledgeSiteReport(Long projectId, UUID uuid) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requireStaff();
         requireProject(projectId);
         ScSiteReport row = requireSiteReport(uuid, projectId);
@@ -264,6 +273,7 @@ public class SubcontractorPortalService {
 
     @Transactional
     public ScSiteReportResponse resolveSiteReport(Long projectId, UUID uuid, String resolutionNotes) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requireStaff();
         requireProject(projectId);
         ScSiteReport row = requireSiteReport(uuid, projectId);
@@ -292,6 +302,7 @@ public class SubcontractorPortalService {
             throw new BadRequestException("packageUuid is required");
         }
         SubcontractorPackage pkg = requireAppointedPackage(principal, body.getPackageUuid());
+        commercialLifecycleService.assertNotArchived(pkg.getProjectId());
         if (body.getClaimUuid() != null) {
             SubcontractorClaim claim = claimRepository.findByUuidAndCompanyId(body.getClaimUuid(), pkg.getCompanyId())
                     .orElseThrow(() -> new NotFoundException("Claim not found"));
@@ -326,6 +337,7 @@ public class SubcontractorPortalService {
         if (row.getStatus() != ScInvoiceStatus.DRAFT && row.getStatus() != ScInvoiceStatus.REJECTED) {
             throw new BadRequestException("Only DRAFT or REJECTED invoices can be submitted");
         }
+        commercialLifecycleService.assertNotArchived(row.getProjectId());
         if (row.getAmount() == null || row.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
             throw new BadRequestException("amount must be greater than zero");
         }
@@ -346,12 +358,14 @@ public class SubcontractorPortalService {
         if (row.getStatus() != ScInvoiceStatus.DRAFT && row.getStatus() != ScInvoiceStatus.REJECTED) {
             throw new BadRequestException("Attachments only on DRAFT or REJECTED invoices");
         }
+        commercialLifecycleService.assertNotArchived(row.getProjectId());
         row.setAttachmentPaths(appendPath(row.getAttachmentPaths(), storeFile(file, row)));
         return toInvoiceResponse(invoiceRepository.save(row));
     }
 
     @Transactional
     public ScInvoiceResponse approveInvoice(Long projectId, UUID uuid) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requirePmOrAdmin();
         requireProject(projectId);
         ScInvoice row = requireSubmittedInvoice(uuid, projectId);
@@ -364,6 +378,7 @@ public class SubcontractorPortalService {
 
     @Transactional
     public ScInvoiceResponse rejectInvoice(Long projectId, UUID uuid, ClaimRejectRequest request) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requirePmOrAdmin();
         requireProject(projectId);
         if (request == null || !StringUtils.hasText(request.getReason())) {
@@ -379,6 +394,7 @@ public class SubcontractorPortalService {
 
     @Transactional
     public ScInvoiceResponse markInvoicePaid(Long projectId, UUID uuid, ScMarkPaidRequest request) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requirePmOrAdmin();
         requireProject(projectId);
         ScInvoice row = requireInvoice(uuid);

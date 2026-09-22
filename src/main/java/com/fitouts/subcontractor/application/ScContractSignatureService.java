@@ -34,6 +34,7 @@ import com.fitouts.subcontractor.domain.ScPortalUser;
 import com.fitouts.subcontractor.domain.ScPortalUserRepository;
 import com.fitouts.subcontractor.domain.SubcontractorPackage;
 import com.fitouts.subcontractor.domain.SubcontractorPackageRepository;
+import com.fitouts.completion.application.CommercialLifecycleService;
 
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -50,12 +51,14 @@ public class ScContractSignatureService {
     private final ScPortalAccessService portalAccessService;
     private final FileStorageService fileStorageService;
     private final SubcontractPdfService pdfService;
+    private final CommercialLifecycleService commercialLifecycleService;
 
     // ── Admin Signature Flow (Main Contractor / Staff) ─────────────────────────
 
     @Transactional
     public ScSubcontractContractResponse adminSignContract(
             Long projectId, UUID packageUuid, ScAdminSignContractRequest request, HttpServletRequest servletRequest) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requireAdmin();
         UUID companyId = requireCompany();
 
@@ -209,6 +212,7 @@ public class ScContractSignatureService {
 
         SubcontractorPackage pkg = packageRepository.findByUuidAndCompanyId(packageUuid, companyId)
                 .orElseThrow(() -> new NotFoundException("Subcontractor package not found"));
+        commercialLifecycleService.assertNotArchived(pkg.getProjectId());
 
         ScPackageAward award = awardRepository.findByPackageUuid(packageUuid)
                 .orElseThrow(() -> new NotFoundException("No subcontract award recorded for this package"));

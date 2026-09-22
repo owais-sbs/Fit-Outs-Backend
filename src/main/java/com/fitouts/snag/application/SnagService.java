@@ -17,6 +17,8 @@ import com.fitouts.account.domain.Account;
 import com.fitouts.account.domain.AccountRepository;
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
+import com.fitouts.completion.application.CommercialLifecycleService;
+import com.fitouts.completion.domain.CommercialLifecycleStage;
 import com.fitouts.drawing.application.FileStorageService;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
@@ -32,6 +34,7 @@ import com.fitouts.snag.api.SnagRequest;
 import com.fitouts.snag.api.SnagResponse;
 import com.fitouts.snag.api.SnagStatusRequest;
 import com.fitouts.snag.domain.Snag;
+import com.fitouts.snag.domain.SnagCategory;
 import com.fitouts.snag.domain.SnagRepository;
 import com.fitouts.snag.domain.SnagSeverity;
 import com.fitouts.snag.domain.SnagStatus;
@@ -57,6 +60,7 @@ public class SnagService {
     private final ProjectRoomRepository projectRoomRepository;
     private final ScheduleActivityRepository scheduleActivityRepository;
     private final AccountRepository accountRepository;
+    private final CommercialLifecycleService commercialLifecycleService;
 
     @Transactional(readOnly = true)
     public List<SnagResponse> list(Long projectId) {
@@ -94,6 +98,7 @@ public class SnagService {
 
     private SnagResponse createInternal(Long projectId, SnagRequest request, AuthPrincipal principal, boolean byClient) {
         Project project = requireProject(projectId);
+        commercialLifecycleService.assertNotArchived(projectId);
         if (request == null || !StringUtils.hasText(request.getTitle())) {
             throw new BadRequestException("title is required");
         }
@@ -109,6 +114,7 @@ public class SnagService {
         snag.setPhotoPaths(request.getPhotoPaths());
         snag.setStatus(SnagStatus.OPEN);
         snag.setSeverity(request.getSeverity() != null ? request.getSeverity() : SnagSeverity.MEDIUM);
+        snag.setCategory(resolveCategory(projectId, request, byClient));
         snag.setDueDate(request.getDueDate());
         snag.setRaisedBy(principal.getAccountId());
         snag.setRaisedByClient(byClient);
@@ -117,10 +123,24 @@ public class SnagService {
         return toResponse(snagRepository.save(snag));
     }
 
+    private SnagCategory resolveCategory(Long projectId, SnagRequest request, boolean byClient) {
+        if (request != null && request.getCategory() != null) {
+            return request.getCategory();
+        }
+        CommercialLifecycleStage stage = commercialLifecycleService.resolveStage(projectId);
+        boolean inDlp = stage == CommercialLifecycleStage.DEFECTS_LIABILITY
+                || stage == CommercialLifecycleStage.ARCHIVE_ELIGIBLE;
+        if (byClient && inDlp) {
+            return SnagCategory.WARRANTY;
+        }
+        return SnagCategory.STANDARD;
+    }
+
     @Transactional
     public SnagResponse update(Long projectId, UUID uuid, SnagRequest request) {
         requireStaff();
         requireProject(projectId);
+        commercialLifecycleService.assertNotArchived(projectId);
         Snag snag = requireSnag(uuid, projectId);
         if (request == null) {
             return toResponse(snag);
@@ -155,6 +175,9 @@ public class SnagService {
         if (request.getClientVisible() != null) {
             snag.setClientVisible(request.getClientVisible());
         }
+        if (request.getCategory() != null) {
+            snag.setCategory(request.getCategory());
+        }
         if (request.getStatus() != null && request.getStatus() != snag.getStatus()) {
             assertTransition(snag.getStatus(), request.getStatus());
             snag.setStatus(request.getStatus());
@@ -166,6 +189,7 @@ public class SnagService {
     public SnagResponse patchStatus(Long projectId, UUID uuid, SnagStatusRequest request) {
         requireStaff();
         requireProject(projectId);
+        commercialLifecycleService.assertNotArchived(projectId);
         if (request == null || request.getStatus() == null) {
             throw new BadRequestException("status is required");
         }
@@ -181,6 +205,7 @@ public class SnagService {
     public SnagResponse clientApprove(Long projectId, UUID uuid) {
         AuthPrincipal principal = requireClient();
         requireProject(projectId);
+        commercialLifecycleService.assertNotArchived(projectId);
         Snag snag = requireClientVisibleSnag(uuid, projectId);
         if (snag.getStatus() != SnagStatus.READY_FOR_INSPECTION && snag.getStatus() != SnagStatus.RESOLVED) {
             throw new BadRequestException("Only snags ready for inspection can be approved by the client");
@@ -197,6 +222,7 @@ public class SnagService {
     public SnagResponse uploadPhoto(Long projectId, UUID uuid, MultipartFile file) {
         AuthPrincipal principal = requireAuthenticated();
         Project project = requireProject(projectId);
+        commercialLifecycleService.assertNotArchived(projectId);
         if (file == null || file.isEmpty()) {
             throw new BadRequestException("file is required");
         }
@@ -223,6 +249,7 @@ public class SnagService {
     public void delete(Long projectId, UUID uuid) {
         requireStaff();
         requireProject(projectId);
+        commercialLifecycleService.assertNotArchived(projectId);
         snagRepository.delete(requireSnag(uuid, projectId));
     }
 
@@ -348,6 +375,7 @@ public class SnagService {
                 .photoPaths(snag.getPhotoPaths())
                 .status(snag.getStatus())
                 .severity(snag.getSeverity())
+                .category(snag.getCategory())
                 .dueDate(snag.getDueDate())
                 .raisedBy(snag.getRaisedBy())
                 .raisedByName(displayName(snag.getRaisedBy()))

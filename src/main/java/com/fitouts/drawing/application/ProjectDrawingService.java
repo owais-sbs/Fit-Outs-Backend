@@ -17,6 +17,7 @@ import org.springframework.web.multipart.MultipartFile;
 import com.fitouts.drawing.api.ProjectDrawingResponse;
 import com.fitouts.drawing.domain.ProjectDrawing;
 import com.fitouts.drawing.domain.ProjectDrawingRepository;
+import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
 import com.fitouts.projectdoc.application.ProjectDocumentService;
@@ -38,6 +39,7 @@ public class ProjectDrawingService {
     private final FileStorageService fileStorageService;
     private final DwgConversionService dwgConversionService;
     private final ProjectDocumentService projectDocumentService;
+    private final CommercialLifecycleService commercialLifecycleService;
 
     public ProjectDrawingResponse upload(Long projectId, DrawingCategory category, MultipartFile file) {
         return upload(projectId, category, file, null, null, null);
@@ -50,6 +52,7 @@ public class ProjectDrawingService {
             String drawingNumber,
             String revisionCode,
             LocalDate revisionDate) {
+        commercialLifecycleService.assertNotArchived(projectId);
         UUID companyId = CompanyContext.get();
         Project project = projectService.getById(projectId);
 
@@ -128,6 +131,7 @@ public class ProjectDrawingService {
 
     public ProjectDrawingResponse reconvert(UUID id) {
         ProjectDrawing drawing = find(id);
+        commercialLifecycleService.assertNotArchived(drawing.getProject().getId());
         if (Boolean.TRUE.equals(drawing.getIsSuperseded())) {
             throw new BadRequestException("Cannot reconvert superseded drawing revision");
         }
@@ -227,6 +231,7 @@ public class ProjectDrawingService {
 
     public void delete(UUID id) {
         ProjectDrawing drawing = find(id);
+        commercialLifecycleService.assertNotArchived(drawing.getProject().getId());
         drawing.setDeleted(true);
         drawing.setStatus(DrawingStatus.FAILED);
         drawingRepository.save(drawing);

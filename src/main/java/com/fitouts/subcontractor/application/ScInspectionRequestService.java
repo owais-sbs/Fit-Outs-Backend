@@ -34,6 +34,7 @@ import com.fitouts.drawing.application.FileStorageService;
 import com.fitouts.checklist.mapper.SiteVisitEstimateMapper;
 import com.fitouts.subcontractor.domain.ScPackageAward;
 import com.fitouts.subcontractor.domain.ScPackageAwardRepository;
+import com.fitouts.completion.application.CommercialLifecycleService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -47,6 +48,7 @@ public class ScInspectionRequestService {
     private final ScPortalAccessService portalAccessService;
     private final ProjectService projectService;
     private final FileStorageService fileStorageService;
+    private final CommercialLifecycleService commercialLifecycleService;
 
     @Transactional
     public ScInspectionRequestResponse submitInspection(UUID packageUuid, ScInspectionSubmitRequest request) {
@@ -69,6 +71,7 @@ public class ScInspectionRequestService {
 
         SubcontractorPackage pkg = packageRepository.findByUuidAndCompanyId(packageUuid, companyId)
                 .orElseThrow(() -> new NotFoundException("Subcontractor package not found"));
+        commercialLifecycleService.assertNotArchived(pkg.getProjectId());
 
         boolean authorized = false;
         ScPackageAward award = awardRepository.findByPackageUuid(packageUuid).orElse(null);
@@ -157,6 +160,7 @@ public class ScInspectionRequestService {
 
     @Transactional
     public ScInspectionRequestResponse reviewInspection(Long projectId, UUID inspectionUuid, ScInspectionReviewRequest request) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requireAuthenticated();
         UUID companyId = requireCompany();
         requireProject(projectId);

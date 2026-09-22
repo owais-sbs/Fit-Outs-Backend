@@ -14,6 +14,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
+import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.holdpoint.api.HoldPointRequest;
 import com.fitouts.holdpoint.api.HoldPointResponse;
 import com.fitouts.holdpoint.api.QualityTemplateRequest;
@@ -42,6 +43,7 @@ public class HoldPointService {
     private final ActivityQualityTemplateRepository templateRepository;
     private final ProjectService projectService;
     private final ObjectMapper objectMapper;
+    private final CommercialLifecycleService commercialLifecycleService;
 
     @Transactional(readOnly = true)
     public List<HoldPointResponse> list(Long projectId) {
@@ -64,6 +66,7 @@ public class HoldPointService {
     @Transactional
     public HoldPointResponse create(Long projectId, HoldPointRequest request) {
         AuthPrincipal principal = requireStaff();
+        commercialLifecycleService.assertNotArchived(projectId);
         Project project = requireProject(projectId);
         if (request == null || !StringUtils.hasText(request.getTitle())) {
             throw new BadRequestException("title is required");
@@ -85,6 +88,7 @@ public class HoldPointService {
     @Transactional
     public HoldPointResponse update(Long projectId, UUID uuid, HoldPointRequest request) {
         requireStaff();
+        commercialLifecycleService.assertNotArchived(projectId);
         requireProject(projectId);
         QualityHoldPoint hp = requireHoldPoint(uuid, projectId);
         if (request == null) {
@@ -114,6 +118,7 @@ public class HoldPointService {
     @Transactional
     public void delete(Long projectId, UUID uuid) {
         requireStaff();
+        commercialLifecycleService.assertNotArchived(projectId);
         requireProject(projectId);
         holdPointRepository.delete(requireHoldPoint(uuid, projectId));
     }
@@ -121,6 +126,7 @@ public class HoldPointService {
     @Transactional
     public HoldPointResponse clear(Long projectId, UUID uuid) {
         AuthPrincipal principal = requireStaff();
+        commercialLifecycleService.assertNotArchived(projectId);
         requireProject(projectId);
         QualityHoldPoint hp = requireHoldPoint(uuid, projectId);
         hp.setStatus(HoldPointStatus.CLEARED);
@@ -131,6 +137,7 @@ public class HoldPointService {
     @Transactional
     public HoldPointResponse hold(Long projectId, UUID uuid) {
         AuthPrincipal principal = requireStaff();
+        commercialLifecycleService.assertNotArchived(projectId);
         requireProject(projectId);
         QualityHoldPoint hp = requireHoldPoint(uuid, projectId);
         hp.setStatus(HoldPointStatus.HELD);
