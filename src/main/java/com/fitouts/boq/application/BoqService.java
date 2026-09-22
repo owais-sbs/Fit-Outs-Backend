@@ -3,7 +3,10 @@ package com.fitouts.boq.application;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -31,6 +34,8 @@ import com.fitouts.shared.error.BadRequestException;
 import com.fitouts.shared.error.ForbiddenException;
 import com.fitouts.shared.error.NotFoundException;
 import com.fitouts.shared.security.PortalAccessHelper;
+import com.fitouts.variation.domain.ProjectCommercial;
+import com.fitouts.variation.domain.ProjectCommercialRepository;
 import com.fitouts.workitemconfiguration.domain.WorkItem;
 import com.fitouts.workitemconfiguration.domain.WorkItemRepository;
 
@@ -52,6 +57,7 @@ public class BoqService {
     private final PortalAccessHelper portalAccess;
     private final BoqProjectRules boqProjectRules;
     private final WorkItemRepository workItemRepository;
+    private final ProjectCommercialRepository projectCommercialRepository;
 
     public BoqDocumentResponse generateFromQto(UUID sessionId) {
         QtoSession session = qtoService.findSession(sessionId);
@@ -207,6 +213,129 @@ public class BoqService {
                 .stream()
                 .map(d -> mapDocument(d, boqLineRepository.findByBoqIdOrderBySortOrderAsc(d.getId())))
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Company-wide portfolio rows: one grouped fetch of BOQ headers (no line items)
+     * plus company projects and commercial contract values. Does not call
+     * {@link #listByProject(Long)} per project.
+     */
+    @Transactional(readOnly = true)
+    public List<BoqPortfolioProjectResponse> listCompanyPortfolio() {
+        portalAccess.requirePrincipal();
+        UUID companyId = CompanyContext.get();
+        if (companyId == null) {
+            throw new BadRequestException("Company context required");
+        }
+
+        List<Project> projects = projectService.getAll();
+        Map<Long, List<BoqDocument>> boqsByProject = new HashMap<>();
+        for (BoqDocument doc : boqDocumentRepository.findAllWithProjectByCompanyId(companyId)) {
+            if (doc.getProject() == null) {
+                continue;
+            }
+            boqsByProject.computeIfAbsent(doc.getProject().getId(), k -> new ArrayList<>()).add(doc);
+        }
+
+        Map<Long, ProjectCommercial> commercialByProject = new HashMap<>();
+        for (ProjectCommercial commercial : projectCommercialRepository.findByCompanyId(companyId)) {
+            commercialByProject.put(commercial.getProjectId(), commercial);
+        }
+
+        List<BoqPortfolioProjectResponse> rows = new ArrayList<>(projects.size());
+        for (Project project : projects) {
+            rows.add(toPortfolioRow(
+                    project,
+                    boqsByProject.getOrDefault(project.getId(), List.of()),
+                    commercialByProject.get(project.getId())));
+        }
+        return rows;
+    }
+
+    private BoqPortfolioProjectResponse toPortfolioRow(
+            Project project,
+            List<BoqDocument> documents,
+            ProjectCommercial commercial) {
+        List<BoqDocument> sorted = documents.stream()
+                .sorted(Comparator.comparing(BoqDocument::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())).reversed())
+                .toList();
+        BoqDocument live = pickLiveBoq(sorted);
+        BigDecimal boqTotal = live != null && live.getGrandTotal() != null ? live.getGrandTotal() : BigDecimal.ZERO;
+        BigDecimal subtotal = live != null && live.getSubtotal() != null ? live.getSubtotal() : BigDecimal.ZERO;
+        BigDecimal vatAmount = live != null && live.getVatAmount() != null ? live.getVatAmount() : BigDecimal.ZERO;
+        BigDecimal budget = resolvePortfolioBudget(project, commercial, boqTotal);
+        BigDecimal contractValue = commercial != null ? commercial.getCurrentContractValue() : null;
+
+        return BoqPortfolioProjectResponse.builder()
+                .projectId(project.getId())
+                .projectName(project.getName())
+                .projectType(project.getProjectType())
+                .location(project.getLocation())
+                .status(project.getStatus())
+                .progress(project.getProgress() != null ? project.getProgress() : 0)
+                .budget(budget)
+                .boqTotal(boqTotal)
+                .subtotal(subtotal)
+                .vatAmount(vatAmount)
+                .grandTotal(boqTotal)
+                .variance(budget.subtract(boqTotal))
+                .boqId(live != null ? live.getId() : null)
+                .boqStatus(live != null ? live.getStatus() : null)
+                .boqVersion(live != null ? live.getVersion() : null)
+                .currentApprovalStep(live != null ? live.getCurrentApprovalStep() : null)
+                .currentContractValue(contractValue)
+                .boqs(sorted.stream().map(this::mapPortfolioDocument).toList())
+                .build();
+    }
+
+    private BoqPortfolioDocumentResponse mapPortfolioDocument(BoqDocument doc) {
+        return BoqPortfolioDocumentResponse.builder()
+                .id(doc.getId())
+                .projectId(doc.getProject() != null ? doc.getProject().getId() : null)
+                .version(doc.getVersion())
+                .status(doc.getStatus())
+                .currentApprovalStep(doc.getCurrentApprovalStep())
+                .subtotal(doc.getSubtotal())
+                .vatAmount(doc.getVatAmount())
+                .grandTotal(doc.getGrandTotal())
+                .createdAt(doc.getCreatedAt())
+                .updatedAt(doc.getUpdatedAt())
+                .build();
+    }
+
+    private static BoqDocument pickLiveBoq(List<BoqDocument> documents) {
+        Optional<BoqDocument> approved = documents.stream()
+                .filter(d -> d.getStatus() == BoqDocumentStatus.APPROVED || d.getStatus() == BoqDocumentStatus.FINAL)
+                .max(Comparator.comparing(BoqDocument::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())));
+        if (approved.isPresent()) {
+            return approved.get();
+        }
+        return documents.stream()
+                .filter(d -> d.getStatus() != BoqDocumentStatus.OBSOLETE)
+                .max(Comparator.comparing(BoqDocument::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())))
+                .orElse(null);
+    }
+
+    private static BigDecimal resolvePortfolioBudget(
+            Project project,
+            ProjectCommercial commercial,
+            BigDecimal boqTotal) {
+        if (isPositive(project.getBudget())) {
+            return project.getBudget();
+        }
+        if (commercial != null) {
+            if (isPositive(commercial.getOriginalContractValue())) {
+                return commercial.getOriginalContractValue();
+            }
+            if (isPositive(commercial.getCurrentContractValue())) {
+                return commercial.getCurrentContractValue();
+            }
+        }
+        return isPositive(boqTotal) ? boqTotal : BigDecimal.ZERO;
+    }
+
+    private static boolean isPositive(BigDecimal value) {
+        return value != null && value.signum() > 0;
     }
 
     private List<BoqLine> saveLines(BoqDocument doc, List<BoqLineRequest> requests) {

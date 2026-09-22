@@ -5,6 +5,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface BillingMilestoneRepository extends JpaRepository<BillingMilestone, UUID> {
 
@@ -14,4 +16,14 @@ public interface BillingMilestoneRepository extends JpaRepository<BillingMilesto
 
     List<BillingMilestone> findByLinkedActivityUuidAndCompanyIdAndStatus(
             UUID linkedActivityUuid, UUID companyId, BillingStatus status);
+
+    List<BillingMilestone> findByCompanyIdOrderByDueDateAscCreatedAtAsc(UUID companyId);
+
+    @Query("""
+            SELECT m.projectId, m.status, COALESCE(SUM(m.amount), 0), COUNT(m)
+            FROM BillingMilestone m
+            WHERE m.companyId = :companyId
+            GROUP BY m.projectId, m.status
+            """)
+    List<Object[]> aggregateAmountByProjectAndStatus(@Param("companyId") UUID companyId);
 }

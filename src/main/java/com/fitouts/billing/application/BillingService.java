@@ -5,6 +5,8 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -30,6 +32,7 @@ import com.fitouts.billing.api.ClientInvoiceResponse;
 import com.fitouts.billing.api.PaymentApproveRequest;
 import com.fitouts.billing.api.PaymentRejectRequest;
 import com.fitouts.billing.api.PaymentRequestResponse;
+import com.fitouts.billing.api.ProjectBillingSummaryResponse;
 import com.fitouts.billing.api.RequestPaymentBody;
 import com.fitouts.billing.domain.BillingMilestone;
 import com.fitouts.billing.domain.BillingMilestoneRepository;
@@ -69,6 +72,112 @@ public class BillingService {
                 .stream()
                 .map(this::toMilestoneResponseWithPayment)
                 .toList();
+    }
+
+    /**
+     * Company-wide billing roll-up. Aggregates are loaded with one
+     * {@code GROUP BY project_id} query — this does not call
+     * {@link #listMilestones(Long)} per project.
+     */
+    @Transactional(readOnly = true)
+    public List<ProjectBillingSummaryResponse> getCompanySummary() {
+        requireStaff();
+        UUID companyId = requireCompany();
+        List<Project> projects = projectService.getAll();
+        Map<Long, String> projectNames = new HashMap<>();
+        for (Project project : projects) {
+            projectNames.put(project.getId(), project.getName());
+        }
+
+        Map<Long, BigDecimal> billedByProject = new HashMap<>();
+        Map<Long, BigDecimal> paidByProject = new HashMap<>();
+        Map<Long, Long> countByProject = new HashMap<>();
+        for (Object[] row : milestoneRepository.aggregateAmountByProjectAndStatus(companyId)) {
+            Long projectId = (Long) row[0];
+            BillingStatus status = (BillingStatus) row[1];
+            BigDecimal amount = toBigDecimal(row[2]);
+            long count = row[3] instanceof Number n ? n.longValue() : 0L;
+            billedByProject.merge(projectId, amount, BigDecimal::add);
+            countByProject.merge(projectId, count, Long::sum);
+            if (status == BillingStatus.PAID || status == BillingStatus.PART_PAID) {
+                paidByProject.merge(projectId, amount, BigDecimal::add);
+            }
+        }
+
+        Map<UUID, PaymentRequest> latestPaymentByMilestone = new HashMap<>();
+        for (PaymentRequest payment : paymentRequestRepository.findByCompanyIdOrderByCreatedAtDesc(companyId)) {
+            latestPaymentByMilestone.putIfAbsent(payment.getMilestoneUuid(), payment);
+        }
+
+        Map<Long, List<BillingMilestoneResponse>> milestonesByProject = new HashMap<>();
+        for (BillingMilestone milestone : milestoneRepository.findByCompanyIdOrderByDueDateAscCreatedAtAsc(companyId)) {
+            BillingMilestoneResponse response = toMilestoneResponse(milestone);
+            PaymentRequest latest = latestPaymentByMilestone.get(milestone.getUuid());
+            if (latest != null) {
+                response.setLatestPaymentRequest(toPaymentResponse(latest, milestone));
+            }
+            milestonesByProject.computeIfAbsent(milestone.getProjectId(), k -> new ArrayList<>()).add(response);
+            projectNames.putIfAbsent(milestone.getProjectId(), "Project " + milestone.getProjectId());
+        }
+
+        List<ProjectBillingSummaryResponse> summaries = new ArrayList<>();
+        Set<Long> included = new HashSet<>();
+        for (Project project : projects) {
+            summaries.add(toProjectBillingSummary(
+                    project.getId(),
+                    projectNames.get(project.getId()),
+                    billedByProject,
+                    paidByProject,
+                    countByProject,
+                    milestonesByProject));
+            included.add(project.getId());
+        }
+        for (Long projectId : billedByProject.keySet()) {
+            if (included.add(projectId)) {
+                summaries.add(toProjectBillingSummary(
+                        projectId,
+                        projectNames.getOrDefault(projectId, "Project " + projectId),
+                        billedByProject,
+                        paidByProject,
+                        countByProject,
+                        milestonesByProject));
+            }
+        }
+        return summaries;
+    }
+
+    private static ProjectBillingSummaryResponse toProjectBillingSummary(
+            Long projectId,
+            String projectName,
+            Map<Long, BigDecimal> billedByProject,
+            Map<Long, BigDecimal> paidByProject,
+            Map<Long, Long> countByProject,
+            Map<Long, List<BillingMilestoneResponse>> milestonesByProject) {
+        BigDecimal billed = billedByProject.getOrDefault(projectId, BigDecimal.ZERO);
+        BigDecimal paid = paidByProject.getOrDefault(projectId, BigDecimal.ZERO);
+        List<BillingMilestoneResponse> milestones = milestonesByProject.getOrDefault(projectId, List.of());
+        return ProjectBillingSummaryResponse.builder()
+                .projectId(projectId)
+                .projectName(projectName)
+                .billedAmount(billed)
+                .paidAmount(paid)
+                .outstandingAmount(billed.subtract(paid).max(BigDecimal.ZERO))
+                .milestoneCount(countByProject.getOrDefault(projectId, (long) milestones.size()))
+                .milestones(milestones)
+                .build();
+    }
+
+    private static BigDecimal toBigDecimal(Object value) {
+        if (value == null) {
+            return BigDecimal.ZERO;
+        }
+        if (value instanceof BigDecimal bd) {
+            return bd;
+        }
+        if (value instanceof Number n) {
+            return BigDecimal.valueOf(n.doubleValue());
+        }
+        return new BigDecimal(value.toString());
     }
 
     @Transactional(readOnly = true)

@@ -20,6 +20,8 @@ import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.boq.api.*;
 import com.fitouts.boq.domain.*;
 import com.fitouts.notification.application.NotificationService;
+import com.fitouts.profitloss.application.OriginalCostFreezeService;
+import com.fitouts.profitloss.application.PnlCalculationService;
 import com.fitouts.shared.context.CompanyContext;
 import com.fitouts.shared.enums.BoqApprovalAction;
 import com.fitouts.shared.enums.BoqApprovalStep;
@@ -45,6 +47,8 @@ public class BoqApprovalService {
     private final BoqProjectRules boqProjectRules;
     private final NotificationService notificationService;
     private final AccountRepository accountRepository;
+    private final OriginalCostFreezeService originalCostFreezeService;
+    private final PnlCalculationService pnlCalculationService;
 
     public BoqDocumentResponse submitForApproval(UUID boqId) {
         AuthPrincipal principal = boqAuthHelper.requirePrincipal();
@@ -106,6 +110,17 @@ public class BoqApprovalService {
 
         appendLog(doc, step, BoqApprovalAction.APPROVED, principal, comments);
         if (next == BoqDocumentStatus.APPROVED) {
+            try {
+                originalCostFreezeService.freezeIfAbsent(doc);
+            } catch (Exception e) {
+                // never block BOQ approval on P&L freeze
+            }
+            try {
+                UUID companyId = doc.getCompanyId() != null ? doc.getCompanyId() : CompanyContext.get();
+                pnlCalculationService.recalculateSafe(doc.getProject().getId(), companyId);
+            } catch (Exception ignored) {
+                // never block BOQ approval on P&L recalc
+            }
             notifyBoqApproved(doc);
         } else {
             notifyBoqPending(doc, next);

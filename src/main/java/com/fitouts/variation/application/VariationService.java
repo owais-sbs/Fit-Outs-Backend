@@ -31,6 +31,7 @@ import com.fitouts.commercialapproval.domain.CommercialApprovalRun;
 import com.fitouts.commercialapproval.domain.CommercialEventType;
 import com.fitouts.drawing.application.FileStorageService;
 import com.fitouts.notification.application.NotificationService;
+import com.fitouts.profitloss.application.PnlCalculationService;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
 import com.fitouts.shared.context.CompanyContext;
@@ -99,6 +100,7 @@ public class VariationService implements CommercialApprovalCompletionHandler {
     private final VariationRebaselineService variationRebaselineService;
     private final VariationBoqApplyService variationBoqApplyService;
     private final VariationBoqChangeRepository variationBoqChangeRepository;
+    private final PnlCalculationService pnlCalculationService;
 
     @Override
     public CommercialEventType supports() {
@@ -412,6 +414,7 @@ public class VariationService implements CommercialApprovalCompletionHandler {
         notifyStaff(vr, "VARIATION_APPROVED", "Variation approved: " + vr.getCrNumber(),
                 "Client approved. Contract " + previousContract + " → " + newContract,
                 "/admin/projects/" + projectId + "/variations/" + vr.getUuid());
+        pnlCalculationService.recalculateSafe(projectId, CompanyContext.get());
         return toResponse(vr, project, true);
     }
 
