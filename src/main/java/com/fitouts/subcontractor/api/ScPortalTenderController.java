@@ -67,12 +67,39 @@ public class ScPortalTenderController extends BaseController {
         }
     }
 
+    @GetMapping("/award-packs")
+    public Object listMyAwardPacks() {
+        try {
+            return successResponse(tenderService.listMyAwardPacks());
+        } catch (Exception e) {
+            return failureResponse("Failed to load award packs", e.getMessage());
+        }
+    }
+
+    @GetMapping("/award-packs/{packageUuid}")
+    public Object getMyAwardPack(@PathVariable UUID packageUuid) {
+        try {
+            return successResponse(tenderService.getMyAwardPack(packageUuid));
+        } catch (Exception e) {
+            return failureResponse("Failed to load award pack", e.getMessage());
+        }
+    }
+
     @GetMapping("/rfqs/{packageUuid}/bids")
     public Object getMyBidsForPackage(@PathVariable UUID packageUuid) {
         try {
             return successResponse(tenderService.getMyBidsForPackage(packageUuid));
         } catch (Exception e) {
             return failureResponse("Failed to load bids", e.getMessage());
+        }
+    }
+
+    @GetMapping("/clarifications")
+    public Object listAllMyClarifications() {
+        try {
+            return successResponse(tenderService.listAllMyClarifications());
+        } catch (Exception e) {
+            return failureResponse("Failed to load clarifications", e.getMessage());
         }
     }
 

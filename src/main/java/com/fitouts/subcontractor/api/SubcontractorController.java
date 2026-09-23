@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.fitouts.shared.web.BaseController;
+import com.fitouts.subcontractor.application.ScCompanyProfileService;
 import com.fitouts.subcontractor.application.ScWave7CommercialService;
 import com.fitouts.subcontractor.application.SubcontractorPortalService;
 import com.fitouts.subcontractor.application.SubcontractorService;
@@ -26,6 +27,7 @@ public class SubcontractorController extends BaseController {
     private final SubcontractorService subcontractorService;
     private final SubcontractorPortalService portalService;
     private final ScWave7CommercialService commercialService;
+    private final ScCompanyProfileService profileService;
 
     @GetMapping("/api/projects/{projectId}/sc-packages")
     public Object listPackages(@PathVariable Long projectId) {
@@ -42,6 +44,24 @@ public class SubcontractorController extends BaseController {
             return successResponse(subcontractorService.getPackage(projectId, uuid));
         } catch (Exception e) {
             return failureResponse("Failed to load subcontractor package", e.getMessage());
+        }
+    }
+
+    @GetMapping("/api/sc/trade-packages")
+    public Object listTradePackages() {
+        try {
+            return successResponse(subcontractorService.listTradePackages());
+        } catch (Exception e) {
+            return failureResponse("Failed to list trade package templates", e.getMessage());
+        }
+    }
+
+    @GetMapping("/api/projects/{projectId}/sc-packages/boq-lines")
+    public Object listPackageBoqLines(@PathVariable Long projectId) {
+        try {
+            return successResponse(subcontractorService.listProjectBoqLines(projectId));
+        } catch (Exception e) {
+            return failureResponse("Failed to list approved BOQ lines", e.getMessage());
         }
     }
 
@@ -130,6 +150,33 @@ public class SubcontractorController extends BaseController {
             return successResponse(subcontractorService.acceptPackage(uuid));
         } catch (Exception e) {
             return failureResponse("Failed to accept package", e.getMessage());
+        }
+    }
+
+    @PostMapping("/api/subcontractor/packages/{uuid}/complete")
+    public Object completePackage(@PathVariable UUID uuid) {
+        try {
+            return successResponse(subcontractorService.completePackage(uuid));
+        } catch (Exception e) {
+            return failureResponse("Failed to complete package", e.getMessage());
+        }
+    }
+
+    @GetMapping("/api/subcontractor/packages/{uuid}/workers")
+    public Object listPackageWorkers(@PathVariable UUID uuid) {
+        try {
+            return successResponse(profileService.listPackageWorkers(uuid));
+        } catch (Exception e) {
+            return failureResponse("Failed to list package workers", e.getMessage());
+        }
+    }
+
+    @PostMapping("/api/subcontractor/packages/{uuid}/workers")
+    public Object nominatePackageWorker(@PathVariable UUID uuid, @RequestBody ScNominateWorkerRequest request) {
+        try {
+            return successResponse(profileService.nominateWorkerToPackage(uuid, request));
+        } catch (Exception e) {
+            return failureResponse("Failed to nominate worker", e.getMessage());
         }
     }
 

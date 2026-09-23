@@ -16,5 +16,7 @@ public class ScComplianceDocumentResponse {
     private final String expiryDate;
     private final String filePath;
     private final boolean requiredForAppointment;
+    /** MANDATORY | OPTIONAL | NOT_APPLICABLE — trade-driven document relevance. */
+    private final String applicability;
     private final String itemStatus;
 }

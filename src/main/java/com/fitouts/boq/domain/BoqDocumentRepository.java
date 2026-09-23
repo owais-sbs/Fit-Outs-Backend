@@ -18,4 +18,14 @@ public interface BoqDocumentRepository extends JpaRepository<BoqDocument, UUID> 
 
     @Query("SELECT d FROM BoqDocument d JOIN FETCH d.project p WHERE d.companyId = :companyId ORDER BY d.createdAt DESC")
     List<BoqDocument> findAllWithProjectByCompanyId(@Param("companyId") UUID companyId);
+
+    @Query("""
+            select distinct d.project.id
+            from BoqDocument d
+            where d.companyId = :companyId
+              and d.status in :statuses
+            """)
+    List<Long> findDistinctProjectIdsByCompanyIdAndStatusIn(
+            @Param("companyId") UUID companyId,
+            @Param("statuses") List<BoqDocumentStatus> statuses);
 }
