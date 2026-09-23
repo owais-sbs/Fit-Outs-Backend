@@ -1,6 +1,7 @@
 package com.fitouts.subcontractor.domain;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -83,6 +84,18 @@ public class SubcontractorClaim {
 
     @Column(name = "certificate_uuid")
     private UUID certificateUuid;
+
+    @Column(name = "claimed_value", precision = 18, scale = 2)
+    private BigDecimal claimedValue;
+
+    @Column(name = "claim_number", length = 64)
+    private String claimNumber;
+
+    @Column(name = "claim_period_from")
+    private LocalDate claimPeriodFrom;
+
+    @Column(name = "claim_period_to")
+    private LocalDate claimPeriodTo;
 
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;

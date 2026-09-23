@@ -20,6 +20,7 @@ public class ScClaimStatusTrackerResponse {
     private BigDecimal measuredValue;
     private BigDecimal certifiedValue;
     private UUID certificateUuid;
+    private String paymentStatus;
     private OffsetDateTime submittedAt;
     private OffsetDateTime measuredAt;
 }

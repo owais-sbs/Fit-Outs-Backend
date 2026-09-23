@@ -49,6 +49,8 @@ import com.fitouts.subcontractor.api.ScAttendanceRequest;
 import com.fitouts.subcontractor.api.ScFreeIssueMaterialRequest;
 import com.fitouts.subcontractor.api.SubcontractorClaimRequest;
 import com.fitouts.subcontractor.api.SubcontractorClaimResponse;
+import com.fitouts.subcontractor.api.ScClaimLineRequest;
+import com.fitouts.subcontractor.api.ScClaimLineResponse;
 import com.fitouts.subcontractor.api.SubcontractorPackageRequest;
 import com.fitouts.subcontractor.api.SubcontractorPackageResponse;
 import com.fitouts.subcontractor.api.SubcontractorProjectSummary;
@@ -60,6 +62,10 @@ import com.fitouts.subcontractor.domain.SubcontractorPackageBoqLine;
 import com.fitouts.subcontractor.domain.SubcontractorPackageBoqLineRepository;
 import com.fitouts.subcontractor.domain.SubcontractorPackageRepository;
 import com.fitouts.subcontractor.domain.SubcontractorPackageStatus;
+import com.fitouts.subcontractor.domain.ScAwardBoqLine;
+import com.fitouts.subcontractor.domain.ScAwardBoqLineRepository;
+import com.fitouts.subcontractor.domain.ScClaimLine;
+import com.fitouts.subcontractor.domain.ScClaimLineRepository;
 import com.fitouts.subcontractor.domain.ScCompanyProfile;
 import com.fitouts.subcontractor.domain.ScCompanyProfileRepository;
 import com.fitouts.subcontractor.domain.ScOrganization;
@@ -105,6 +111,8 @@ public class SubcontractorService {
     private final ScPortalAccessService portalAccessService;
     private final ScPortalUserRepository portalUserRepository;
     private final ScPackageAwardRepository awardRepository;
+    private final ScAwardBoqLineRepository awardBoqLineRepository;
+    private final ScClaimLineRepository claimLineRepository;
     private final ScPackageBidderRepository bidderRepository;
     private final ScQuoteRepository quoteRepository;
     private final ScFreeIssueMaterialRepository freeIssueMaterialRepository;
@@ -365,21 +373,149 @@ public class SubcontractorService {
                 .orElseThrow(() -> new NotFoundException("Package not found"));
         assertCanClaimOnPackage(principal, pkg);
         commercialLifecycleService.assertNotArchived(pkg.getProjectId());
+        if (pkg.getStatus() == SubcontractorPackageStatus.COMPLETE) {
+            throw new BadRequestException("Claims are not allowed after package closeout");
+        }
+
+        List<ScAwardBoqLine> awardLines = awardBoqLineRepository
+                .findByPackageUuidAndCompanyIdOrderBySortOrderAsc(pkg.getUuid(), companyId);
+        boolean hasLineClaims = request != null && request.getLines() != null
+                && request.getLines().stream().anyMatch(l -> l != null && l.getClaimedQty() != null
+                        && l.getClaimedQty().compareTo(BigDecimal.ZERO) > 0);
 
         BigDecimal plannedQty = resolvePlannedQty(pkg, request);
-        BigDecimal claimedQty = request != null && request.getClaimedQty() != null
-                ? request.getClaimedQty() : BigDecimal.ZERO;
-        validateClaimQuantities(pkg, claimedQty, null, plannedQty);
+        BigDecimal claimedQty;
+        BigDecimal claimedValue = BigDecimal.ZERO;
 
         SubcontractorClaim claim = new SubcontractorClaim();
         claim.setPackageUuid(pkg.getUuid());
         claim.setProjectId(pkg.getProjectId());
         claim.setCompanyId(companyId);
+        claim.setNotes(request != null ? request.getNotes() : null);
+        claim.setClaimPeriodFrom(request != null ? request.getClaimPeriodFrom() : null);
+        claim.setClaimPeriodTo(request != null ? request.getClaimPeriodTo() : null);
+        claim.setStatus(SubcontractorClaimStatus.DRAFT);
+        claim = claimRepository.save(claim);
+        claim.setClaimNumber("CL-" + claim.getUuid().toString().substring(0, 8).toUpperCase());
+
+        if (hasLineClaims) {
+            if (awardLines.isEmpty()) {
+                throw new BadRequestException("No awarded BOQ snapshot found for this package — cannot claim by line");
+            }
+            java.util.Map<UUID, ScAwardBoqLine> awardById = new LinkedHashMap<>();
+            for (ScAwardBoqLine line : awardLines) {
+                awardById.put(line.getUuid(), line);
+            }
+            int sort = 0;
+            BigDecimal totalQty = BigDecimal.ZERO;
+            for (ScClaimLineRequest lineReq : request.getLines()) {
+                if (lineReq == null || lineReq.getAwardBoqLineUuid() == null) {
+                    continue;
+                }
+                BigDecimal qty = lineReq.getClaimedQty() != null ? lineReq.getClaimedQty() : BigDecimal.ZERO;
+                if (qty.compareTo(BigDecimal.ZERO) < 0) {
+                    throw new BadRequestException("Claim quantity cannot be negative");
+                }
+                if (qty.compareTo(BigDecimal.ZERO) == 0) {
+                    continue;
+                }
+                ScAwardBoqLine awardLine = awardById.get(lineReq.getAwardBoqLineUuid());
+                if (awardLine == null) {
+                    throw new BadRequestException("BOQ line is not part of the awarded package");
+                }
+                BigDecimal rate = awardLine.getRate() != null ? awardLine.getRate() : BigDecimal.ZERO;
+                BigDecimal contractQty = awardLine.getQuantity() != null ? awardLine.getQuantity() : BigDecimal.ZERO;
+                BigDecimal previous = sumPriorClaimedForAwardLine(awardLine.getUuid(), companyId, claim.getUuid());
+                BigDecimal cumulative = previous.add(qty);
+                if (contractQty.compareTo(BigDecimal.ZERO) > 0 && cumulative.compareTo(contractQty) > 0) {
+                    BigDecimal remaining = contractQty.subtract(previous).max(BigDecimal.ZERO);
+                    String label = StringUtils.hasText(awardLine.getSectionCode())
+                            ? awardLine.getSectionCode()
+                            : (StringUtils.hasText(awardLine.getDescription())
+                                    ? awardLine.getDescription()
+                                    : "line");
+                    throw new BadRequestException(
+                            "Claim qty " + qty + " for " + label
+                                    + " exceeds remaining contract qty (" + remaining
+                                    + " of " + contractQty + " "
+                                    + nullToEmpty(awardLine.getUnit()) + "). "
+                                    + "Already claimed on other open claims: " + previous + ".");
+                }
+                BigDecimal lineValue = qty.multiply(rate).setScale(2, RoundingMode.HALF_UP);
+                ScClaimLine line = new ScClaimLine();
+                line.setClaimUuid(claim.getUuid());
+                line.setAwardBoqLineUuid(awardLine.getUuid());
+                line.setBoqLineId(awardLine.getBoqLineId());
+                line.setPackageUuid(pkg.getUuid());
+                line.setCompanyId(companyId);
+                line.setSectionCode(awardLine.getSectionCode());
+                line.setDescription(awardLine.getDescription());
+                line.setUnit(awardLine.getUnit());
+                line.setContractQty(contractQty);
+                line.setAwardRate(rate);
+                line.setPreviousCertifiedQty(sumPriorCertifiedForAwardLine(awardLine.getUuid(), companyId, claim.getUuid()));
+                line.setClaimedQty(qty);
+                line.setClaimedValue(lineValue);
+                line.setSortOrder(sort++);
+                claimLineRepository.save(line);
+                totalQty = totalQty.add(qty);
+                claimedValue = claimedValue.add(lineValue);
+            }
+            if (totalQty.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new BadRequestException("At least one claim line quantity is required");
+            }
+            claimedQty = totalQty;
+            if (plannedQty.compareTo(BigDecimal.ZERO) <= 0) {
+                plannedQty = awardLines.stream()
+                        .map(ScAwardBoqLine::getQuantity)
+                        .filter(Objects::nonNull)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+            }
+        } else {
+            claimedQty = request != null && request.getClaimedQty() != null
+                    ? request.getClaimedQty() : BigDecimal.ZERO;
+            if (claimedQty.compareTo(BigDecimal.ZERO) < 0) {
+                throw new BadRequestException("Claim quantity cannot be negative");
+            }
+            validateClaimQuantities(pkg, claimedQty, claim.getUuid(), plannedQty);
+        }
+
         claim.setClaimedQty(claimedQty);
         claim.setPlannedQty(plannedQty);
-        claim.setNotes(request != null ? request.getNotes() : null);
-        claim.setStatus(SubcontractorClaimStatus.DRAFT);
+        claim.setClaimedValue(claimedValue.compareTo(BigDecimal.ZERO) > 0 ? claimedValue : null);
         return toClaimResponse(claimRepository.save(claim));
+    }
+
+    private BigDecimal sumPriorClaimedForAwardLine(UUID awardBoqLineUuid, UUID companyId, UUID excludeClaimUuid) {
+        return claimLineRepository.findByAwardBoqLineUuidAndCompanyId(awardBoqLineUuid, companyId).stream()
+                .filter(l -> excludeClaimUuid == null || !excludeClaimUuid.equals(l.getClaimUuid()))
+                .filter(l -> {
+                    SubcontractorClaim c = claimRepository.findById(l.getClaimUuid()).orElse(null);
+                    if (c == null) return false;
+                    return c.getStatus() == SubcontractorClaimStatus.SUBMITTED
+                            || c.getStatus() == SubcontractorClaimStatus.UNDER_REVIEW
+                            || c.getStatus() == SubcontractorClaimStatus.APPROVED
+                            || c.getStatus() == SubcontractorClaimStatus.MEASURED
+                            || c.getStatus() == SubcontractorClaimStatus.CERTIFIED;
+                })
+                .map(ScClaimLine::getClaimedQty)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal sumPriorCertifiedForAwardLine(UUID awardBoqLineUuid, UUID companyId, UUID excludeClaimUuid) {
+        return claimLineRepository.findByAwardBoqLineUuidAndCompanyId(awardBoqLineUuid, companyId).stream()
+                .filter(l -> excludeClaimUuid == null || !excludeClaimUuid.equals(l.getClaimUuid()))
+                .filter(l -> {
+                    SubcontractorClaim c = claimRepository.findById(l.getClaimUuid()).orElse(null);
+                    return c != null && c.getStatus() == SubcontractorClaimStatus.CERTIFIED;
+                })
+                .map(l -> l.getCertifiedQty() != null ? l.getCertifiedQty() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private static String nullToEmpty(String value) {
+        return value != null ? value : "";
     }
 
     @Transactional(readOnly = true)
@@ -428,7 +564,30 @@ public class SubcontractorService {
             planned = computeBoqPlannedQty(pkg);
             claim.setPlannedQty(planned);
         }
-        validateClaimQuantities(pkg, claim.getClaimedQty(), claim.getUuid(), planned);
+        List<ScClaimLine> lines = claimLineRepository.findByClaimUuidOrderBySortOrderAsc(claim.getUuid());
+        if (!lines.isEmpty()) {
+            for (ScClaimLine line : lines) {
+                if (line.getClaimedQty() == null || line.getClaimedQty().compareTo(BigDecimal.ZERO) < 0) {
+                    throw new BadRequestException("Invalid claim line quantity");
+                }
+                if (line.getAwardBoqLineUuid() == null) {
+                    throw new BadRequestException("Claim line missing award BOQ reference");
+                }
+                BigDecimal previous = sumPriorClaimedForAwardLine(
+                        line.getAwardBoqLineUuid(), claim.getCompanyId(), claim.getUuid());
+                BigDecimal contractQty = line.getContractQty() != null ? line.getContractQty() : BigDecimal.ZERO;
+                if (contractQty.compareTo(BigDecimal.ZERO) > 0
+                        && previous.add(line.getClaimedQty()).compareTo(contractQty) > 0) {
+                    BigDecimal remaining = contractQty.subtract(previous).max(BigDecimal.ZERO);
+                    throw new BadRequestException(
+                            "Cumulative claim qty exceeds remaining contract qty for "
+                                    + nullToEmpty(line.getSectionCode())
+                                    + " (" + remaining + " of " + contractQty + " remaining)");
+                }
+            }
+        } else {
+            validateClaimQuantities(pkg, claim.getClaimedQty(), claim.getUuid(), planned);
+        }
 
         claim.setStatus(SubcontractorClaimStatus.SUBMITTED);
         claim.setSubmittedBy(principal.getAccountId());
@@ -826,7 +985,10 @@ public class SubcontractorService {
         }
         BigDecimal reserved = sumClaimedQty(pkg.getUuid(), excludeClaimUuid,
                 SubcontractorClaimStatus.APPROVED,
-                SubcontractorClaimStatus.SUBMITTED);
+                SubcontractorClaimStatus.SUBMITTED,
+                SubcontractorClaimStatus.UNDER_REVIEW,
+                SubcontractorClaimStatus.MEASURED,
+                SubcontractorClaimStatus.CERTIFIED);
         BigDecimal total = reserved.add(newClaimed != null ? newClaimed : BigDecimal.ZERO);
         if (total.compareTo(plannedQty) > 0) {
             BigDecimal remaining = plannedQty.subtract(reserved).max(BigDecimal.ZERO);
@@ -1248,6 +1410,18 @@ public class SubcontractorService {
     }
 
     private SubcontractorClaimResponse toClaimResponse(SubcontractorClaim claim) {
+        List<ScClaimLineResponse> lines = claimLineRepository.findByClaimUuidOrderBySortOrderAsc(claim.getUuid())
+                .stream()
+                .map(this::toClaimLineResponse)
+                .toList();
+        String paymentStatus = null;
+        if (claim.getCertificateUuid() != null) {
+            // Lazy: certificate payment status is enriched by Wave7 tracker when available
+            paymentStatus = null;
+        }
+        BigDecimal originalAward = awardRepository.findByPackageUuid(claim.getPackageUuid())
+                .map(ScPackageAward::getAwardedValue)
+                .orElse(null);
         return SubcontractorClaimResponse.builder()
                 .uuid(claim.getUuid())
                 .packageUuid(claim.getPackageUuid())
@@ -1255,6 +1429,10 @@ public class SubcontractorService {
                 .companyId(claim.getCompanyId())
                 .claimedQty(claim.getClaimedQty())
                 .plannedQty(claim.getPlannedQty())
+                .claimedValue(claim.getClaimedValue())
+                .claimNumber(claim.getClaimNumber())
+                .claimPeriodFrom(claim.getClaimPeriodFrom())
+                .claimPeriodTo(claim.getClaimPeriodTo())
                 .notes(claim.getNotes())
                 .status(claim.getStatus())
                 .submittedBy(claim.getSubmittedBy())
@@ -1271,6 +1449,32 @@ public class SubcontractorService {
                 .measuredBy(claim.getMeasuredBy())
                 .measuredAt(claim.getMeasuredAt())
                 .certificateUuid(claim.getCertificateUuid())
+                .paymentStatus(paymentStatus)
+                .lines(lines)
+                .originalAwardValue(originalAward)
+                .build();
+    }
+
+    private ScClaimLineResponse toClaimLineResponse(ScClaimLine line) {
+        return ScClaimLineResponse.builder()
+                .uuid(line.getUuid())
+                .claimUuid(line.getClaimUuid())
+                .awardBoqLineUuid(line.getAwardBoqLineUuid())
+                .boqLineId(line.getBoqLineId())
+                .sectionCode(line.getSectionCode())
+                .description(line.getDescription())
+                .unit(line.getUnit())
+                .contractQty(line.getContractQty())
+                .awardRate(line.getAwardRate())
+                .previousCertifiedQty(line.getPreviousCertifiedQty())
+                .claimedQty(line.getClaimedQty())
+                .claimedValue(line.getClaimedValue())
+                .measuredQty(line.getMeasuredQty())
+                .measuredValue(line.getMeasuredValue())
+                .certifiedQty(line.getCertifiedQty())
+                .certifiedValue(line.getCertifiedValue())
+                .qsComment(line.getQsComment())
+                .sortOrder(line.getSortOrder())
                 .build();
     }
 
@@ -1320,14 +1524,16 @@ public class SubcontractorService {
     private AuthPrincipal requirePmOrAdmin() {
         AuthPrincipal principal = requireAuthenticated();
         if (principal.getRoles() == null) {
-            throw new ForbiddenException("PM/Admin access required");
+            throw new ForbiddenException("PM/Admin/QS access required");
         }
         boolean allowed = principal.getRoles().contains(Role.ADMIN)
                 || principal.getRoles().contains(Role.SUPER_ADMIN)
                 || principal.getRoles().contains(Role.BUSINESS_OWNER)
-                || principal.getRoles().contains(Role.PROJECT_MANAGER);
+                || principal.getRoles().contains(Role.PROJECT_MANAGER)
+                || principal.getRoles().contains(Role.QS)
+                || principal.getRoles().contains(Role.SENIOR_QS);
         if (!allowed) {
-            throw new ForbiddenException("PM/Admin access required");
+            throw new ForbiddenException("PM/Admin/QS access required");
         }
         return principal;
     }

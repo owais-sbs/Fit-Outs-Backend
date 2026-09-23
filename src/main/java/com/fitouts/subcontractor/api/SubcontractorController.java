@@ -489,6 +489,40 @@ public class SubcontractorController extends BaseController {
         }
     }
 
+    @PostMapping("/api/projects/{projectId}/sc-certificates/{uuid}/mark-payable")
+    public Object markCertificatePayable(
+            @PathVariable Long projectId,
+            @PathVariable UUID uuid) {
+        try {
+            return successResponse(commercialService.markCertificatePayable(projectId, uuid));
+        } catch (Exception e) {
+            return failureResponse("Failed to mark certificate payable", e.getMessage());
+        }
+    }
+
+    @PostMapping("/api/projects/{projectId}/sc-retention/{uuid}/mark-eligible")
+    public Object markRetentionEligible(
+            @PathVariable Long projectId,
+            @PathVariable UUID uuid) {
+        try {
+            return successResponse(commercialService.markRetentionEligible(projectId, uuid));
+        } catch (Exception e) {
+            return failureResponse("Failed to mark retention eligible", e.getMessage());
+        }
+    }
+
+    @PostMapping("/api/projects/{projectId}/sc-retention/{uuid}/release")
+    public Object releaseRetention(
+            @PathVariable Long projectId,
+            @PathVariable UUID uuid,
+            @RequestBody(required = false) ScRetentionReleaseRequest request) {
+        try {
+            return successResponse(commercialService.releaseRetention(projectId, uuid, request));
+        } catch (Exception e) {
+            return failureResponse("Failed to release retention", e.getMessage());
+        }
+    }
+
     @GetMapping("/api/projects/{projectId}/sc-certificates")
     public Object listCertificates(@PathVariable Long projectId) {
         try {
