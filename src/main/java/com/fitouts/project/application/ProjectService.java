@@ -5,6 +5,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
+import org.springframework.context.annotation.Lazy;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -13,6 +14,7 @@ import org.springframework.util.StringUtils;
 
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
+import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.lead.domain.Lead;
 import com.fitouts.project.domain.Project;
 import com.fitouts.project.domain.ProjectRepository;
@@ -24,9 +26,13 @@ import com.fitouts.shared.error.NotFoundException;
 public class ProjectService {
 
     private final ProjectRepository projectRepository;
+    private final CommercialLifecycleService commercialLifecycleService;
 
-    public ProjectService(ProjectRepository projectRepository) {
+    public ProjectService(
+            ProjectRepository projectRepository,
+            @Lazy CommercialLifecycleService commercialLifecycleService) {
         this.projectRepository = projectRepository;
+        this.commercialLifecycleService = commercialLifecycleService;
     }
 
     @Transactional
@@ -43,17 +49,33 @@ public class ProjectService {
         if (request.getProgress() == null) {
             request.setProgress(0);
         }
-        return projectRepository.save(request);
+        Project saved = projectRepository.save(request);
+        try {
+            commercialLifecycleService.enrichProject(saved);
+        } catch (RuntimeException ex) {
+            // Ignore enrichment failures on create.
+        }
+        return saved;
     }
 
     public List<Project> getAll() {
         UUID companyId = CompanyContext.get();
         AuthPrincipal principal = currentPrincipalOrNull();
-        if (principal != null && isPureClient(principal)) {
-            return projectRepository.findByCompanyIdAndClientIdAndIsDeletedFalse(
+        List<Project> projects;
+        boolean client = principal != null && isPureClient(principal);
+        if (client) {
+            projects = projectRepository.findByCompanyIdAndClientIdAndIsDeletedFalse(
                     companyId, principal.getAccountId());
+            // Clients do not need Module 27 commercial enrichment (avoids snag/checklist scans).
+            return projects;
         }
-        return projectRepository.findByCompanyIdAndIsDeletedFalse(companyId);
+        projects = projectRepository.findByCompanyIdAndIsDeletedFalse(companyId);
+        try {
+            commercialLifecycleService.enrichProjects(projects);
+        } catch (RuntimeException ex) {
+            // List must still load if enrichment fails (e.g. pending migration).
+        }
+        return projects;
     }
 
     public Project getById(Long id) {
@@ -65,11 +87,26 @@ public class ProjectService {
                         || !project.getClientId().equals(principal.getAccountId()))) {
             throw new ForbiddenException("Not your project");
         }
+        if (principal == null || !isPureClient(principal)) {
+            try {
+                commercialLifecycleService.enrichProject(project);
+            } catch (RuntimeException ex) {
+                // Detail still loads without commercial stage if enrichment fails.
+            }
+        }
         return project;
     }
 
     public Project update(Long id, Project request) {
         Project project = getById(id);
+        boolean statusChanging = request.getStatus() != null
+                && !request.getStatus().equals(project.getStatus());
+        if (statusChanging) {
+            commercialLifecycleService.assertNotArchived(id);
+        }
+        // Full project field edits also blocked when archived
+        commercialLifecycleService.assertNotArchived(id);
+
         if (StringUtils.hasText(request.getName())) {
             project.setName(request.getName());
         }
@@ -115,10 +152,13 @@ public class ProjectService {
         if (request.isActive() != project.isActive()) {
             project.setActive(request.isActive());
         }
-        return projectRepository.save(project);
+        Project saved = projectRepository.save(project);
+        commercialLifecycleService.enrichProject(saved);
+        return saved;
     }
 
     public Project delete(Long id) {
+        commercialLifecycleService.assertNotArchived(id);
         Project project = getById(id);
         project.setDeleted(true);
         project.setActive(false);

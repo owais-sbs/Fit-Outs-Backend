@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.fitouts.drawing.application.ProjectDrawingService;
 import com.fitouts.drawing.domain.ProjectDrawing;
+import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
 import com.fitouts.qto.api.*;
@@ -40,10 +41,12 @@ public class QtoService {
     private final ProjectService projectService;
     private final ProjectDrawingService drawingService;
     private final WorkItemRepository workItemRepository;
+    private final CommercialLifecycleService commercialLifecycleService;
 
     public QtoSessionResponse createSession(QtoSessionCreateRequest request) {
         UUID companyId = CompanyContext.get();
         Project project = projectService.getById(request.getProjectId());
+        commercialLifecycleService.assertCommercialMutable(project.getId());
         ProjectDrawing drawing = null;
         if (request.getDrawingId() != null) {
             drawing = drawingService.find(request.getDrawingId());
@@ -71,6 +74,7 @@ public class QtoService {
 
     public QtoSessionResponse updateScale(UUID id, QtoScaleRequest request) {
         QtoSession session = findSession(id);
+        commercialLifecycleService.assertCommercialMutable(session.getProject().getId());
         session.setScaleRatio(request.getScaleRatio());
         if (request.getScaleUnit() != null) {
             session.setScaleUnit(request.getScaleUnit());
@@ -80,6 +84,7 @@ public class QtoService {
 
     public QtoSessionResponse replaceLines(UUID id, QtoLinesUpdateRequest request) {
         QtoSession session = findSession(id);
+        commercialLifecycleService.assertCommercialMutable(session.getProject().getId());
         if (session.getStatus() == QtoSessionStatus.APPROVED) {
             throw new BadRequestException("Cannot edit approved QTO session");
         }
@@ -96,6 +101,7 @@ public class QtoService {
 
     public QtoSessionResponse approve(UUID id) {
         QtoSession session = findSession(id);
+        commercialLifecycleService.assertCommercialMutable(session.getProject().getId());
         session.setStatus(QtoSessionStatus.APPROVED);
         return mapSession(sessionRepository.save(session));
     }

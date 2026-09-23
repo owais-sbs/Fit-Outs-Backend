@@ -25,6 +25,7 @@ import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.commercialapproval.api.TaskDecisionRequest;
 import com.fitouts.commercialapproval.application.CommercialApprovalService;
+import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.commercialapproval.domain.ApprovalStepMode;
 import com.fitouts.commercialapproval.domain.CommercialApprovalBand;
 import com.fitouts.commercialapproval.domain.CommercialApprovalBandRepository;
@@ -74,11 +75,12 @@ class CommercialApprovalModuleTest {
         eventRepository = mock(CommercialApprovalEventRepository.class);
         accountRepository = mock(AccountRepository.class);
         notificationService = mock(NotificationService.class);
+        CommercialLifecycleService commercialLifecycleService = mock(CommercialLifecycleService.class);
 
         service = new CommercialApprovalService(
                 matrixRepository, bandRepository, stepRepository, stepRoleRepository,
                 runRepository, taskRepository, eventRepository, accountRepository,
-                notificationService, List.of());
+                notificationService, List.of(), commercialLifecycleService);
 
         when(runRepository.save(any())).thenAnswer(inv -> {
             CommercialApprovalRun r = inv.getArgument(0);

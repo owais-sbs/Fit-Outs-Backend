@@ -59,6 +59,7 @@ import com.fitouts.subcontractor.domain.SubcontractorClaimRepository;
 import com.fitouts.subcontractor.domain.SubcontractorClaimStatus;
 import com.fitouts.subcontractor.domain.SubcontractorPackage;
 import com.fitouts.subcontractor.domain.SubcontractorPackageRepository;
+import com.fitouts.completion.application.CommercialLifecycleService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -82,10 +83,12 @@ public class ScWave7CommercialService {
     private final ScPortalAccessService portalAccessService;
     private final ProjectService projectService;
     private final CommercialApprovalService commercialApprovalService;
+    private final CommercialLifecycleService commercialLifecycleService;
     private final PnlCalculationService pnlCalculationService;
 
     @Transactional
     public SubcontractorClaim measureClaim(Long projectId, UUID claimUuid, ScMeasureClaimRequest request) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requireStaff();
         requireProject(projectId);
         SubcontractorClaim claim = requireClaim(claimUuid, projectId);
@@ -105,6 +108,7 @@ public class ScWave7CommercialService {
 
     @Transactional
     public ScPaymentCertificateResponse certifyClaim(Long projectId, UUID claimUuid, ScCertifyClaimRequest request) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requireStaff();
         requireProject(projectId);
         SubcontractorClaim claim = requireClaim(claimUuid, projectId);
@@ -184,6 +188,7 @@ public class ScWave7CommercialService {
         }
         SubcontractorClaim claim = claimRepository.findById(cert.getClaimUuid())
                 .orElseThrow(() -> new NotFoundException("Claim not found"));
+        commercialLifecycleService.assertNotArchived(claim.getProjectId());
         List<ScBackChargeStatus> applicableStatuses = List.of(
                 ScBackChargeStatus.OPEN, ScBackChargeStatus.ACKNOWLEDGED);
         issueCertificate(cert, claim, null, applicableStatuses);
@@ -196,6 +201,7 @@ public class ScWave7CommercialService {
             return;
         }
         SubcontractorClaim claim = claimRepository.findById(cert.getClaimUuid()).orElse(null);
+        commercialLifecycleService.assertNotArchived(cert.getProjectId());
         if (claim != null && cert.getUuid().equals(claim.getCertificateUuid())) {
             claim.setCertificateUuid(null);
             claim.setCertifiedValue(null);
@@ -253,6 +259,7 @@ public class ScWave7CommercialService {
 
     @Transactional
     public SubcontractorClaim markClaimPaid(Long projectId, UUID claimUuid, String accountingRef) {
+        commercialLifecycleService.assertNotArchived(projectId);
         requireStaff();
         requireProject(projectId);
         SubcontractorClaim claim = requireClaim(claimUuid, projectId);
@@ -346,6 +353,7 @@ public class ScWave7CommercialService {
 
     @Transactional
     public ScBackChargeResponse createBackCharge(Long projectId, ScBackChargeRequest request) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requireStaff();
         requireProject(projectId);
         if (request == null || request.getPackageUuid() == null || request.getOrganizationUuid() == null
@@ -375,6 +383,7 @@ public class ScWave7CommercialService {
         ScPortalUser portalUser = portalAccessService.requireActivePortalUser(principal);
         ScBackCharge charge = backChargeRepository.findByUuidAndCompanyId(backChargeUuid, requireCompany())
                 .orElseThrow(() -> new NotFoundException("Back charge not found"));
+        commercialLifecycleService.assertNotArchived(charge.getProjectId());
         if (!charge.getOrganizationUuid().equals(portalUser.getOrganizationUuid())) {
             throw new ForbiddenException("Not your back charge");
         }

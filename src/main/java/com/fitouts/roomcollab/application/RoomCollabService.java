@@ -40,6 +40,7 @@ import com.fitouts.shared.error.BadRequestException;
 import com.fitouts.shared.error.ForbiddenException;
 import com.fitouts.shared.error.NotFoundException;
 import com.fitouts.shared.error.UnauthorizedException;
+import com.fitouts.completion.application.CommercialLifecycleService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -61,6 +62,7 @@ public class RoomCollabService {
     private final AccountRepository accountRepository;
     private final CommunicationService communicationService;
     private final CommunicationEmailNotificationService emailNotificationService;
+    private final CommercialLifecycleService commercialLifecycleService;
 
     public List<ProjectRoomResponse> listRooms(Long projectId) {
         Project project = requireProjectAccess(projectId);
@@ -74,6 +76,7 @@ public class RoomCollabService {
     }
 
     public ProjectRoomResponse createRoom(Long projectId, ProjectRoomCreateRequest request) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requireStaff();
         Project project = requireProjectAccess(projectId);
         String floor = normalizeFloor(request.getFloorLabel());
@@ -95,6 +98,7 @@ public class RoomCollabService {
     }
 
     public ProjectRoomResponse updateRoom(Long projectId, UUID roomId, ProjectRoomCreateRequest request) {
+        commercialLifecycleService.assertNotArchived(projectId);
         requireStaff();
         ProjectRoom room = requireRoom(projectId, roomId);
         if (StringUtils.hasText(request.getName())) {
@@ -115,6 +119,7 @@ public class RoomCollabService {
     }
 
     public int syncRoomsFromBoq(Long projectId) {
+        commercialLifecycleService.assertNotArchived(projectId);
         requireStaff();
         Project project = requireProjectAccess(projectId);
         List<BoqDocument> docs = boqDocumentRepository.findByProjectIdOrderByCreatedAtDesc(projectId);
@@ -149,6 +154,7 @@ public class RoomCollabService {
 
     /** Called from BoqService after survey/line saves. */
     public void syncRoomsFromBoqLines(Long projectId, UUID companyId, List<BoqLine> lines) {
+        commercialLifecycleService.assertNotArchived(projectId);
         if (lines == null || lines.isEmpty()) return;
         Set<String> seen = new HashSet<>();
         int order = (int) roomRepository.findByProjectIdOrderBySortOrderAscFloorLabelAscNameAsc(projectId).size();
@@ -203,6 +209,7 @@ public class RoomCollabService {
     }
 
     public RoomTaskResponse createTask(Long projectId, RoomTaskCreateRequest request) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requireStaff();
         if (request.getProjectRoomId() == null || !StringUtils.hasText(request.getTitle())) {
             throw new BadRequestException("Room and title are required");
@@ -234,6 +241,7 @@ public class RoomCollabService {
     }
 
     public RoomTaskResponse updateTask(Long projectId, UUID taskId, RoomTaskUpdateRequest request) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requireStaff();
         RoomTask task = requireTask(projectId, taskId);
         if (task.getStatus() == RoomTaskStatus.APPROVED || task.getStatus() == RoomTaskStatus.CLOSED) {
@@ -255,6 +263,7 @@ public class RoomCollabService {
 
     public RoomTaskFileVersionResponse uploadVersion(
             Long projectId, UUID taskId, MultipartFile file, String changeNotes) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requirePrincipal();
         RoomTask task = requireTask(projectId, taskId);
         RoomTaskFileVersion saved = createVersionFromFile(task, projectId, file, changeNotes, principal);
@@ -262,6 +271,7 @@ public class RoomCollabService {
     }
 
     public RoomTaskResponse submitToClient(Long projectId, UUID taskId) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requireStaff();
         RoomTask task = requireTask(projectId, taskId);
         if (task.getStatus() == RoomTaskStatus.APPROVED || task.getStatus() == RoomTaskStatus.CLOSED) {
@@ -299,6 +309,7 @@ public class RoomCollabService {
     }
 
     public RoomTaskResponse requestChanges(Long projectId, UUID taskId, ChangeRequestBody body) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requireClient();
         RoomTask task = requireTask(projectId, taskId);
         assertClientOwnsProject(principal, requireProjectAccess(projectId));
@@ -324,6 +335,7 @@ public class RoomCollabService {
     }
 
     public RoomTaskResponse approve(Long projectId, UUID taskId) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requireClient();
         Project project = requireProjectAccess(projectId);
         assertClientOwnsProject(principal, project);
@@ -368,6 +380,7 @@ public class RoomCollabService {
     }
 
     public RoomTaskResponse closeTask(Long projectId, UUID taskId) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requireStaff();
         RoomTask task = requireTask(projectId, taskId);
         if (task.getStatus() != RoomTaskStatus.APPROVED) {
@@ -397,6 +410,7 @@ public class RoomCollabService {
 
     public RoomMessageResponse postTaskMessage(
             Long projectId, UUID taskId, String body, MultipartFile file, UUID referencedVersionId) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requirePrincipal();
         requireProjectAccess(projectId);
         RoomTask task = requireTask(projectId, taskId);
@@ -452,6 +466,7 @@ public class RoomCollabService {
 
     public RoomMessageResponse postRoomMessage(
             Long projectId, UUID roomId, String body, UUID linkedTaskId, MultipartFile file) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requirePrincipal();
         ProjectRoom room = requireRoom(projectId, roomId);
         if (!StringUtils.hasText(body) && (file == null || file.isEmpty())) {

@@ -69,6 +69,7 @@ import com.fitouts.approvalconfig.domain.PermitAuthorityMechanisms;
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.notification.application.NotificationService;
+import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
 import com.fitouts.project.domain.ProjectRepository;
@@ -123,6 +124,7 @@ public class ApprovalCaseService {
     private final ApprovalPermitTypeRepository configPermitTypeRepository;
     private final ApprovalPermitAuthorityRoleRepository permitAuthorityRoleRepository;
     private final ApprovalAuthorityRepository approvalAuthorityRepository;
+    private final CommercialLifecycleService commercialLifecycleService;
 
 
     // Resolve and generate
@@ -131,6 +133,7 @@ public class ApprovalCaseService {
     @Transactional
     public ApprovalResolveResponse resolve(Long projectId, ApprovalResolveRequest request) {
         requireStaff();
+        commercialLifecycleService.assertNotArchived(projectId);
         Project project = requireProject(projectId);
         UUID companyId = CompanyContext.get();
         approvalConfigSeedService.ensureSeeded(companyId);
@@ -177,6 +180,7 @@ public class ApprovalCaseService {
     @Transactional
     public List<ApprovalCaseResponse> generate(Long projectId, ApprovalResolveRequest request) {
         AuthPrincipal principal = requireStaff();
+        commercialLifecycleService.assertNotArchived(projectId);
         Project project = requireProject(projectId);
         UUID companyId = CompanyContext.get();
         approvalConfigSeedService.ensureSeeded(companyId);
@@ -213,6 +217,7 @@ public class ApprovalCaseService {
     @Transactional
     public List<ApprovalCaseResponse> addCase(Long projectId, AddPermitRequest request) {
         AuthPrincipal principal = requireStaff();
+        commercialLifecycleService.assertNotArchived(projectId);
         Project project = requireProject(projectId);
         UUID companyId = CompanyContext.get();
         approvalConfigSeedService.ensureSeeded(companyId);
@@ -261,6 +266,7 @@ public class ApprovalCaseService {
         requireStaff();
         UUID companyId = requireCompany();
         ApprovalCase approvalCase = requireCase(caseUuid, companyId);
+        commercialLifecycleService.assertNotArchived(approvalCase.getProjectId());
         if (approvalCase.getStatus() != ApprovalCaseStatus.NOT_STARTED) {
             throw new BadRequestException("Only permits that have not been started can be removed");
         }
@@ -745,6 +751,7 @@ public class ApprovalCaseService {
         AuthPrincipal principal = requireStaff();
         UUID companyId = requireCompany();
         ApprovalCase approvalCase = requireCase(caseUuid, companyId);
+        commercialLifecycleService.assertNotArchived(approvalCase.getProjectId());
         ApprovalCaseStatus status = approvalCase.getStatus();
         if (status != ApprovalCaseStatus.NOT_STARTED
                 && status != ApprovalCaseStatus.PACK_IN_PREPARATION
@@ -790,6 +797,7 @@ public class ApprovalCaseService {
         AuthPrincipal principal = requireStaff();
         UUID companyId = requireCompany();
         ApprovalCase approvalCase = requireCase(caseUuid, companyId);
+        commercialLifecycleService.assertNotArchived(approvalCase.getProjectId());
         if (request == null) {
             throw new BadRequestException("Nothing to update");
         }
@@ -1143,6 +1151,7 @@ public class ApprovalCaseService {
         AuthPrincipal principal = requireStaff();
         UUID companyId = requireCompany();
         ApprovalCase approvalCase = requireCase(caseUuid, companyId);
+        commercialLifecycleService.assertNotArchived(approvalCase.getProjectId());
         CaseChecklistItem item = checklistRepository.findByUuidAndCaseUuid(itemUuid, caseUuid)
                 .orElseThrow(() -> new NotFoundException("Checklist item not found"));
 
@@ -1173,6 +1182,7 @@ public class ApprovalCaseService {
         AuthPrincipal principal = requireDirector();
         UUID companyId = requireCompany();
         ApprovalCase approvalCase = requireCase(caseUuid, companyId);
+        commercialLifecycleService.assertNotArchived(approvalCase.getProjectId());
         if (request == null || !StringUtils.hasText(request.getWaiverReason())) {
             throw new BadRequestException("A waiver reason is required");
         }
@@ -1220,6 +1230,7 @@ public class ApprovalCaseService {
         AuthPrincipal principal = requireStaff();
         UUID companyId = requireCompany();
         ApprovalCase approvalCase = requireCase(caseUuid, companyId);
+        commercialLifecycleService.assertNotArchived(approvalCase.getProjectId());
         List<CaseChecklistItem> items = checklistRepository
                 .findByCaseUuidOrderBySortOrderAscDocumentTypeCodeAsc(caseUuid);
 
@@ -1260,6 +1271,7 @@ public class ApprovalCaseService {
         AuthPrincipal principal = requireStaff();
         UUID companyId = requireCompany();
         ApprovalCase approvalCase = requireCase(caseUuid, companyId);
+        commercialLifecycleService.assertNotArchived(approvalCase.getProjectId());
 
         requireAuthorityBound(approvalCase);
         requireChecklistComplete(approvalCase);
@@ -1311,6 +1323,7 @@ public class ApprovalCaseService {
         AuthPrincipal principal = requireStaff();
         UUID companyId = requireCompany();
         ApprovalCase approvalCase = requireCase(caseUuid, companyId);
+        commercialLifecycleService.assertNotArchived(approvalCase.getProjectId());
         if (request == null || !StringUtils.hasText(request.getCommentText())) {
             throw new BadRequestException("commentText is required");
         }
@@ -1346,6 +1359,7 @@ public class ApprovalCaseService {
         AuthPrincipal principal = requireStaff();
         UUID companyId = requireCompany();
         ApprovalCase approvalCase = requireCase(caseUuid, companyId);
+        commercialLifecycleService.assertNotArchived(approvalCase.getProjectId());
         if (request == null || request.getAmount() == null) {
             throw new BadRequestException("amount is required");
         }
@@ -1416,6 +1430,7 @@ public class ApprovalCaseService {
         AuthPrincipal principal = requireStaff();
         UUID companyId = requireCompany();
         ApprovalCase source = requireCase(caseUuid, companyId);
+        commercialLifecycleService.assertNotArchived(source.getProjectId());
         if (!source.getStatus().isActivePermit() && source.getStatus() != ApprovalCaseStatus.EXPIRED) {
             throw new BadRequestException("Only a live or expired permit can be renewed");
         }

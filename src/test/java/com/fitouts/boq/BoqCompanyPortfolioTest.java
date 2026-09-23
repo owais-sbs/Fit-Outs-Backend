@@ -26,6 +26,7 @@ import com.fitouts.boq.application.BoqService;
 import com.fitouts.boq.domain.BoqDocument;
 import com.fitouts.boq.domain.BoqDocumentRepository;
 import com.fitouts.boq.domain.BoqLineRepository;
+import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
 import com.fitouts.qto.application.QtoService;
@@ -64,6 +65,7 @@ class BoqCompanyPortfolioTest {
                 portalAccess,
                 mock(BoqProjectRules.class),
                 mock(WorkItemRepository.class),
+                mock(CommercialLifecycleService.class),
                 projectCommercialRepository
         );
         CompanyContext.set(companyId);

@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.fitouts.company.application.CompanyService;
 import com.fitouts.company.domain.Company;
+import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.procurement.api.*;
 import com.fitouts.procurement.domain.*;
 import com.fitouts.project.domain.Project;
@@ -37,6 +38,7 @@ public class StockService {
     private final MaterialService materialService;
     private final CompanyService companyService;
     private final ProjectRepository projectRepository;
+    private final CommercialLifecycleService commercialLifecycleService;
     private final PnlCalculationService pnlCalculationService;
 
     @Transactional(readOnly = true)
@@ -88,6 +90,7 @@ public class StockService {
 
         Project project = null;
         if (request.getProjectId() != null) {
+            commercialLifecycleService.assertNotArchived(request.getProjectId());
             project = projectRepository.findById(request.getProjectId())
                     .orElseThrow(() -> new NotFoundException("Project not found"));
         }

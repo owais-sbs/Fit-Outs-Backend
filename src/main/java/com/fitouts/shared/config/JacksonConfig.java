@@ -1,11 +1,10 @@
 package com.fitouts.shared.config;
 
-import java.time.OffsetDateTime;
-
+import org.springframework.boot.autoconfigure.jackson.Jackson2ObjectMapperBuilderCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.hibernate6.Hibernate6Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -14,11 +13,14 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 public class JacksonConfig {
 
     @Bean
-    public ObjectMapper objectMapper() {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new Hibernate6Module());
-        mapper.registerModule(new JavaTimeModule());
-        mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-        return mapper;
+    public Jackson2ObjectMapperBuilderCustomizer hibernateModuleCustomizer() {
+        return (Jackson2ObjectMapperBuilder builder) -> {
+            Hibernate6Module hibernateModule = new Hibernate6Module();
+            // Allow API responses to include JPA @Transient enrichment fields
+            // (e.g. Project.commercialStage). Without this, Hibernate6Module strips them.
+            hibernateModule.disable(Hibernate6Module.Feature.USE_TRANSIENT_ANNOTATION);
+            builder.modules(hibernateModule, new JavaTimeModule());
+            builder.featuresToDisable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        };
     }
 }

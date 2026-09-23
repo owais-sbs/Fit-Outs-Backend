@@ -65,6 +65,7 @@ import com.fitouts.subcontractor.domain.ScTenderStatus;
 import com.fitouts.subcontractor.domain.SubcontractorPackage;
 import com.fitouts.subcontractor.domain.SubcontractorPackageRepository;
 import com.fitouts.subcontractor.domain.SubcontractorPackageStatus;
+import com.fitouts.completion.application.CommercialLifecycleService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -87,9 +88,11 @@ public class ScTenderService {
     private final ScPortalAccessService portalAccessService;
     private final ScPortalUserRepository portalUserRepository;
     private final ProjectService projectService;
+    private final CommercialLifecycleService commercialLifecycleService;
 
     @Transactional
     public List<ScBidderResponse> addBidders(Long projectId, UUID packageUuid, ScAddBiddersRequest request) {
+        commercialLifecycleService.assertNotArchived(projectId);
         requireStaff();
         SubcontractorPackage pkg = requirePackage(projectId, packageUuid);
         if (request == null || request.getOrganizationUuids() == null || request.getOrganizationUuids().isEmpty()) {
@@ -129,6 +132,7 @@ public class ScTenderService {
 
     @Transactional
     public ScRfqSummaryResponse issueRfq(Long projectId, UUID packageUuid, ScIssueRfqRequest request) {
+        commercialLifecycleService.assertNotArchived(projectId);
         requireStaff();
         SubcontractorPackage pkg = requirePackage(projectId, packageUuid);
         if (request == null || request.getTenderDeadline() == null) {
@@ -248,6 +252,7 @@ public class ScTenderService {
         SubcontractorPackage pkg = requireIssuedRfq(packageUuid, companyId);
         requireBidder(pkg.getUuid(), portalUser.getOrganizationUuid());
         assertBeforeDeadline(pkg);
+        commercialLifecycleService.assertNotArchived(pkg.getProjectId());
 
         ScQuote quote;
         if (request != null && request.getQuoteUuid() != null) {
@@ -312,6 +317,7 @@ public class ScTenderService {
         SubcontractorPackage pkg = requireIssuedRfq(packageUuid, companyId);
         requireBidder(pkg.getUuid(), portalUser.getOrganizationUuid());
         assertBeforeDeadline(pkg);
+        commercialLifecycleService.assertNotArchived(pkg.getProjectId());
 
         ScQuote quote = quoteRepository.findById(quoteUuid)
                 .orElseThrow(() -> new NotFoundException("Quote not found"));
@@ -372,6 +378,9 @@ public class ScTenderService {
             throw new BadRequestException("question is required");
         }
         requireBidder(packageUuid, portalUser.getOrganizationUuid());
+        SubcontractorPackage pkg = packageRepository.findByUuidAndCompanyId(packageUuid, requireCompany())
+                .orElseThrow(() -> new NotFoundException("Package not found"));
+        commercialLifecycleService.assertNotArchived(pkg.getProjectId());
         ScPackageClarification row = new ScPackageClarification();
         row.setPackageUuid(packageUuid);
         row.setOrganizationUuid(portalUser.getOrganizationUuid());
@@ -383,6 +392,7 @@ public class ScTenderService {
     @Transactional
     public ScClarificationResponse answerClarification(
             Long projectId, UUID packageUuid, UUID clarificationUuid, ScClarificationAnswerRequest request) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requireStaff();
         requirePackage(projectId, packageUuid);
         if (request == null || !StringUtils.hasText(request.getAnswer())) {
@@ -465,6 +475,7 @@ public class ScTenderService {
 
     @Transactional
     public ScAwardPackResponse awardPackage(Long projectId, UUID packageUuid, ScAwardRequest request) {
+        commercialLifecycleService.assertNotArchived(projectId);
         requireStaff();
         SubcontractorPackage pkg = requirePackage(projectId, packageUuid);
         if (isSealed(pkg)) {

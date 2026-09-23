@@ -21,6 +21,7 @@ import org.springframework.util.StringUtils;
 import com.fitouts.account.domain.Account;
 import com.fitouts.account.domain.AccountRepository;
 import com.fitouts.auth.security.AuthPrincipal;
+import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.communications.domain.ChannelType;
 import com.fitouts.communications.domain.CommunicationChannel;
 import com.fitouts.communications.domain.CommunicationChannelMember;
@@ -69,6 +70,7 @@ public class CommunicationService {
     private final ProjectRepository projectRepository;
     private final PortalAccessHelper portalAccess;
     private final CommunicationEmailNotificationService emailNotificationService;
+    private final CommercialLifecycleService commercialLifecycleService;
 
     /** Full backfill — call rarely (admin/manual), never on every inbox read. */
     @Transactional
@@ -103,6 +105,9 @@ public class CommunicationService {
 
     private void ensureChannelForProjectRoom(ProjectRoom room, Long creatorAccountId) {
         if (room == null || room.getUuid() == null) return;
+        if (room.getProjectId() != null) {
+            commercialLifecycleService.assertNotArchived(room.getProjectId());
+        }
         List<CommunicationChannel> existing = channelRepository
                 .findByProjectRoomIdOrderByCreatedAtAsc(room.getUuid());
         CommunicationChannel ch = existing.isEmpty() ? null : existing.get(0);
@@ -124,6 +129,9 @@ public class CommunicationService {
 
     private void ensureChannelForRoomTask(RoomTask task, Long creatorAccountId) {
         if (task == null || task.getUuid() == null) return;
+        if (task.getProjectId() != null) {
+            commercialLifecycleService.assertNotArchived(task.getProjectId());
+        }
         List<CommunicationChannel> existing = channelRepository
                 .findByRoomTaskIdOrderByCreatedAtAsc(task.getUuid());
         CommunicationChannel ch = existing.isEmpty() ? null : existing.get(0);
@@ -255,6 +263,9 @@ public class CommunicationService {
         CommunicationChannel channel = getChannel(channelUuid);
         AuthPrincipal principal = requirePrincipal();
         assertMember(channel, principal.getAccountId());
+        if (channel.getProjectId() != null) {
+            commercialLifecycleService.assertNotArchived(channel.getProjectId());
+        }
 
         if (channel.getChannelType() == ChannelType.PROJECT_ROOM
                 || channel.getChannelType() == ChannelType.ROOM_TASK) {

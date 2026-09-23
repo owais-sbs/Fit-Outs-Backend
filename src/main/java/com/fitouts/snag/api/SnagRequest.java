@@ -3,6 +3,7 @@ package com.fitouts.snag.api;
 import java.time.LocalDate;
 import java.util.UUID;
 
+import com.fitouts.snag.domain.SnagCategory;
 import com.fitouts.snag.domain.SnagSeverity;
 import com.fitouts.snag.domain.SnagStatus;
 
@@ -18,6 +19,7 @@ public class SnagRequest {
     private String photoPaths;
     private SnagStatus status;
     private SnagSeverity severity;
+    private SnagCategory category;
     private LocalDate dueDate;
     private Long assigneeAccountId;
     private Boolean clientVisible;

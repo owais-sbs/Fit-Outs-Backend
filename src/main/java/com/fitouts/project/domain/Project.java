@@ -3,6 +3,7 @@ package com.fitouts.project.domain;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 import jakarta.persistence.Column;
@@ -13,6 +14,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -116,6 +118,25 @@ public class Project {
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
+
+    /** Module 27 commercial lifecycle (not persisted; enriched by CommercialLifecycleService). */
+    @Transient
+    private String commercialStage;
+
+    @Transient
+    private Boolean archiveEligible;
+
+    @Transient
+    private LocalDate dlpStartDate;
+
+    @Transient
+    private LocalDate dlpEndDate;
+
+    @Transient
+    private OffsetDateTime commerciallyClosedAt;
+
+    @Transient
+    private OffsetDateTime archivedAt;
 
     @PrePersist
     void onCreate() {
