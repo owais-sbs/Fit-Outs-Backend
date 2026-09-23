@@ -62,6 +62,24 @@ public class ScPaymentCertificate {
     @Column(name = "accounting_ref", length = 128)
     private String accountingRef;
 
+    @Column(name = "certificate_number", length = 64)
+    private String certificateNumber;
+
+    @Column(name = "certificate_date")
+    private LocalDate certificateDate;
+
+    @Column(name = "other_deductions", precision = 18, scale = 2)
+    private BigDecimal otherDeductions = BigDecimal.ZERO;
+
+    @Column(name = "paid_amount", precision = 18, scale = 2)
+    private BigDecimal paidAmount;
+
+    @Column(name = "paid_by")
+    private Long paidBy;
+
+    @Column(name = "payment_notes", columnDefinition = "TEXT")
+    private String paymentNotes;
+
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 

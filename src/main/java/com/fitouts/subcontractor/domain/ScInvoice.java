@@ -1,6 +1,7 @@
 package com.fitouts.subcontractor.domain;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -36,8 +37,14 @@ public class ScInvoice {
     @Column(name = "claim_uuid")
     private UUID claimUuid;
 
+    @Column(name = "certificate_uuid")
+    private UUID certificateUuid;
+
     @Column(name = "invoice_number", length = 64)
     private String invoiceNumber;
+
+    @Column(name = "invoice_date")
+    private LocalDate invoiceDate;
 
     @Column(nullable = false)
     private BigDecimal amount = BigDecimal.ZERO;
