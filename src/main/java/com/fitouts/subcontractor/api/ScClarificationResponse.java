@@ -16,4 +16,9 @@ public class ScClarificationResponse {
     private boolean material;
     private OffsetDateTime issuedToAllAt;
     private OffsetDateTime createdAt;
+    /** Set on cross-RFQ inbox responses. */
+    private UUID packageUuid;
+    private String packageName;
+    private Long projectId;
+    private String projectName;
 }

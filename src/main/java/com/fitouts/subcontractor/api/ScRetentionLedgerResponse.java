@@ -16,10 +16,15 @@ public class ScRetentionLedgerResponse {
     private UUID organizationUuid;
     private Long projectId;
     private BigDecimal amountHeld;
+    private BigDecimal amountReleased;
+    private BigDecimal outstandingBalance;
+    private BigDecimal retentionPct;
+    private BigDecimal certifiedValue;
     private LocalDate releaseDate;
     private LocalDate defectLiabilityEnd;
     private String status;
     private UUID certificateUuid;
     private String notes;
     private OffsetDateTime createdAt;
+    private String packageName;
 }

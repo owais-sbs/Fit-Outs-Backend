@@ -1,5 +1,6 @@
 package com.fitouts.project.application;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -14,11 +15,13 @@ import org.springframework.util.StringUtils;
 
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
+import com.fitouts.boq.domain.BoqDocumentRepository;
 import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.lead.domain.Lead;
 import com.fitouts.project.domain.Project;
 import com.fitouts.project.domain.ProjectRepository;
 import com.fitouts.shared.context.CompanyContext;
+import com.fitouts.shared.enums.BoqDocumentStatus;
 import com.fitouts.shared.error.ForbiddenException;
 import com.fitouts.shared.error.NotFoundException;
 
@@ -27,12 +30,15 @@ public class ProjectService {
 
     private final ProjectRepository projectRepository;
     private final CommercialLifecycleService commercialLifecycleService;
+    private final BoqDocumentRepository boqDocumentRepository;
 
     public ProjectService(
             ProjectRepository projectRepository,
-            @Lazy CommercialLifecycleService commercialLifecycleService) {
+            @Lazy CommercialLifecycleService commercialLifecycleService,
+            BoqDocumentRepository boqDocumentRepository) {
         this.projectRepository = projectRepository;
         this.commercialLifecycleService = commercialLifecycleService;
+        this.boqDocumentRepository = boqDocumentRepository;
     }
 
     @Transactional
@@ -66,16 +72,30 @@ public class ProjectService {
         if (client) {
             projects = projectRepository.findByCompanyIdAndClientIdAndIsDeletedFalse(
                     companyId, principal.getAccountId());
+            attachApprovedBoqFlags(companyId, projects);
             // Clients do not need Module 27 commercial enrichment (avoids snag/checklist scans).
             return projects;
         }
         projects = projectRepository.findByCompanyIdAndIsDeletedFalse(companyId);
+        attachApprovedBoqFlags(companyId, projects);
         try {
             commercialLifecycleService.enrichProjects(projects);
         } catch (RuntimeException ex) {
             // List must still load if enrichment fails (e.g. pending migration).
         }
         return projects;
+    }
+
+    private void attachApprovedBoqFlags(UUID companyId, List<Project> projects) {
+        if (companyId == null || projects == null || projects.isEmpty()) {
+            return;
+        }
+        Set<Long> approvedProjectIds = new HashSet<>(boqDocumentRepository.findDistinctProjectIdsByCompanyIdAndStatusIn(
+                companyId,
+                List.of(BoqDocumentStatus.APPROVED, BoqDocumentStatus.FINAL)));
+        for (Project project : projects) {
+            project.setHasApprovedBoq(approvedProjectIds.contains(project.getId()));
+        }
     }
 
     public Project getById(Long id) {

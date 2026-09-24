@@ -10,4 +10,5 @@ public class ScAwardRequest {
     private UUID organizationUuid;
     private UUID quoteUuid;
     private BigDecimal awardedValue;
+    private String awardValueReason;
 }

@@ -47,6 +47,9 @@ import com.fitouts.subcontractor.domain.ScCompanyProfileRepository;
 import com.fitouts.subcontractor.domain.ScInvoice;
 import com.fitouts.subcontractor.domain.ScInvoiceRepository;
 import com.fitouts.subcontractor.domain.ScInvoiceStatus;
+import com.fitouts.subcontractor.domain.ScPaymentCertificate;
+import com.fitouts.subcontractor.domain.ScPaymentCertificateRepository;
+import com.fitouts.subcontractor.domain.ScPaymentCertificateStatus;
 import com.fitouts.subcontractor.domain.ScSiteReport;
 import com.fitouts.subcontractor.domain.ScSiteReportRepository;
 import com.fitouts.subcontractor.domain.ScSiteReportStatus;
@@ -71,6 +74,7 @@ public class SubcontractorPortalService {
     private final ScVariationRequestRepository variationRepository;
     private final ScSiteReportRepository siteReportRepository;
     private final ScInvoiceRepository invoiceRepository;
+    private final ScPaymentCertificateRepository certificateRepository;
     private final SubcontractorPackageRepository packageRepository;
     private final SubcontractorClaimRepository claimRepository;
     private final BoqLineRepository boqLineRepository;
@@ -286,7 +290,7 @@ public class SubcontractorPortalService {
 
     // ── Invoices / payments ──────────────────────────────────────────────────
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<ScInvoiceResponse> myInvoices() {
         AuthPrincipal principal = requireScPortalUser();
         portalAccessService.requireCommercialAccess(principal);
@@ -301,25 +305,58 @@ public class SubcontractorPortalService {
         if (body == null || body.getPackageUuid() == null) {
             throw new BadRequestException("packageUuid is required");
         }
+        if (body.getCertificateUuid() == null) {
+            throw new BadRequestException("certificateUuid is required — invoice against a PAYABLE payment certificate");
+        }
         SubcontractorPackage pkg = requireAppointedPackage(principal, body.getPackageUuid());
         commercialLifecycleService.assertNotArchived(pkg.getProjectId());
-        if (body.getClaimUuid() != null) {
-            SubcontractorClaim claim = claimRepository.findByUuidAndCompanyId(body.getClaimUuid(), pkg.getCompanyId())
+
+        ScPaymentCertificate cert = certificateRepository.findByUuidAndCompanyId(
+                        body.getCertificateUuid(), pkg.getCompanyId())
+                .orElseThrow(() -> new NotFoundException("Payment certificate not found"));
+        if (!cert.getPackageUuid().equals(pkg.getUuid())) {
+            throw new BadRequestException("Certificate does not belong to this package");
+        }
+        if (cert.getStatus() != ScPaymentCertificateStatus.PAYABLE) {
+            throw new BadRequestException("Invoice can only reference a PAYABLE payment certificate");
+        }
+
+        BigDecimal alreadyInvoiced = invoiceRepository
+                .findByCertificateUuidAndCompanyId(cert.getUuid(), pkg.getCompanyId())
+                .stream()
+                .filter(inv -> inv.getStatus() != ScInvoiceStatus.REJECTED)
+                .map(ScInvoice::getAmount)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal net = cert.getNetPayable() != null ? cert.getNetPayable() : BigDecimal.ZERO;
+        BigDecimal available = net.subtract(alreadyInvoiced).max(BigDecimal.ZERO);
+        BigDecimal amount = body.getAmount() != null ? body.getAmount() : available;
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BadRequestException("Invoice amount must be greater than zero");
+        }
+        if (amount.compareTo(available) > 0) {
+            throw new BadRequestException(
+                    "Invoice amount exceeds available certificate value (" + available + " remaining)");
+        }
+
+        UUID claimUuid = body.getClaimUuid() != null ? body.getClaimUuid() : cert.getClaimUuid();
+        if (claimUuid != null) {
+            SubcontractorClaim claim = claimRepository.findByUuidAndCompanyId(claimUuid, pkg.getCompanyId())
                     .orElseThrow(() -> new NotFoundException("Claim not found"));
             if (!claim.getPackageUuid().equals(pkg.getUuid())) {
                 throw new BadRequestException("Claim does not belong to this package");
             }
-            if (claim.getStatus() != SubcontractorClaimStatus.APPROVED) {
-                throw new BadRequestException("Invoice can only link to APPROVED claims");
-            }
         }
+
         ScInvoice row = new ScInvoice();
         row.setPackageUuid(pkg.getUuid());
         row.setProjectId(pkg.getProjectId());
         row.setCompanyId(pkg.getCompanyId());
-        row.setClaimUuid(body.getClaimUuid());
+        row.setClaimUuid(claimUuid);
+        row.setCertificateUuid(cert.getUuid());
         row.setInvoiceNumber(trimToNull(body.getInvoiceNumber()));
-        row.setAmount(body.getAmount() != null ? body.getAmount() : BigDecimal.ZERO);
+        row.setInvoiceDate(body.getInvoiceDate());
+        row.setAmount(amount);
         row.setTaxAmount(body.getTaxAmount() != null ? body.getTaxAmount() : BigDecimal.ZERO);
         row.setCurrency(StringUtils.hasText(body.getCurrency()) ? body.getCurrency().trim() : "AED");
         row.setNotes(trimToNull(body.getNotes()));
@@ -409,7 +446,23 @@ public class SubcontractorPortalService {
         row.setPaymentReference(request != null ? trimToNull(request.getPaymentReference()) : null);
         row.setDecidedBy(principal.getAccountId());
         row.setDecidedAt(OffsetDateTime.now());
-        return toInvoiceResponse(invoiceRepository.save(row));
+        ScInvoice saved = invoiceRepository.save(row);
+        if (saved.getCertificateUuid() != null) {
+            certificateRepository.findByUuidAndCompanyId(saved.getCertificateUuid(), saved.getCompanyId())
+                    .ifPresent(cert -> {
+                        if (cert.getStatus() != ScPaymentCertificateStatus.PAID) {
+                            cert.setStatus(ScPaymentCertificateStatus.PAID);
+                            cert.setPaidDate(java.time.LocalDate.now());
+                            cert.setPaidAmount(saved.getAmount());
+                            cert.setPaidBy(principal.getAccountId());
+                            if (StringUtils.hasText(saved.getPaymentReference())) {
+                                cert.setAccountingRef(saved.getPaymentReference());
+                            }
+                            certificateRepository.save(cert);
+                        }
+                    });
+        }
+        return toInvoiceResponse(saved);
     }
 
     // ── BOQ view ─────────────────────────────────────────────────────────────
@@ -435,7 +488,7 @@ public class SubcontractorPortalService {
 
     @Transactional(readOnly = true)
     public List<ScVariationResponse> pendingVariationsForInbox() {
-        requirePmOrAdmin();
+        requireStaff();
         return variationRepository
                 .findByCompanyIdAndStatusOrderBySubmittedAtDesc(requireCompany(), ScVariationStatus.SUBMITTED)
                 .stream().map(this::toVariationResponse).toList();
@@ -443,7 +496,7 @@ public class SubcontractorPortalService {
 
     @Transactional(readOnly = true)
     public List<ScInvoiceResponse> pendingInvoicesForInbox() {
-        requirePmOrAdmin();
+        requireStaff();
         return invoiceRepository
                 .findByCompanyIdAndStatusOrderBySubmittedAtDesc(requireCompany(), ScInvoiceStatus.SUBMITTED)
                 .stream().map(this::toInvoiceResponse).toList();
@@ -477,7 +530,27 @@ public class SubcontractorPortalService {
         UUID companyId = requireCompany();
         for (SubcontractorPackage pkg : packages) {
             invoiceRepository.findByPackageUuidAndCompanyIdOrderByCreatedAtDesc(pkg.getUuid(), companyId)
-                    .forEach(i -> result.add(toInvoiceResponse(i)));
+                    .forEach(inv -> {
+                        // Heal: certificate already PAID but invoice still APPROVED/SUBMITTED
+                        if (inv.getCertificateUuid() != null
+                                && inv.getStatus() != ScInvoiceStatus.PAID
+                                && inv.getStatus() != ScInvoiceStatus.REJECTED) {
+                            certificateRepository.findByUuidAndCompanyId(inv.getCertificateUuid(), companyId)
+                                    .filter(c -> c.getStatus() == ScPaymentCertificateStatus.PAID)
+                                    .ifPresent(c -> {
+                                        inv.setStatus(ScInvoiceStatus.PAID);
+                                        if (inv.getPaidAt() == null) {
+                                            inv.setPaidAt(OffsetDateTime.now());
+                                        }
+                                        if (!StringUtils.hasText(inv.getPaymentReference())
+                                                && StringUtils.hasText(c.getAccountingRef())) {
+                                            inv.setPaymentReference(c.getAccountingRef());
+                                        }
+                                        invoiceRepository.save(inv);
+                                    });
+                        }
+                        result.add(toInvoiceResponse(inv));
+                    });
         }
         result.sort(Comparator.comparing(ScInvoiceResponse::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())));
         return result;
@@ -587,7 +660,9 @@ public class SubcontractorPortalService {
                 .projectId(row.getProjectId())
                 .companyId(row.getCompanyId())
                 .claimUuid(row.getClaimUuid())
+                .certificateUuid(row.getCertificateUuid())
                 .invoiceNumber(row.getInvoiceNumber())
+                .invoiceDate(row.getInvoiceDate())
                 .amount(row.getAmount())
                 .taxAmount(row.getTaxAmount())
                 .currency(row.getCurrency())

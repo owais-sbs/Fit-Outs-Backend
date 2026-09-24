@@ -13,5 +13,7 @@ public class ScPrequalificationReviewRequest {
     private String status;
     private String notes;
     private List<String> approvedTrades;
+    /** Per-trade Approve/Reject with mandatory reason on reject. */
+    private List<ScTradeDecisionRequest> tradeDecisions;
     private BigDecimal maxPackageValue;
 }

@@ -23,13 +23,23 @@ public class ScVendorController extends BaseController {
 
     private final ScVendorService vendorService;
 
-    /** Invite-only onboarding — staff sends portal invite; no open public registration. */
+    /** Invite-only onboarding — staff sends portal invite. */
     @PostMapping("/invite")
     public Object invite(@RequestBody ScInviteVendorRequest request) {
         try {
             return successResponse(vendorService.inviteVendor(request));
         } catch (Exception e) {
             return failureResponse("Failed to invite subcontractor", e.getMessage());
+        }
+    }
+
+    /** Generate or retrieve tenant public self-registration link (tokenized, no internal data). */
+    @PostMapping("/public-registration-link")
+    public Object publicRegistrationLink(@RequestParam(defaultValue = "false") boolean regenerate) {
+        try {
+            return successResponse(vendorService.getOrCreatePublicRegistrationLink(regenerate));
+        } catch (Exception e) {
+            return failureResponse("Failed to create public registration link", e.getMessage());
         }
     }
 

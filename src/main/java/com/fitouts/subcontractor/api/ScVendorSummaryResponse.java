@@ -16,6 +16,7 @@ public class ScVendorSummaryResponse {
     private final String primaryContactEmail;
     private final String status;
     private final String complianceStatus;
+    private final List<String> complianceGaps;
     private final BigDecimal performanceScore;
     private final List<String> tradeCategories;
     private final List<String> approvedTrades;

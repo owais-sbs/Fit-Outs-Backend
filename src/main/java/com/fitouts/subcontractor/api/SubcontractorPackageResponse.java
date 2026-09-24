@@ -1,9 +1,13 @@
 package com.fitouts.subcontractor.api;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import com.fitouts.subcontractor.domain.SubcontractorPackageStatus;
+import com.fitouts.subcontractor.domain.ScFreeIssueMaterial;
+import com.fitouts.subcontractor.domain.ScPackageAttendance;
 
 import lombok.Builder;
 import lombok.Data;
@@ -17,6 +21,13 @@ public class SubcontractorPackageResponse {
     private String name;
     private String boqSectionCode;
     private UUID boqLineId;
+    private List<ScBoqLineView> boqLines;
+    private BigDecimal estimatedBoqValue;
+    private String tradePackageCode;
+    private String tradePackageName;
+    private String specialistLicenceRequired;
+    private String ldTerms;
+    private int boqLineCount;
     private String boqLineDescription;
     private String boqLineUnit;
     private String boqRoomLabel;
@@ -48,4 +59,6 @@ public class SubcontractorPackageResponse {
     private java.math.BigDecimal retentionPct;
     private OffsetDateTime siteVisitAt;
     private String tenderDescription;
+    private List<ScFreeIssueMaterial> freeIssueMaterials;
+    private List<ScPackageAttendance> attendanceMatrix;
 }

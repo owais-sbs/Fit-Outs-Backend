@@ -17,4 +17,5 @@ public class ScBidderResponse {
     private OffsetDateTime viewedAt;
     private boolean eligible;
     private String eligibilityJson;
+    private ScEligibilityResponse eligibility;
 }

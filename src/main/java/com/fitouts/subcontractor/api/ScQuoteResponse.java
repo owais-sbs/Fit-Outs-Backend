@@ -25,4 +25,11 @@ public class ScQuoteResponse {
     private OffsetDateTime submittedAt;
     private List<ScQuoteLineResponse> lines;
     private boolean ratesVisible;
+    /** Tender outcome for this bidder on the package (e.g. SUBMITTED, REGRET, AWARDED). */
+    private String bidderStatus;
+    private String regretMessage;
+    private OffsetDateTime regretSentAt;
+    private String packageName;
+    private String projectName;
+    private Long projectId;
 }

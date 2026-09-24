@@ -19,9 +19,17 @@ public class ScPaymentCertificateResponse {
     private BigDecimal certifiedValue;
     private BigDecimal retentionHeld;
     private BigDecimal backChargesApplied;
+    private BigDecimal otherDeductions;
     private BigDecimal netPayable;
     private String status;
+    private String certificateNumber;
+    private LocalDate certificateDate;
     private LocalDate paidDate;
+    private BigDecimal paidAmount;
     private String accountingRef;
+    private String paymentNotes;
     private OffsetDateTime createdAt;
+    private String packageName;
+    private String claimNumber;
+    private UUID invoiceUuid;
 }

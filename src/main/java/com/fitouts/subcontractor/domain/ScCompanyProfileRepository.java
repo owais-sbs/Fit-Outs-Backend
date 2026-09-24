@@ -11,5 +11,7 @@ public interface ScCompanyProfileRepository extends JpaRepository<ScCompanyProfi
 
     Optional<ScCompanyProfile> findByOrganizationUuidAndCompanyId(UUID organizationUuid, UUID companyId);
 
+    Optional<ScCompanyProfile> findFirstByOrganizationUuidOrderByUpdatedAtDesc(UUID organizationUuid);
+
     java.util.List<ScCompanyProfile> findByCompanyIdOrderByLegalCompanyNameAsc(UUID companyId);
 }

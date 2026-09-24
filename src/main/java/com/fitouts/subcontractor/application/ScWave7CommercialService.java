@@ -35,11 +35,18 @@ import com.fitouts.subcontractor.api.ScClaimStatusTrackerResponse;
 import com.fitouts.subcontractor.api.ScMeasureClaimRequest;
 import com.fitouts.subcontractor.api.ScPaymentCertificateResponse;
 import com.fitouts.subcontractor.api.ScRetentionLedgerResponse;
+import com.fitouts.subcontractor.api.ScRetentionReleaseRequest;
 import com.fitouts.subcontractor.api.ScScorecardResponse;
+import com.fitouts.subcontractor.api.ScMeasureClaimLineRequest;
 import com.fitouts.subcontractor.domain.ScBackCharge;
 import com.fitouts.subcontractor.domain.ScBackChargeRepository;
 import com.fitouts.subcontractor.domain.ScBackChargeStatus;
+import com.fitouts.subcontractor.domain.ScClaimLine;
+import com.fitouts.subcontractor.domain.ScClaimLineRepository;
 import com.fitouts.subcontractor.domain.ScCompanyProfileRepository;
+import com.fitouts.subcontractor.domain.ScInvoice;
+import com.fitouts.subcontractor.domain.ScInvoiceRepository;
+import com.fitouts.subcontractor.domain.ScInvoiceStatus;
 import com.fitouts.subcontractor.domain.ScOrganization;
 import com.fitouts.subcontractor.domain.ScOrganizationRepository;
 import com.fitouts.subcontractor.domain.ScPaymentCertificate;
@@ -70,6 +77,9 @@ public class ScWave7CommercialService {
     private static final Set<Role> STAFF_ROLES = EnumSet.of(
             Role.ADMIN, Role.BUSINESS_OWNER, Role.PROJECT_MANAGER, Role.QS, Role.SENIOR_QS);
 
+    private static final Set<Role> FINANCE_ROLES = EnumSet.of(
+            Role.ADMIN, Role.BUSINESS_OWNER, Role.FINANCE);
+
     private final SubcontractorClaimRepository claimRepository;
     private final SubcontractorPackageRepository packageRepository;
     private final ScPaymentCertificateRepository certificateRepository;
@@ -80,6 +90,8 @@ public class ScWave7CommercialService {
     private final ScSiteReportRepository siteReportRepository;
     private final ScOrganizationRepository organizationRepository;
     private final ScCompanyProfileRepository profileRepository;
+    private final ScClaimLineRepository claimLineRepository;
+    private final ScInvoiceRepository invoiceRepository;
     private final ScPortalAccessService portalAccessService;
     private final ProjectService projectService;
     private final CommercialApprovalService commercialApprovalService;
@@ -92,14 +104,83 @@ public class ScWave7CommercialService {
         AuthPrincipal principal = requireStaff();
         requireProject(projectId);
         SubcontractorClaim claim = requireClaim(claimUuid, projectId);
-        if (claim.getStatus() != SubcontractorClaimStatus.SUBMITTED) {
-            throw new BadRequestException("Only SUBMITTED claims can be measured");
+        if (claim.getStatus() != SubcontractorClaimStatus.SUBMITTED
+                && claim.getStatus() != SubcontractorClaimStatus.UNDER_REVIEW
+                && claim.getStatus() != SubcontractorClaimStatus.APPROVED) {
+            throw new BadRequestException("Only SUBMITTED / UNDER_REVIEW / APPROVED claims can be measured");
         }
         if (request == null) {
             throw new BadRequestException("Measurement values are required");
         }
-        claim.setMeasuredQty(request.getMeasuredQty() != null ? request.getMeasuredQty() : claim.getClaimedQty());
-        claim.setMeasuredValue(request.getMeasuredValue());
+
+        List<ScClaimLine> claimLines = claimLineRepository.findByClaimUuidOrderBySortOrderAsc(claim.getUuid());
+        if (request.getLines() != null && !request.getLines().isEmpty()) {
+            java.util.Map<UUID, ScClaimLine> byId = new java.util.HashMap<>();
+            for (ScClaimLine line : claimLines) {
+                byId.put(line.getUuid(), line);
+            }
+            BigDecimal measuredQtyTotal = BigDecimal.ZERO;
+            BigDecimal measuredValueTotal = BigDecimal.ZERO;
+            for (ScMeasureClaimLineRequest lineReq : request.getLines()) {
+                if (lineReq == null || lineReq.getClaimLineUuid() == null) {
+                    continue;
+                }
+                ScClaimLine line = byId.get(lineReq.getClaimLineUuid());
+                if (line == null) {
+                    throw new BadRequestException("Claim line not found on this claim");
+                }
+                BigDecimal mq = lineReq.getMeasuredQty() != null ? lineReq.getMeasuredQty() : line.getClaimedQty();
+                if (mq == null || mq.compareTo(BigDecimal.ZERO) < 0) {
+                    throw new BadRequestException("Measured quantity cannot be negative");
+                }
+                BigDecimal rate = line.getAwardRate() != null ? line.getAwardRate() : BigDecimal.ZERO;
+                BigDecimal mv = mq.multiply(rate).setScale(2, RoundingMode.HALF_UP);
+                // Preserve claimed qty; only set measured fields
+                line.setMeasuredQty(mq);
+                line.setMeasuredValue(mv);
+                line.setQsComment(trimToNull(lineReq.getQsComment()));
+                claimLineRepository.save(line);
+                measuredQtyTotal = measuredQtyTotal.add(mq);
+                measuredValueTotal = measuredValueTotal.add(mv);
+            }
+            claim.setMeasuredQty(measuredQtyTotal);
+            claim.setMeasuredValue(measuredValueTotal);
+        } else {
+            claim.setMeasuredQty(request.getMeasuredQty() != null ? request.getMeasuredQty() : claim.getClaimedQty());
+            if (request.getMeasuredValue() != null) {
+                claim.setMeasuredValue(request.getMeasuredValue());
+            } else if (!claimLines.isEmpty()) {
+                BigDecimal measuredValueTotal = BigDecimal.ZERO;
+                BigDecimal measuredQtyTotal = BigDecimal.ZERO;
+                for (ScClaimLine line : claimLines) {
+                    BigDecimal mq = line.getClaimedQty() != null ? line.getClaimedQty() : BigDecimal.ZERO;
+                    BigDecimal rate = line.getAwardRate() != null ? line.getAwardRate() : BigDecimal.ZERO;
+                    BigDecimal mv = mq.multiply(rate).setScale(2, RoundingMode.HALF_UP);
+                    line.setMeasuredQty(mq);
+                    line.setMeasuredValue(mv);
+                    claimLineRepository.save(line);
+                    measuredQtyTotal = measuredQtyTotal.add(mq);
+                    measuredValueTotal = measuredValueTotal.add(mv);
+                }
+                claim.setMeasuredQty(measuredQtyTotal);
+                claim.setMeasuredValue(measuredValueTotal);
+            } else if (claim.getClaimedValue() != null) {
+                claim.setMeasuredValue(claim.getClaimedValue());
+            } else {
+                claim.setMeasuredValue(null);
+            }
+        }
+        if (claim.getMeasuredValue() == null) {
+            BigDecimal fromLines = claimLineRepository.findByClaimUuidOrderBySortOrderAsc(claim.getUuid()).stream()
+                    .map(l -> l.getMeasuredValue() != null ? l.getMeasuredValue() : l.getClaimedValue())
+                    .filter(java.util.Objects::nonNull)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            if (fromLines.compareTo(BigDecimal.ZERO) > 0) {
+                claim.setMeasuredValue(fromLines);
+            } else if (claim.getClaimedValue() != null) {
+                claim.setMeasuredValue(claim.getClaimedValue());
+            }
+        }
         claim.setMeasuredBy(principal.getAccountId());
         claim.setMeasuredAt(OffsetDateTime.now());
         claim.setStatus(SubcontractorClaimStatus.MEASURED);
@@ -122,7 +203,20 @@ public class ScWave7CommercialService {
                 ? request.getCertifiedValue()
                 : claim.getMeasuredValue();
         if (certifiedValue == null) {
-            throw new BadRequestException("certifiedValue is required");
+            certifiedValue = claim.getClaimedValue();
+        }
+        if (certifiedValue == null) {
+            certifiedValue = claimLineRepository.findByClaimUuidOrderBySortOrderAsc(claim.getUuid()).stream()
+                    .map(l -> l.getMeasuredValue() != null ? l.getMeasuredValue()
+                            : (l.getClaimedValue() != null ? l.getClaimedValue() : BigDecimal.ZERO))
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            if (certifiedValue.compareTo(BigDecimal.ZERO) <= 0) {
+                certifiedValue = null;
+            }
+        }
+        if (certifiedValue == null) {
+            throw new BadRequestException(
+                    "certifiedValue is required — measure the claim with a value first, or pass certifiedValue");
         }
 
         UUID orgUuid = resolveOrganizationForPackage(pkg);
@@ -141,7 +235,10 @@ public class ScWave7CommercialService {
                     .map(ScBackCharge::getAmount)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
         }
-        BigDecimal netPayable = certifiedValue.subtract(retentionHeld).subtract(backCharges).max(BigDecimal.ZERO);
+        BigDecimal otherDeductions = request != null && request.getOtherDeductions() != null
+                ? request.getOtherDeductions() : BigDecimal.ZERO;
+        BigDecimal netPayable = certifiedValue.subtract(retentionHeld).subtract(backCharges)
+                .subtract(otherDeductions).max(BigDecimal.ZERO);
 
         ScPaymentCertificate cert = new ScPaymentCertificate();
         cert.setClaimUuid(claim.getUuid());
@@ -152,13 +249,26 @@ public class ScWave7CommercialService {
         cert.setCertifiedValue(certifiedValue);
         cert.setRetentionHeld(retentionHeld);
         cert.setBackChargesApplied(backCharges);
+        cert.setOtherDeductions(otherDeductions);
         cert.setNetPayable(netPayable);
         cert.setStatus(ScPaymentCertificateStatus.DRAFT);
+        cert.setCertificateDate(LocalDate.now());
         if (request != null) {
             cert.setAccountingRef(trimToNull(request.getAccountingRef()));
         }
         final ScPaymentCertificate savedCert = certificateRepository.save(cert);
+        savedCert.setCertificateNumber("PC-" + savedCert.getUuid().toString().substring(0, 8).toUpperCase());
+        certificateRepository.save(savedCert);
         final UUID savedCertUuid = savedCert.getUuid();
+
+        // Copy measured → certified on claim lines (certified qty defaults to measured)
+        for (ScClaimLine line : claimLineRepository.findByClaimUuidOrderBySortOrderAsc(claim.getUuid())) {
+            BigDecimal cq = line.getMeasuredQty() != null ? line.getMeasuredQty() : line.getClaimedQty();
+            BigDecimal rate = line.getAwardRate() != null ? line.getAwardRate() : BigDecimal.ZERO;
+            line.setCertifiedQty(cq);
+            line.setCertifiedValue(cq != null ? cq.multiply(rate).setScale(2, RoundingMode.HALF_UP) : BigDecimal.ZERO);
+            claimLineRepository.save(line);
+        }
 
         // Module 23: optional SC certificate matrix — if a band matches, hold as DRAFT until approved
         var runOpt = commercialApprovalService.startRun(
@@ -174,7 +284,9 @@ public class ScWave7CommercialService {
             return toCertificateResponse(savedCert);
         }
 
-        issueCertificate(savedCert, claim, principal.getAccountId(), applicableStatuses);
+        // No matrix configured: QS certification is the gate → PAYABLE (ready for SC invoice).
+        // When an SC_CERTIFICATE matrix exists, approval handler marks PAYABLE after all steps.
+        issueCertificate(savedCert, claim, principal.getAccountId(), applicableStatuses, true);
         return toCertificateResponse(savedCert);
     }
 
@@ -191,7 +303,7 @@ public class ScWave7CommercialService {
         commercialLifecycleService.assertNotArchived(claim.getProjectId());
         List<ScBackChargeStatus> applicableStatuses = List.of(
                 ScBackChargeStatus.OPEN, ScBackChargeStatus.ACKNOWLEDGED);
-        issueCertificate(cert, claim, null, applicableStatuses);
+        issueCertificate(cert, claim, null, applicableStatuses, true);
     }
 
     @Transactional
@@ -210,16 +322,30 @@ public class ScWave7CommercialService {
         certificateRepository.delete(cert);
     }
 
+    /**
+     * @param asPayable true when Module 23 matrix has completed (Finance/Director already approved);
+     *                  false when QS certifies with no matrix — leaves ISSUED until Finance marks PAYABLE.
+     */
     private void issueCertificate(
             ScPaymentCertificate cert,
             SubcontractorClaim claim,
             Long decidedBy,
-            List<ScBackChargeStatus> applicableStatuses) {
+            List<ScBackChargeStatus> applicableStatuses,
+            boolean asPayable) {
         final UUID savedCertUuid = cert.getUuid();
         UUID orgUuid = cert.getOrganizationUuid();
         BigDecimal retentionHeld = cert.getRetentionHeld() != null ? cert.getRetentionHeld() : BigDecimal.ZERO;
+        BigDecimal retentionPct = BigDecimal.ZERO;
+        SubcontractorPackage pkg = packageRepository.findByUuidAndCompanyId(cert.getPackageUuid(), cert.getCompanyId())
+                .orElse(null);
+        if (pkg != null && pkg.getRetentionPct() != null) {
+            retentionPct = pkg.getRetentionPct();
+        }
 
-        cert.setStatus(ScPaymentCertificateStatus.ISSUED);
+        cert.setStatus(asPayable ? ScPaymentCertificateStatus.PAYABLE : ScPaymentCertificateStatus.ISSUED);
+        if (cert.getCertificateDate() == null) {
+            cert.setCertificateDate(LocalDate.now());
+        }
         certificateRepository.save(cert);
 
         if (orgUuid != null && retentionHeld.compareTo(BigDecimal.ZERO) > 0) {
@@ -229,6 +355,9 @@ public class ScWave7CommercialService {
             ledger.setCompanyId(cert.getCompanyId());
             ledger.setProjectId(cert.getProjectId());
             ledger.setAmountHeld(retentionHeld);
+            ledger.setAmountReleased(BigDecimal.ZERO);
+            ledger.setRetentionPct(retentionPct);
+            ledger.setCertifiedValue(cert.getCertifiedValue());
             ledger.setStatus(ScRetentionStatus.HELD);
             ledger.setCertificateUuid(savedCertUuid);
             retentionLedgerRepository.save(ledger);
@@ -258,26 +387,138 @@ public class ScWave7CommercialService {
     }
 
     @Transactional
+    public ScPaymentCertificateResponse markCertificatePayable(Long projectId, UUID certificateUuid) {
+        commercialLifecycleService.assertNotArchived(projectId);
+        requireFinance();
+        requireProject(projectId);
+        ScPaymentCertificate cert = certificateRepository.findById(certificateUuid)
+                .orElseThrow(() -> new NotFoundException("Payment certificate not found"));
+        if (!cert.getProjectId().equals(projectId) || !cert.getCompanyId().equals(requireCompany())) {
+            throw new ForbiddenException("Certificate not in this project");
+        }
+        if (cert.getStatus() != ScPaymentCertificateStatus.ISSUED
+                && cert.getStatus() != ScPaymentCertificateStatus.DRAFT) {
+            throw new BadRequestException("Only ISSUED or DRAFT certificates can become PAYABLE");
+        }
+        if (cert.getStatus() == ScPaymentCertificateStatus.DRAFT) {
+            // Finalize retention/back-charges if still draft without matrix completion path
+            SubcontractorClaim claim = claimRepository.findById(cert.getClaimUuid())
+                    .orElseThrow(() -> new NotFoundException("Claim not found"));
+            List<ScBackChargeStatus> applicableStatuses = List.of(
+                    ScBackChargeStatus.OPEN, ScBackChargeStatus.ACKNOWLEDGED);
+            issueCertificate(cert, claim, null, applicableStatuses, true);
+            return toCertificateResponse(certificateRepository.findById(certificateUuid).orElse(cert));
+        }
+        cert.setStatus(ScPaymentCertificateStatus.PAYABLE);
+        return toCertificateResponse(certificateRepository.save(cert));
+    }
+
+    @Transactional
     public SubcontractorClaim markClaimPaid(Long projectId, UUID claimUuid, String accountingRef) {
         commercialLifecycleService.assertNotArchived(projectId);
-        requireStaff();
+        requireFinance();
         requireProject(projectId);
         SubcontractorClaim claim = requireClaim(claimUuid, projectId);
-        if (claim.getStatus() != SubcontractorClaimStatus.CERTIFIED) {
-            throw new BadRequestException("Only CERTIFIED claims can be marked paid");
+        if (claim.getStatus() != SubcontractorClaimStatus.CERTIFIED
+                && claim.getStatus() != SubcontractorClaimStatus.PAID) {
+            throw new BadRequestException("Only CERTIFIED claims can be marked paid via certificate");
         }
         ScPaymentCertificate cert = certificateRepository.findByClaimUuid(claim.getUuid())
                 .orElseThrow(() -> new NotFoundException("Payment certificate not found"));
+        if (cert.getStatus() != ScPaymentCertificateStatus.PAYABLE
+                && cert.getStatus() != ScPaymentCertificateStatus.ISSUED) {
+            throw new BadRequestException("Certificate must be PAYABLE before recording payment");
+        }
+        if (cert.getStatus() == ScPaymentCertificateStatus.ISSUED) {
+            cert.setStatus(ScPaymentCertificateStatus.PAYABLE);
+        }
         cert.setStatus(ScPaymentCertificateStatus.PAID);
         cert.setPaidDate(LocalDate.now());
+        cert.setPaidAmount(cert.getNetPayable());
+        AuthPrincipal principal = requireAuthenticated();
+        cert.setPaidBy(principal.getAccountId());
         if (StringUtils.hasText(accountingRef)) {
             cert.setAccountingRef(accountingRef.trim());
         }
         certificateRepository.save(cert);
-        claim.setStatus(SubcontractorClaimStatus.PAID);
+        // Sync linked invoices so SC "Total received" reflects payment
+        for (ScInvoice inv : invoiceRepository.findByCertificateUuidAndCompanyId(cert.getUuid(), cert.getCompanyId())) {
+            if (inv.getStatus() == ScInvoiceStatus.REJECTED || inv.getStatus() == ScInvoiceStatus.PAID) {
+                continue;
+            }
+            inv.setStatus(ScInvoiceStatus.PAID);
+            inv.setPaidAt(OffsetDateTime.now());
+            if (StringUtils.hasText(accountingRef)) {
+                inv.setPaymentReference(accountingRef.trim());
+            } else if (StringUtils.hasText(cert.getAccountingRef())) {
+                inv.setPaymentReference(cert.getAccountingRef());
+            }
+            inv.setDecidedBy(principal.getAccountId());
+            inv.setDecidedAt(OffsetDateTime.now());
+            invoiceRepository.save(inv);
+        }
+        // Claim primary status stays CERTIFIED — payment is downstream on the certificate
+        claim.setStatus(SubcontractorClaimStatus.CERTIFIED);
         SubcontractorClaim saved = claimRepository.save(claim);
         pnlCalculationService.recalculateSafe(cert.getProjectId(), cert.getCompanyId());
         return saved;
+    }
+
+    @Transactional
+    public ScRetentionLedgerResponse releaseRetention(Long projectId, UUID retentionUuid, ScRetentionReleaseRequest request) {
+        commercialLifecycleService.assertNotArchived(projectId);
+        AuthPrincipal principal = requireFinance();
+        requireProject(projectId);
+        ScRetentionLedger row = retentionLedgerRepository.findById(retentionUuid)
+                .orElseThrow(() -> new NotFoundException("Retention ledger entry not found"));
+        if (!row.getProjectId().equals(projectId) || !row.getCompanyId().equals(requireCompany())) {
+            throw new ForbiddenException("Retention entry not in this project");
+        }
+        if (row.getStatus() == ScRetentionStatus.RELEASED) {
+            throw new BadRequestException("Retention already fully released");
+        }
+        BigDecimal held = row.getAmountHeld() != null ? row.getAmountHeld() : BigDecimal.ZERO;
+        BigDecimal already = row.getAmountReleased() != null ? row.getAmountReleased() : BigDecimal.ZERO;
+        BigDecimal outstanding = held.subtract(already).max(BigDecimal.ZERO);
+        BigDecimal releaseAmt = request != null && request.getAmountReleased() != null
+                ? request.getAmountReleased() : outstanding;
+        if (releaseAmt.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BadRequestException("Release amount must be positive");
+        }
+        if (releaseAmt.compareTo(outstanding) > 0) {
+            throw new BadRequestException("Release amount exceeds outstanding retention");
+        }
+        row.setAmountReleased(already.add(releaseAmt));
+        row.setReleaseDate(request != null && request.getReleaseDate() != null
+                ? request.getReleaseDate() : LocalDate.now());
+        row.setReleasedAt(OffsetDateTime.now());
+        row.setReleasedBy(principal.getAccountId());
+        if (StringUtils.hasText(request != null ? request.getNotes() : null)) {
+            row.setNotes(request.getNotes().trim());
+        }
+        if (row.getAmountReleased().compareTo(held) >= 0) {
+            row.setStatus(ScRetentionStatus.RELEASED);
+        } else {
+            row.setStatus(ScRetentionStatus.APPROVED_FOR_RELEASE);
+        }
+        return toRetentionResponse(retentionLedgerRepository.save(row));
+    }
+
+    @Transactional
+    public ScRetentionLedgerResponse markRetentionEligible(Long projectId, UUID retentionUuid) {
+        commercialLifecycleService.assertNotArchived(projectId);
+        requireFinance();
+        requireProject(projectId);
+        ScRetentionLedger row = retentionLedgerRepository.findById(retentionUuid)
+                .orElseThrow(() -> new NotFoundException("Retention ledger entry not found"));
+        if (!row.getProjectId().equals(projectId)) {
+            throw new ForbiddenException("Retention entry not in this project");
+        }
+        if (row.getStatus() != ScRetentionStatus.HELD) {
+            throw new BadRequestException("Only HELD retention can be marked eligible");
+        }
+        row.setStatus(ScRetentionStatus.ELIGIBLE_FOR_RELEASE);
+        return toRetentionResponse(retentionLedgerRepository.save(row));
     }
 
     @Transactional(readOnly = true)
@@ -495,20 +736,31 @@ public class ScWave7CommercialService {
                 .flatMap(pkg -> claimRepository
                         .findByPackageUuidAndCompanyIdOrderByCreatedAtDesc(pkg.getUuid(), companyId)
                         .stream()
-                        .map(claim -> ScClaimStatusTrackerResponse.builder()
+                        .map(claim -> {
+                            String paymentStatus = null;
+                            if (claim.getCertificateUuid() != null) {
+                                paymentStatus = certificateRepository.findById(claim.getCertificateUuid())
+                                        .map(c -> c.getStatus().name())
+                                        .orElse(null);
+                            }
+                            return ScClaimStatusTrackerResponse.builder()
                                 .claimUuid(claim.getUuid())
                                 .packageUuid(pkg.getUuid())
                                 .packageName(pkg.getName())
                                 .projectId(claim.getProjectId())
-                                .status(claim.getStatus().name())
+                                .status(claim.getStatus() == SubcontractorClaimStatus.PAID
+                                        ? SubcontractorClaimStatus.CERTIFIED.name()
+                                        : claim.getStatus().name())
                                 .claimedQty(claim.getClaimedQty())
                                 .measuredQty(claim.getMeasuredQty())
                                 .measuredValue(claim.getMeasuredValue())
                                 .certifiedValue(claim.getCertifiedValue())
                                 .certificateUuid(claim.getCertificateUuid())
+                                .paymentStatus(paymentStatus)
                                 .submittedAt(claim.getSubmittedAt())
                                 .measuredAt(claim.getMeasuredAt())
-                                .build()))
+                                .build();
+                        }))
                 .toList();
     }
 
@@ -543,6 +795,23 @@ public class ScWave7CommercialService {
     }
 
     private ScPaymentCertificateResponse toCertificateResponse(ScPaymentCertificate cert) {
+        UUID invoiceUuid = null;
+        if (invoiceRepository != null) {
+            invoiceUuid = invoiceRepository.findByCertificateUuidAndCompanyId(cert.getUuid(), cert.getCompanyId())
+                    .stream()
+                    .findFirst()
+                    .map(ScInvoice::getUuid)
+                    .orElse(null);
+        }
+        String claimNumber = null;
+        if (cert.getClaimUuid() != null) {
+            claimNumber = claimRepository.findById(cert.getClaimUuid())
+                    .map(SubcontractorClaim::getClaimNumber)
+                    .orElse(null);
+        }
+        String packageName = packageRepository.findByUuidAndCompanyId(cert.getPackageUuid(), cert.getCompanyId())
+                .map(SubcontractorPackage::getName)
+                .orElse(null);
         return ScPaymentCertificateResponse.builder()
                 .uuid(cert.getUuid())
                 .claimUuid(cert.getClaimUuid())
@@ -552,27 +821,45 @@ public class ScWave7CommercialService {
                 .certifiedValue(cert.getCertifiedValue())
                 .retentionHeld(cert.getRetentionHeld())
                 .backChargesApplied(cert.getBackChargesApplied())
+                .otherDeductions(cert.getOtherDeductions())
                 .netPayable(cert.getNetPayable())
                 .status(cert.getStatus().name())
+                .certificateNumber(cert.getCertificateNumber())
+                .certificateDate(cert.getCertificateDate())
                 .paidDate(cert.getPaidDate())
+                .paidAmount(cert.getPaidAmount())
                 .accountingRef(cert.getAccountingRef())
+                .paymentNotes(cert.getPaymentNotes())
                 .createdAt(cert.getCreatedAt())
+                .packageName(packageName)
+                .claimNumber(claimNumber)
+                .invoiceUuid(invoiceUuid)
                 .build();
     }
 
     private ScRetentionLedgerResponse toRetentionResponse(ScRetentionLedger row) {
+        BigDecimal held = row.getAmountHeld() != null ? row.getAmountHeld() : BigDecimal.ZERO;
+        BigDecimal released = row.getAmountReleased() != null ? row.getAmountReleased() : BigDecimal.ZERO;
+        String packageName = packageRepository.findByUuidAndCompanyId(row.getPackageUuid(), row.getCompanyId())
+                .map(SubcontractorPackage::getName)
+                .orElse(null);
         return ScRetentionLedgerResponse.builder()
                 .uuid(row.getUuid())
                 .packageUuid(row.getPackageUuid())
                 .organizationUuid(row.getOrganizationUuid())
                 .projectId(row.getProjectId())
-                .amountHeld(row.getAmountHeld())
+                .amountHeld(held)
+                .amountReleased(released)
+                .outstandingBalance(held.subtract(released).max(BigDecimal.ZERO))
+                .retentionPct(row.getRetentionPct())
+                .certifiedValue(row.getCertifiedValue())
                 .releaseDate(row.getReleaseDate())
                 .defectLiabilityEnd(row.getDefectLiabilityEnd())
                 .status(row.getStatus().name())
                 .certificateUuid(row.getCertificateUuid())
                 .notes(row.getNotes())
                 .createdAt(row.getCreatedAt())
+                .packageName(packageName)
                 .build();
     }
 
@@ -637,6 +924,25 @@ public class ScWave7CommercialService {
             }
         }
         throw new ForbiddenException("QS or Project Manager access required");
+    }
+
+    private AuthPrincipal requireFinance() {
+        AuthPrincipal principal = requireAuthenticated();
+        if (principal.getRoles() == null) {
+            throw new ForbiddenException("Finance access required");
+        }
+        for (Role role : FINANCE_ROLES) {
+            if (principal.getRoles().contains(role)) {
+                return principal;
+            }
+        }
+        // Directors / PMs / QS who certified may also record payable/paid in small orgs
+        for (Role role : STAFF_ROLES) {
+            if (principal.getRoles().contains(role)) {
+                return principal;
+            }
+        }
+        throw new ForbiddenException("Finance or commercial staff access required");
     }
 
     private AuthPrincipal requireAuthenticated() {

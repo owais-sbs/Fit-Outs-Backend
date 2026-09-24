@@ -1,6 +1,7 @@
 package com.fitouts.subcontractor.api;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -17,7 +18,9 @@ public class ScInvoiceResponse {
     private Long projectId;
     private UUID companyId;
     private UUID claimUuid;
+    private UUID certificateUuid;
     private String invoiceNumber;
+    private LocalDate invoiceDate;
     private BigDecimal amount;
     private BigDecimal taxAmount;
     private String currency;

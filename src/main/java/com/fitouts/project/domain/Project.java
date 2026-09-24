@@ -18,6 +18,8 @@ import jakarta.persistence.Transient;
 import lombok.Getter;
 import lombok.Setter;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 @Entity
 @Table(name = "projects")
 @Getter
@@ -137,6 +139,11 @@ public class Project {
 
     @Transient
     private OffsetDateTime archivedAt;
+
+    /** Populated for list responses; not a DB column. */
+    @Transient
+    @JsonProperty("hasApprovedBoq")
+    private Boolean hasApprovedBoq;
 
     @PrePersist
     void onCreate() {
