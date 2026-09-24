@@ -219,6 +219,9 @@ public class CloseoutChecklistService {
         ProjectCloseoutChecklist checklist = checklistRepository
                 .findByProjectIdAndCompanyId(project.getId(), companyId)
                 .orElse(null);
+        if (checklist == null || !checklist.isFinalInvoiceConfirmed() || !checklist.isAccountingSynced()) {
+            return false;
+        }
         Set<UUID> carried = carriedSnagIds(checklist);
         List<VariationRequest> variations = variationRepository
                 .findByProjectIdAndCompanyIdOrderByCreatedAtDesc(project.getId(), companyId);
