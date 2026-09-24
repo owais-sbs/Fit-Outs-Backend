@@ -214,59 +214,53 @@ public class ScTenderService {
         requireStaff();
         SubcontractorPackage pkg = requirePackage(projectId, packageUuid);
         UUID companyId = requireCompany();
-        List<ScBidderResponse> result = new ArrayList<>();
-        for (ScCompanyProfile profile : profileRepository.findByCompanyIdOrderByLegalCompanyNameAsc(companyId)) {
-            if (profile.getOrganizationUuid() == null || profile.getAdminAccountId() == null) {
-                continue;
-            }
-            ScAppointmentEligibilityResponse eligibility = eligibilityService.checkAppointmentEligibility(
-                    profile.getAdminAccountId(), pkg);
-            if (!eligibility.isEligible()) {
-            ScOrganization org = organizationRepository.findById(profile.getOrganizationUuid()).orElse(null);
-            ScPackageBidder existing = bidderRepository
-                    .findByPackageUuidAndOrganizationUuid(packageUuid, profile.getOrganizationUuid())
-                    .orElse(null);
-            result.add(ScBidderResponse.builder()
-                    .uuid(existing != null ? existing.getUuid() : null)
-                    .organizationUuid(profile.getOrganizationUuid())
-                    .organizationName(org != null ? org.getLegalCompanyName() : profile.getLegalCompanyName())
-                    .status(existing != null ? existing.getStatus().name() : "NOT_INVITED")
-                    .invitedAt(existing != null ? existing.getInvitedAt() : null)
-                    .viewedAt(existing != null ? existing.getViewedAt() : null)
-                    .eligible(true)
-                    .eligibilityJson(existing != null ? existing.getEligibilityJson() : null)
-                    .build());
-        }
-        return result;
-    }
-
         // Same source as vendor directory (tenant memberships), not only legacy profiles.
+        List<ScBidderResponse> result = new ArrayList<>();
         for (ScTenantMembership membership : membershipRepository.findByCompanyIdOrderByUpdatedAtDesc(companyId)) {
             UUID orgUuid = membership.getOrganizationUuid();
             if (orgUuid == null) {
+                continue;
+            }
             ScOrganization org = organizationRepository.findById(orgUuid).orElse(null);
             if (org == null) {
+                continue;
+            }
             var eligibility = eligibilityService.checkEligibility(orgUuid, projectId, packageUuid);
+            ScPackageBidder existing = bidderRepository
                     .findByPackageUuidAndOrganizationUuid(packageUuid, orgUuid)
+                    .orElse(null);
             String name = org.getLegalCompanyName();
             if (!StringUtils.hasText(name)) {
                 ScCompanyProfile profile = profileRepository
                         .findByOrganizationUuidAndCompanyId(orgUuid, companyId)
                         .orElse(null);
                 name = profile != null ? profile.getLegalCompanyName() : null;
+            }
+            result.add(ScBidderResponse.builder()
+                    .uuid(existing != null ? existing.getUuid() : null)
                     .organizationUuid(orgUuid)
                     .organizationName(StringUtils.hasText(name) ? name : "Subcontractor")
+                    .status(existing != null ? existing.getStatus().name() : "NOT_INVITED")
+                    .invitedAt(existing != null ? existing.getInvitedAt() : null)
+                    .viewedAt(existing != null ? existing.getViewedAt() : null)
                     .eligible(eligibility.isEligible())
+                    .eligibilityJson(existing != null ? existing.getEligibilityJson() : null)
                     .eligibility(eligibility)
+                    .build());
+        }
         result.sort(Comparator.comparing(
                 ScBidderResponse::getOrganizationName,
                 Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)));
+        return result;
+    }
 
     private String writeEligibility(Object eligibility) {
         try {
             return objectMapper.writeValueAsString(eligibility);
         } catch (JsonProcessingException e) {
             throw new BadRequestException("Could not save eligibility snapshot");
+        }
+    }
 
     @Transactional(readOnly = true)
     public List<ScBidderResponse> listBidders(Long projectId, UUID packageUuid) {
@@ -335,7 +329,6 @@ public class ScTenderService {
         if (request != null && request.getQuoteUuid() != null) {
             quote = quoteRepository.findById(request.getQuoteUuid())
                     .orElseThrow(() -> new NotFoundException("Quote not found"));
-            if (!quote.getOrganizationUuid().equals(portalUser.getOrganizationUuid())) {
             if (!quote.getPackageUuid().equals(packageUuid)
                     || !quote.getOrganizationUuid().equals(portalUser.getOrganizationUuid())) {
                 throw new ForbiddenException("Not your quote");
@@ -444,16 +437,14 @@ public class ScTenderService {
         AuthPrincipal principal = requireAuthenticated();
         portalAccessService.requireTenderingAccess(principal);
         ScPortalUser portalUser = portalAccessService.requireActivePortalUser(principal);
+        UUID companyId = requireCompany();
         return quoteRepository.findByOrganizationUuidOrderByUpdatedAtDesc(portalUser.getOrganizationUuid())
                 .stream()
                 .map(q -> {
-                    SubcontractorPackage pkg = packageRepository.findById(q.getPackageUuid()).orElse(null);
-                    boolean showRates = pkg == null || !isSealed(pkg)
-                            || q.getOrganizationUuid().equals(portalUser.getOrganizationUuid());
-                    return toQuoteResponse(q, showRates);
-        UUID companyId = requireCompany();
                     SubcontractorPackage pkg = packageRepository.findByUuidAndCompanyId(q.getPackageUuid(), companyId)
                             .orElseGet(() -> packageRepository.findById(q.getPackageUuid()).orElse(null));
+                    boolean showRates = pkg == null || !isSealed(pkg)
+                            || q.getOrganizationUuid().equals(portalUser.getOrganizationUuid());
                     ScPackageBidder bidder = bidderRepository
                             .findByPackageUuidAndOrganizationUuid(q.getPackageUuid(), portalUser.getOrganizationUuid())
                             .orElse(null);
@@ -536,12 +527,6 @@ public class ScTenderService {
         portalAccessService.requireTenderingAccess(principal);
         ScPortalUser portalUser = portalAccessService.requireActivePortalUser(principal);
         requireBidder(packageUuid, portalUser.getOrganizationUuid());
-        List<ScPackageClarification> own = clarificationRepository
-                .findByPackageUuidAndOrganizationUuidOrderByCreatedAtAsc(packageUuid, portalUser.getOrganizationUuid());
-        List<ScPackageClarification> material = clarificationRepository.findByPackageUuidOrderByCreatedAtAsc(packageUuid)
-                .stream()
-                .filter(c -> c.isMaterial() && c.getIssuedToAllAt() != null)
-                .filter(c -> !Objects.equals(c.getOrganizationUuid(), portalUser.getOrganizationUuid()))
         return clarificationsVisibleToBidder(packageUuid, portalUser.getOrganizationUuid()).stream()
                 .map(this::toClarificationResponse)
                 .toList();
@@ -570,20 +555,25 @@ public class ScTenderService {
             Project project = resolveProject(pkg.getProjectId());
             for (ScPackageClarification row : clarificationsVisibleToBidder(pkg.getUuid(), orgUuid)) {
                 out.add(toClarificationResponse(row, pkg, project));
+            }
         }
         out.sort(Comparator.comparing(
                 ScClarificationResponse::getCreatedAt,
                 Comparator.nullsLast(Comparator.reverseOrder())));
         return out;
+    }
 
     private List<ScPackageClarification> clarificationsVisibleToBidder(UUID packageUuid, UUID organizationUuid) {
+        List<ScPackageClarification> own = clarificationRepository
                 .findByPackageUuidAndOrganizationUuidOrderByCreatedAtAsc(packageUuid, organizationUuid);
+        List<ScPackageClarification> material = clarificationRepository.findByPackageUuidOrderByCreatedAtAsc(packageUuid)
+                .stream()
+                .filter(c -> c.isMaterial() && c.getIssuedToAllAt() != null)
                 .filter(c -> !Objects.equals(c.getOrganizationUuid(), organizationUuid))
                 .toList();
         List<ScPackageClarification> combined = new ArrayList<>(own);
         combined.addAll(material);
         combined.sort(Comparator.comparing(ScPackageClarification::getCreatedAt));
-        return combined.stream().map(this::toClarificationResponse).toList();
         return combined;
     }
 
@@ -666,14 +656,6 @@ public class ScTenderService {
                     .organizationUuid(bidder.getOrganizationUuid())
                     .organizationName(org != null ? org.getLegalCompanyName() : null)
                     .bidderStatus(bidder.getStatus().name())
-                    .quoteUuid(sealed || submitted == null ? null : submitted.getUuid())
-                    .totalValue(sealed || submitted == null ? null : submitted.getTotalValue())
-                    .leadTimeDays(sealed || submitted == null ? null : submitted.getLeadTimeDays())
-                    .build());
-        }
-        return ScComparisonResponse.builder()
-                .packageUuid(packageUuid)
-                .deadlinePassed(!sealed)
                     .quoteUuid(showRates && submitted != null ? submitted.getUuid() : null)
                     .totalValue(showRates && submitted != null ? submitted.getTotalValue() : null)
                     .leadTimeDays(submitted != null ? submitted.getLeadTimeDays() : null)
@@ -689,11 +671,16 @@ public class ScTenderService {
                     .scopeGaps(showRates ? gaps : List.of())
                     .lines(cells)
                     .cheapestTotal(false)
+                    .build());
+        }
 
         if (showRates) {
             markCheapestTotals(rows);
             markCheapestLines(rows, scopeLines);
+        }
 
+        return ScComparisonResponse.builder()
+                .packageUuid(packageUuid)
                 .packageName(pkg.getName())
                 .deadlinePassed(deadlinePassed)
                 .sealed(sealed)
@@ -793,21 +780,6 @@ public class ScTenderService {
             throw new BadRequestException("organizationUuid is required");
         }
         ScPackageBidder bidder = requireBidder(packageUuid, request.getOrganizationUuid());
-        ScQuote quote = null;
-        if (request.getQuoteUuid() != null) {
-            quote = quoteRepository.findById(request.getQuoteUuid())
-                    .orElseThrow(() -> new NotFoundException("Quote not found"));
-        } else {
-            quote = quoteRepository
-                    .findByPackageUuidAndOrganizationUuidOrderByVersionDesc(packageUuid, request.getOrganizationUuid())
-                    .stream()
-                    .filter(q -> q.getStatus() == ScQuoteStatus.SUBMITTED)
-                    .findFirst()
-                    .orElse(null);
-        }
-        BigDecimal awardedValue = request.getAwardedValue();
-        if (awardedValue == null && quote != null) {
-            awardedValue = quote.getTotalValue();
         ScQuote quote = request.getQuoteUuid() == null ? null : quoteRepository.findById(request.getQuoteUuid())
                 .orElseThrow(() -> new NotFoundException("Quote not found"));
         if (quote == null
@@ -819,12 +791,16 @@ public class ScTenderService {
                         .filter(q -> q.getStatus() == ScQuoteStatus.SUBMITTED)
                         .findFirst().map(q -> q.getUuid().equals(quote.getUuid())).orElse(false)) {
             throw new BadRequestException("Award requires the bidder's current submitted quote");
+        }
         var eligibility = eligibilityService.checkEligibility(
                 request.getOrganizationUuid(), projectId, packageUuid);
         if (!eligibility.isEligible()) {
             throw new BadRequestException("Award blocked by eligibility: "
                     + eligibility.getBlockers().stream().map(b -> b.getReason()).toList());
+        }
+        BigDecimal awardedValue = request.getAwardedValue();
         if (awardedValue == null) {
+            awardedValue = quote.getTotalValue();
         } else if (quote.getTotalValue() != null
                 && awardedValue.compareTo(quote.getTotalValue()) != 0
                 && !StringUtils.hasText(request.getAwardValueReason())) {
@@ -915,15 +891,6 @@ public class ScTenderService {
         ScPackageAward award = awardRepository.findByPackageUuid(packageUuid)
                 .orElseThrow(() -> new NotFoundException("No award recorded for this package"));
         ScOrganization org = organizationRepository.findById(award.getOrganizationUuid()).orElse(null);
-        return ScAwardPackResponse.builder()
-                .uuid(award.getUuid())
-                .packageUuid(packageUuid)
-                .packageName(pkg.getName())
-                .organizationUuid(award.getOrganizationUuid())
-                .organizationName(org != null ? org.getLegalCompanyName() : null)
-                .quoteUuid(award.getQuoteUuid())
-                .awardedValue(award.getAwardedValue())
-                .awardedAt(award.getAwardedAt())
         contractSignatureService.refreshStoredContractPdf(pkg, award, org);
         return buildAwardPack(pkg, award);
     }
@@ -957,6 +924,8 @@ public class ScTenderService {
                 });
             }
             awardBoqLineRepository.save(snap);
+        }
+    }
 
     private ScAwardPackResponse buildAwardPack(SubcontractorPackage pkg, ScPackageAward award) {
         ScOrganization org = organizationRepository.findById(award.getOrganizationUuid()).orElse(null);
@@ -999,19 +968,28 @@ public class ScTenderService {
                                 .build();
                     })
                     .toList();
+        }
         List<ScFreeIssueMaterial> freeIssue = freeIssueMaterialRepository
                 .findByPackageUuidAndCompanyIdOrderBySortOrderAsc(pkg.getUuid(), pkg.getCompanyId());
         List<ScPackageAttendance> attendance = packageAttendanceRepository
+                .findByPackageUuidAndCompanyIdOrderBySortOrderAsc(pkg.getUuid(), pkg.getCompanyId());
+        return ScAwardPackResponse.builder()
+                .uuid(award.getUuid())
                 .packageUuid(pkg.getUuid())
+                .packageName(pkg.getName())
                 .projectId(pkg.getProjectId())
                 .projectName(project != null ? project.getName() : null)
                 .projectLocation(project != null ? project.getLocation() : null)
+                .organizationUuid(award.getOrganizationUuid())
                 .organizationName(org != null ? org.getLegalCompanyName() : pkg.getAppointedCompanyName())
+                .quoteUuid(award.getQuoteUuid())
                 .quoteVersion(quote != null ? quote.getVersion() : null)
                 .quotedValue(quote != null ? quote.getTotalValue() : null)
+                .awardedValue(award.getAwardedValue())
                 .originalAwardValue(pkg.getOriginalAwardValue() != null
                         ? pkg.getOriginalAwardValue() : award.getAwardedValue())
                 .awardValueReason(award.getAwardValueReason())
+                .awardedAt(award.getAwardedAt())
                 .packageStatus(pkg.getStatus() != null ? pkg.getStatus().name() : null)
                 .tenderStatus(pkg.getTenderStatus() != null ? pkg.getTenderStatus().name() : null)
                 .contractStatus(award.getContractStatus().name())
@@ -1298,10 +1276,6 @@ public class ScTenderService {
         ScCompanyProfile profile = profileRepository
                 .findByOrganizationUuidAndCompanyId(bidder.getOrganizationUuid(), bidder.getCompanyId())
                 .orElse(null);
-        boolean eligible = false;
-        if (profile != null && profile.getAdminAccountId() != null) {
-            eligible = eligibilityService.checkAppointmentEligibility(profile.getAdminAccountId(), pkg).isEligible();
-        }
         var eligibility = profile == null ? null : eligibilityService.checkEligibility(
                 bidder.getOrganizationUuid(), pkg.getProjectId(), pkg.getUuid());
         return ScBidderResponse.builder()
@@ -1311,9 +1285,8 @@ public class ScTenderService {
                 .status(bidder.getStatus().name())
                 .invitedAt(bidder.getInvitedAt())
                 .viewedAt(bidder.getViewedAt())
-                .eligible(eligible)
-                .eligibilityJson(bidder.getEligibilityJson())
                 .eligible(eligibility != null && eligibility.isEligible())
+                .eligibilityJson(bidder.getEligibilityJson())
                 .eligibility(eligibility)
                 .build();
     }
@@ -1339,15 +1312,12 @@ public class ScTenderService {
                 .tenderDescription(pkg.getTenderDescription())
                 .bidderStatus(bidder != null ? bidder.getStatus().name() : null)
                 .sealed(sealed)
-                .deadlinePassed(!sealed)
-                .build();
-    }
-
-    private ScQuoteResponse toQuoteResponse(ScQuote quote, boolean showRates) {
                 .deadlinePassed(deadlinePassed)
                 .regretMessage(regretMessageFor(bidder, pkg, project))
                 .regretSentAt(bidder != null ? bidder.getRegretSentAt() : null)
                 .boqLines(rfqBoqLinesWithoutRates(pkg))
+                .build();
+    }
 
     private static String regretMessageFor(ScPackageBidder bidder, SubcontractorPackage pkg, Project project) {
         if (bidder == null || bidder.getStatus() != ScBidderStatus.REGRET) {
@@ -1360,6 +1330,7 @@ public class ScTenderService {
         return "Thank you for your tender on " + packageLabel + " (" + projectLabel
                 + "). We regret to inform you that your bid was not successful on this occasion. "
                 + "We appreciate your participation and welcome future tenders.";
+    }
 
     /** Bidder-facing BOQ scope — never expose internal estimate rates. */
     private List<ScBoqLineView> rfqBoqLinesWithoutRates(SubcontractorPackage pkg) {
@@ -1369,6 +1340,7 @@ public class ScTenderService {
                 .stream().map(x -> x.getBoqLineId()).toList());
         if (scopeIds.isEmpty() && pkg.getBoqLineId() != null) {
             scopeIds.add(pkg.getBoqLineId());
+        }
         for (UUID boqLineId : scopeIds) {
             BoqLine line = boqLineRepository.findById(boqLineId).orElse(null);
             if (line == null) {
@@ -1391,9 +1363,13 @@ public class ScTenderService {
                     .rate(null)
                     .amount(null)
                     .build());
+        }
         return lines;
+    }
 
+    private ScQuoteResponse toQuoteResponse(ScQuote quote, boolean showRates) {
         return toQuoteResponse(quote, showRates, null, null);
+    }
 
     private ScQuoteResponse toQuoteResponse(
             ScQuote quote, boolean showRates, SubcontractorPackage pkg, ScPackageBidder bidder) {

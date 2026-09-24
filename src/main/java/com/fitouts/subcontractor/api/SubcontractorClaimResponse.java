@@ -33,22 +33,13 @@ public class SubcontractorClaimResponse {
     private String reason;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
-
-    /** Comma-separated stored file paths */
     private String attachmentPaths;
-
-    /** Wave 7 measured/certified fields */
-    private java.math.BigDecimal measuredQty;
-    private java.math.BigDecimal measuredValue;
-    private java.math.BigDecimal certifiedValue;
-    private Long measuredBy;
-    private OffsetDateTime measuredAt;
-    private UUID certificateUuid;
-
-    /** Enriched display fields */
     private BigDecimal measuredQty;
     private BigDecimal measuredValue;
     private BigDecimal certifiedValue;
+    private Long measuredBy;
+    private OffsetDateTime measuredAt;
+    private UUID certificateUuid;
     /** Downstream payment status from linked certificate (not a primary claim status). */
     private String paymentStatus;
     private List<ScClaimLineResponse> lines;

@@ -87,7 +87,6 @@ public class CommercialApprovalService {
             CommercialApprovalEventRepository eventRepository,
             AccountRepository accountRepository,
             NotificationService notificationService,
-            @Lazy List<CommercialApprovalCompletionHandler> completionHandlers) {
             @Lazy List<CommercialApprovalCompletionHandler> completionHandlers,
             @Lazy CommercialLifecycleService commercialLifecycleService) {
         this.matrixRepository = matrixRepository;

@@ -148,13 +148,6 @@ public class SubcontractorService {
             throw new BadRequestException("name is required");
         }
 
-        SubcontractorPackage pkg = new SubcontractorPackage();
-        pkg.setProjectId(project.getId());
-        pkg.setCompanyId(CompanyContext.get());
-        pkg.setName(request.getName().trim());
-        pkg.setBoqSectionCode(trimToNull(request.getBoqSectionCode()));
-        pkg.setStatus(request.getStatus() != null ? request.getStatus() : SubcontractorPackageStatus.OPEN);
-        pkg = packageRepository.save(pkg);
         UUID companyId = CompanyContext.get();
         SubcontractorPackage pkg = StringUtils.hasText(request.getTradePackageCode())
                 ? packageRepository.findFirstByProjectIdAndCompanyIdAndTradePackageCodeOrderByCreatedAtAsc(
@@ -164,8 +157,13 @@ public class SubcontractorService {
                                 && existing.getAppointedAccountId() == null)
                         .orElseGet(SubcontractorPackage::new)
                 : new SubcontractorPackage();
+        pkg.setProjectId(project.getId());
         pkg.setCompanyId(companyId);
+        pkg.setName(request.getName().trim());
+        pkg.setBoqSectionCode(trimToNull(request.getBoqSectionCode()));
+        pkg.setStatus(request.getStatus() != null ? request.getStatus() : SubcontractorPackageStatus.OPEN);
         applyPackageDetails(pkg, request, project.getId(), CompanyContext.get());
+        pkg = packageRepository.save(pkg);
         replaceBoqScope(pkg, request.getBoqLineIds());
         replaceStructuredPackageData(pkg, request);
         syncPlanning(project.getId(), principal.getAccountId());
@@ -374,11 +372,6 @@ public class SubcontractorService {
         SubcontractorPackage pkg = packageRepository.findByUuidAndCompanyId(packageUuid, companyId)
                 .orElseThrow(() -> new NotFoundException("Package not found"));
         assertCanClaimOnPackage(principal, pkg);
-
-        BigDecimal plannedQty = resolvePlannedQty(pkg, request);
-        BigDecimal claimedQty = request != null && request.getClaimedQty() != null
-                ? request.getClaimedQty() : BigDecimal.ZERO;
-        validateClaimQuantities(pkg, claimedQty, null, plannedQty);
         commercialLifecycleService.assertNotArchived(pkg.getProjectId());
         if (pkg.getStatus() == SubcontractorPackageStatus.COMPLETE) {
             throw new BadRequestException("Claims are not allowed after package closeout");
@@ -390,6 +383,7 @@ public class SubcontractorService {
                 && request.getLines().stream().anyMatch(l -> l != null && l.getClaimedQty() != null
                         && l.getClaimedQty().compareTo(BigDecimal.ZERO) > 0);
 
+        BigDecimal plannedQty = resolvePlannedQty(pkg, request);
         BigDecimal claimedQty;
         BigDecimal claimedValue = BigDecimal.ZERO;
 
@@ -659,16 +653,15 @@ public class SubcontractorService {
         return toClaimResponse(claimRepository.save(claim));
     }
 
-    @Transactional
-    public List<SubcontractorPackageResponse> generateFromBoq(Long projectId) {
-        AuthPrincipal principal = requireStaff();
     @Transactional(readOnly = true)
     public List<TradePackage> listTradePackages() {
         requireStaff();
         return tradePackageRepository.findVisible(requireCompany());
     }
 
+    @Transactional(readOnly = true)
     public List<ScBoqLineView> listProjectBoqLines(Long projectId) {
+        requireStaff();
         Project project = requireProject(projectId);
         BoqDocument approved = findLatestApprovedBoq(project.getId(), requireCompany());
         if (approved == null) {
@@ -684,9 +677,15 @@ public class SubcontractorService {
             }
             if (pkg.getBoqLineId() != null) {
                 assigned.putIfAbsent(pkg.getBoqLineId(), pkg);
+            }
+        }
         return lines.stream().map(line -> toBoqLineView(line, assigned.get(line.getId()), project)).toList();
+    }
 
+    @Transactional
+    public List<SubcontractorPackageResponse> generateFromBoq(Long projectId) {
         commercialLifecycleService.assertNotArchived(projectId);
+        requireStaff();
         Project project = requireProject(projectId);
         UUID companyId = CompanyContext.get();
 
@@ -700,26 +699,6 @@ public class SubcontractorService {
             throw new BadRequestException("Approved BOQ has no line items");
         }
 
-        List<SubcontractorPackageResponse> result = new ArrayList<>();
-        for (BoqLine line : lines) {
-            SubcontractorPackage pkg = packageRepository
-                    .findByBoqLineIdAndCompanyId(line.getId(), companyId)
-                    .orElse(null);
-            if (pkg == null) {
-                pkg = new SubcontractorPackage();
-                pkg.setProjectId(project.getId());
-                pkg.setCompanyId(companyId);
-                pkg.setName(resolveLinePackageName(line));
-                pkg.setBoqSectionCode(resolveCategoryCode(line));
-                pkg.setBoqLineId(line.getId());
-                pkg.setStatus(SubcontractorPackageStatus.OPEN);
-                pkg = packageRepository.save(pkg);
-            }
-            result.add(toPackageResponse(pkg, line));
-        }
-
-        planningService.syncSubcontractorStatus(project.getId(), PlanAreaStatus.IN_PROGRESS, principal.getAccountId());
-        return result;
         // Kept for API compatibility: generation now returns existing packages only.
         // New packages must be created deliberately with an explicit BOQ scope.
         return packageRepository.findByProjectIdAndCompanyIdOrderByCreatedAtDesc(project.getId(), companyId)
@@ -1006,7 +985,6 @@ public class SubcontractorService {
         }
         BigDecimal reserved = sumClaimedQty(pkg.getUuid(), excludeClaimUuid,
                 SubcontractorClaimStatus.APPROVED,
-                SubcontractorClaimStatus.SUBMITTED);
                 SubcontractorClaimStatus.SUBMITTED,
                 SubcontractorClaimStatus.UNDER_REVIEW,
                 SubcontractorClaimStatus.MEASURED,
@@ -1546,18 +1524,15 @@ public class SubcontractorService {
     private AuthPrincipal requirePmOrAdmin() {
         AuthPrincipal principal = requireAuthenticated();
         if (principal.getRoles() == null) {
-            throw new ForbiddenException("PM/Admin access required");
             throw new ForbiddenException("PM/Admin/QS access required");
         }
         boolean allowed = principal.getRoles().contains(Role.ADMIN)
                 || principal.getRoles().contains(Role.SUPER_ADMIN)
                 || principal.getRoles().contains(Role.BUSINESS_OWNER)
-                || principal.getRoles().contains(Role.PROJECT_MANAGER);
-        if (!allowed) {
-            throw new ForbiddenException("PM/Admin access required");
                 || principal.getRoles().contains(Role.PROJECT_MANAGER)
                 || principal.getRoles().contains(Role.QS)
                 || principal.getRoles().contains(Role.SENIOR_QS);
+        if (!allowed) {
             throw new ForbiddenException("PM/Admin/QS access required");
         }
         return principal;

@@ -29,9 +29,6 @@ import com.fitouts.shared.error.NotFoundException;
 public class ProjectService {
 
     private final ProjectRepository projectRepository;
-
-    public ProjectService(ProjectRepository projectRepository) {
-        this.projectRepository = projectRepository;
     private final CommercialLifecycleService commercialLifecycleService;
     private final BoqDocumentRepository boqDocumentRepository;
 
@@ -39,6 +36,7 @@ public class ProjectService {
             ProjectRepository projectRepository,
             @Lazy CommercialLifecycleService commercialLifecycleService,
             BoqDocumentRepository boqDocumentRepository) {
+        this.projectRepository = projectRepository;
         this.commercialLifecycleService = commercialLifecycleService;
         this.boqDocumentRepository = boqDocumentRepository;
     }
@@ -57,7 +55,6 @@ public class ProjectService {
         if (request.getProgress() == null) {
             request.setProgress(0);
         }
-        return projectRepository.save(request);
         Project saved = projectRepository.save(request);
         try {
             commercialLifecycleService.enrichProject(saved);
@@ -70,35 +67,35 @@ public class ProjectService {
     public List<Project> getAll() {
         UUID companyId = CompanyContext.get();
         AuthPrincipal principal = currentPrincipalOrNull();
-        if (principal != null && isPureClient(principal)) {
-            return projectRepository.findByCompanyIdAndClientIdAndIsDeletedFalse(
-                    companyId, principal.getAccountId());
-        }
-        return projectRepository.findByCompanyIdAndIsDeletedFalse(companyId);
         List<Project> projects;
         boolean client = principal != null && isPureClient(principal);
         if (client) {
             projects = projectRepository.findByCompanyIdAndClientIdAndIsDeletedFalse(
+                    companyId, principal.getAccountId());
             attachApprovedBoqFlags(companyId, projects);
             // Clients do not need Module 27 commercial enrichment (avoids snag/checklist scans).
             return projects;
+        }
         projects = projectRepository.findByCompanyIdAndIsDeletedFalse(companyId);
         attachApprovedBoqFlags(companyId, projects);
         try {
             commercialLifecycleService.enrichProjects(projects);
         } catch (RuntimeException ex) {
             // List must still load if enrichment fails (e.g. pending migration).
+        }
         return projects;
     }
 
     private void attachApprovedBoqFlags(UUID companyId, List<Project> projects) {
         if (companyId == null || projects == null || projects.isEmpty()) {
             return;
+        }
         Set<Long> approvedProjectIds = new HashSet<>(boqDocumentRepository.findDistinctProjectIdsByCompanyIdAndStatusIn(
                 companyId,
                 List.of(BoqDocumentStatus.APPROVED, BoqDocumentStatus.FINAL)));
         for (Project project : projects) {
             project.setHasApprovedBoq(approvedProjectIds.contains(project.getId()));
+        }
     }
 
     public Project getById(Long id) {
@@ -175,14 +172,12 @@ public class ProjectService {
         if (request.isActive() != project.isActive()) {
             project.setActive(request.isActive());
         }
-        return projectRepository.save(project);
-    }
-
-    public Project delete(Long id) {
         Project saved = projectRepository.save(project);
         commercialLifecycleService.enrichProject(saved);
         return saved;
+    }
 
+    public Project delete(Long id) {
         commercialLifecycleService.assertNotArchived(id);
         Project project = getById(id);
         project.setDeleted(true);

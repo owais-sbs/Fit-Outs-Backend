@@ -228,7 +228,6 @@ public class FileAccessService {
         }
 
         UUID companyId = CompanyContext.get();
-        if (companyId != null && !portalAccessHelper.isPureClient(principal)) {
         if (companyId != null && isTenantStaff(principal)) {
             return;
         }

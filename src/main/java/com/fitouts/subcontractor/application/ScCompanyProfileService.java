@@ -151,7 +151,6 @@ public class ScCompanyProfileService {
         }
         ScCompanyProfile saved = profileRepository.save(profile);
         organizationProfileService.syncFromLegacyProfile(saved);
-        vendorService.markProfileSubmittedForReview(principal.getAccountId());
         return toProfileResponse(saved, principal);
     }
 
@@ -205,7 +204,6 @@ public class ScCompanyProfileService {
             profile.setStatus(ScCompanyStatus.REGISTERED);
             profileRepository.save(profile);
         }
-        return toComplianceResponse(complianceRepository.save(doc), isCoreInsurance(docType));
         return toComplianceResponseForProfile(complianceRepository.save(doc), profile);
     }
 
@@ -230,7 +228,6 @@ public class ScCompanyProfileService {
             profile.setStatus(ScCompanyStatus.REGISTERED);
             profileRepository.save(profile);
         }
-        return toComplianceResponse(complianceRepository.save(doc), isCoreInsurance(docType));
         return toComplianceResponseForProfile(complianceRepository.save(doc), profile);
     }
 
@@ -526,11 +523,10 @@ public class ScCompanyProfileService {
                     .filter(d -> d.getDocumentType() == type)
                     .findFirst()
                     .orElse(null);
-            docResponses.add(toComplianceResponse(
-                    doc != null ? doc : placeholderDoc(profile.getUuid(), type),
-                    isCoreInsurance(type)));
             String applicability = documentApplicability(type, specialistRequired, trades);
             boolean required = "MANDATORY".equals(applicability);
+            docResponses.add(toComplianceResponse(
+                    doc != null ? doc : placeholderDoc(profile.getUuid(), type),
                     required,
                     applicability));
         }
@@ -549,7 +545,6 @@ public class ScCompanyProfileService {
                 .accountsContactName(profile.getAccountsContactName())
                 .accountsContactEmail(profile.getAccountsContactEmail())
                 .accountsContactPhone(profile.getAccountsContactPhone())
-                .tradeCategories(readCategories(profile.getTradeCategories()))
                 .tradeCategories(trades)
                 .declaredCapacity(profile.getDeclaredCapacity())
                 .status(profile.getStatus().name())
@@ -610,7 +605,6 @@ public class ScCompanyProfileService {
         return doc;
     }
 
-    private ScComplianceDocumentResponse toComplianceResponse(ScComplianceDocument doc, boolean required) {
     private ScComplianceDocumentResponse toComplianceResponseForProfile(
             ScComplianceDocument doc, ScCompanyProfile profile) {
         List<String> trades = readCategories(profile.getTradeCategories());

@@ -80,7 +80,6 @@ class CommercialApprovalModuleTest {
         service = new CommercialApprovalService(
                 matrixRepository, bandRepository, stepRepository, stepRoleRepository,
                 runRepository, taskRepository, eventRepository, accountRepository,
-                notificationService, List.of());
                 notificationService, List.of(), commercialLifecycleService);
 
         when(runRepository.save(any())).thenAnswer(inv -> {

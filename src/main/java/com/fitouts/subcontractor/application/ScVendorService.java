@@ -175,8 +175,6 @@ public class ScVendorService {
     }
 
     @Transactional(readOnly = true)
-    public ScVendorSummaryResponse getVendor(UUID organizationUuid) {
-        requireRoles(PREQUAL_ROLES);
     public ScVendorDetailResponse getVendor(UUID organizationUuid) {
         AuthPrincipal principal = requireRoles(PREQUAL_ROLES);
         UUID tenantId = requireCompany();
@@ -185,7 +183,6 @@ public class ScVendorService {
                 .orElseThrow(() -> new NotFoundException("Subcontractor vendor not found"));
         ScOrganization org = organizationRepository.findById(organizationUuid)
                 .orElseThrow(() -> new NotFoundException("Subcontractor organization not found"));
-        return toSummary(org, membership);
         return toDetail(org, membership, principal);
     }
 
@@ -210,8 +207,6 @@ public class ScVendorService {
         if (request.getNotes() != null) {
             membership.setPrequalificationNotes(trimToNull(request.getNotes()));
         }
-        if (request.getApprovedTrades() != null) {
-            membership.setApprovedTrades(writeJson(request.getApprovedTrades()));
 
         List<String> approved = request.getApprovedTrades();
         if (request.getTradeDecisions() != null && !request.getTradeDecisions().isEmpty()) {
@@ -235,16 +230,19 @@ public class ScVendorService {
                     rejected.add(row);
                 } else {
                     throw new BadRequestException("Trade decision must be APPROVE or REJECT for: " + trade);
+                }
             }
             approved = approvedFromDecisions;
             try {
                 Map<String, Object> notesPayload = new LinkedHashMap<>();
                 if (StringUtils.hasText(request.getNotes())) {
                     notesPayload.put("summary", request.getNotes().trim());
+                }
                 notesPayload.put("rejectedTrades", rejected);
                 membership.setPrequalificationNotes(objectMapper.writeValueAsString(notesPayload));
             } catch (JsonProcessingException e) {
                 throw new BadRequestException("Could not store trade review notes");
+            }
         }
 
         if (approved != null) {
@@ -459,25 +457,22 @@ public class ScVendorService {
         UUID tenantId = requireCompany();
         ScCompanyProfile profile = profileRepository
                 .findByOrganizationUuidAndCompanyId(org.getUuid(), tenantId)
-                .orElseGet(() -> wrapProfile(org, membership));
-        String compliance = eligibilityService.computeComplianceStatus(profile).name();
-        return ScVendorSummaryResponse.builder()
-                .organizationUuid(org.getUuid())
-                .legalCompanyName(org.getLegalCompanyName())
-                .primaryContactEmail(org.getPrimaryContactEmail())
-                .status(membership.getStatus().name())
-                .complianceStatus(compliance)
-                .performanceScore(org.getPerformanceScore())
-                .tradeCategories(readList(org.getTradeCategories()))
                 .or(() -> profileRepository.findFirstByOrganizationUuidOrderByUpdatedAtDesc(org.getUuid()))
+                .orElseGet(() -> wrapProfile(org, membership));
         hydrateProfileFromOrg(profile, org);
+        String compliance = eligibilityService.computeComplianceStatus(profile).name();
         List<String> tradeCats = readList(profile.getTradeCategories());
         if (tradeCats.isEmpty()) {
             tradeCats = readList(org.getTradeCategories());
         }
+        return ScVendorSummaryResponse.builder()
+                .organizationUuid(org.getUuid())
                 .legalCompanyName(firstNonBlank(profile.getLegalCompanyName(), org.getLegalCompanyName()))
                 .primaryContactEmail(firstNonBlank(profile.getPrimaryContactEmail(), org.getPrimaryContactEmail()))
+                .status(membership.getStatus().name())
+                .complianceStatus(compliance)
                 .complianceGaps(eligibilityService.listComplianceGaps(profile))
+                .performanceScore(org.getPerformanceScore())
                 .tradeCategories(tradeCats)
                 .approvedTrades(readList(membership.getApprovedTrades()))
                 .maxPackageValue(membership.getMaxPackageValue())

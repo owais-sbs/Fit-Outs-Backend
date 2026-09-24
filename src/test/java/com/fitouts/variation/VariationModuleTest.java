@@ -132,7 +132,6 @@ class VariationModuleTest {
                 eventRepository, commercialRepository, projectService, boqProjectRules,
                 boqLineRepository, workItemRepository, fileStorageService,
                 commercialApprovalService, notificationService, accountRepository,
-                rebaselineService, variationBoqApplyService, variationBoqChangeRepository,
                 rebaselineService, commercialLifecycleService,
                 variationBoqApplyService, variationBoqChangeRepository,
                 mock(PnlCalculationService.class));

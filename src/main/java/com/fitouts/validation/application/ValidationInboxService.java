@@ -19,8 +19,6 @@ import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
-import com.fitouts.schedule.application.ActivityMaterialIssueService;
-import com.fitouts.schedule.api.MaterialIssueResponse;
 import com.fitouts.schedule.domain.ActivityProgressUpdate;
 import com.fitouts.schedule.domain.ActivityProgressUpdateRepository;
 import com.fitouts.schedule.domain.ScheduleActivity;
@@ -57,12 +55,9 @@ public class ValidationInboxService {
     private final ProjectService projectService;
     private final AccountRepository accountRepository;
     private final SubcontractorPortalService portalService;
-    private final ActivityMaterialIssueService activityMaterialIssueService;
 
     @Transactional(readOnly = true)
     public ValidationInboxResponse inbox() {
-        requirePmOrAdmin();
-
         requireInboxAccess();
         UUID companyId = requireCompany();
         return buildInbox(companyId, null);
@@ -85,11 +80,6 @@ public class ValidationInboxService {
                         .toList();
 
         List<SubcontractorClaim> claims = projectId == null
-                ? claimRepository.findByCompanyIdAndStatusOrderBySubmittedAtDesc(
-                        companyId, SubcontractorClaimStatus.SUBMITTED)
-                : claimRepository.findByProjectIdAndCompanyIdOrderByCreatedAtDesc(projectId, companyId)
-                        .stream()
-                        .filter(c -> c.getStatus() == SubcontractorClaimStatus.SUBMITTED)
                 ? claimRepository.findByCompanyIdAndStatusInOrderBySubmittedAtDesc(
                         companyId,
                         List.of(
@@ -99,6 +89,8 @@ public class ValidationInboxService {
                                 SubcontractorClaimStatus.MEASURED,
                                 SubcontractorClaimStatus.CERTIFIED,
                                 SubcontractorClaimStatus.REJECTED))
+                : claimRepository.findByProjectIdAndCompanyIdOrderByCreatedAtDesc(projectId, companyId)
+                        .stream()
                         .filter(c -> c.getStatus() == SubcontractorClaimStatus.SUBMITTED
                                 || c.getStatus() == SubcontractorClaimStatus.UNDER_REVIEW
                                 || c.getStatus() == SubcontractorClaimStatus.APPROVED
@@ -112,17 +104,8 @@ public class ValidationInboxService {
         Map<UUID, ActivityProgressUpdate> progressUpdates = loadProgressUpdates(validations);
         Map<UUID, SubcontractorPackage> packages = loadPackages(claims, companyId);
         Map<Long, Account> accounts = loadAccounts(validations, claims);
-        Map<UUID, List<MaterialIssueResponse>> materialIssuesByProgress =
-                activityMaterialIssueService.listForProgressUpdates(
-                        validations.stream()
-                                .map(ProgressValidation::getProgressUpdateUuid)
-                                .filter(Objects::nonNull)
-                                .collect(Collectors.toSet()));
 
         List<ProgressValidationResponse> progressItems = validations.stream()
-                .map(v -> toProgressResponse(
-                        v, projects, activities, progressUpdates, accounts, materialIssuesByProgress))
-
                 .map(v -> toProgressResponse(v, projects, activities, progressUpdates, accounts))
                 .toList();
 
@@ -130,8 +113,6 @@ public class ValidationInboxService {
                 .map(c -> toClaimResponse(c, projects, packages, accounts))
                 .toList();
 
-        List<ScVariationResponse> variationItems = portalService.pendingVariationsForInbox();
-        List<ScInvoiceResponse> invoiceItems = portalService.pendingInvoicesForInbox();
         List<ScVariationResponse> variationItems;
         List<ScInvoiceResponse> invoiceItems;
         try {
@@ -139,8 +120,11 @@ public class ValidationInboxService {
         } catch (Exception e) {
             variationItems = List.of();
         }
+        try {
             invoiceItems = portalService.pendingInvoicesForInbox();
+        } catch (Exception e) {
             invoiceItems = List.of();
+        }
 
         return ValidationInboxResponse.builder()
                 .progressItems(progressItems)
@@ -148,7 +132,6 @@ public class ValidationInboxService {
                 .variationItems(variationItems)
                 .invoiceItems(invoiceItems)
                 .pendingProgressCount(progressItems.size())
-                .pendingClaimCount(claimItems.size())
                 .pendingClaimCount((int) claimItems.stream()
                         .filter(c -> c.getStatus() != com.fitouts.subcontractor.domain.SubcontractorClaimStatus.REJECTED
                                 && c.getStatus() != com.fitouts.subcontractor.domain.SubcontractorClaimStatus.CERTIFIED
@@ -245,16 +228,11 @@ public class ValidationInboxService {
             Map<Long, Project> projects,
             Map<UUID, ScheduleActivity> activities,
             Map<UUID, ActivityProgressUpdate> progressUpdates,
-            Map<Long, Account> accounts,
-            Map<UUID, List<MaterialIssueResponse>> materialIssuesByProgress) {
             Map<Long, Account> accounts) {
         Project project = projects.get(validation.getProjectId());
         ScheduleActivity activity = activities.get(validation.getActivityUuid());
         ActivityProgressUpdate progress = progressUpdates.get(validation.getProgressUpdateUuid());
         Account reporter = progress != null ? accounts.get(progress.getReportedBy()) : null;
-        List<MaterialIssueResponse> materialIssues = materialIssuesByProgress != null
-                ? materialIssuesByProgress.getOrDefault(validation.getProgressUpdateUuid(), List.of())
-                : List.of();
 
         return ProgressValidationResponse.builder()
                 .uuid(validation.getUuid())
@@ -273,7 +251,6 @@ public class ValidationInboxService {
                 .reportedByName(reporter != null ? displayName(reporter) : null)
                 .reportedAt(progress != null ? progress.getReportedAt() : null)
                 .photoPaths(progress != null ? progress.getPhotoPaths() : null)
-                .materialIssues(materialIssues)
                 .build();
     }
 

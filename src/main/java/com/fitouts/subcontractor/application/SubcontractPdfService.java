@@ -35,8 +35,6 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class SubcontractPdfService {
 
-    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-
     private static final DateTimeFormatter DATE_TIME = DateTimeFormatter.ofPattern("dd MMM yyyy HH:mm");
     private static final DateTimeFormatter DATE_LONG = DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.UK);
 
@@ -69,13 +67,24 @@ public class SubcontractPdfService {
     }
 
     public byte[] generateStage2FinalPdf(
+            SubcontractorPackage pkg,
+            ScPackageAward award,
+            ScOrganization org,
+            Project project,
+            String adminSignerName,
+            String adminSignerTitle,
+            OffsetDateTime adminSignedAt,
             byte[] adminSignatureImageBytes,
             String subSignerName,
             String subSignerTitle,
             OffsetDateTime subSignedAt,
             byte[] subSignatureImageBytes) {
 
+        return generatePdf(
+                pkg, award, org, project,
+                adminSignerName, adminSignerTitle, adminSignedAt, adminSignatureImageBytes,
                 subSignerName, subSignerTitle, subSignedAt, subSignatureImageBytes, true);
+    }
 
     /** Backward-compatible overload (no project). */
     public byte[] generateStage1AdminPdf(
@@ -86,17 +95,6 @@ public class SubcontractPdfService {
             String adminSignerTitle,
             OffsetDateTime adminSignedAt,
             byte[] adminSignatureImageBytes) {
-
-        return generatePdf(
-                pkg,
-                award,
-                org,
-                adminSignerName,
-                adminSignerTitle,
-                adminSignedAt,
-                adminSignatureImageBytes,
-                null,
-                false);
         return generateStage1AdminPdf(
                 pkg, award, org, null, adminSignerName, adminSignerTitle, adminSignedAt, adminSignatureImageBytes);
     }
@@ -113,20 +111,6 @@ public class SubcontractPdfService {
             String subSignerTitle,
             OffsetDateTime subSignedAt,
             byte[] subSignatureImageBytes) {
-
-        return generatePdf(
-                pkg,
-                award,
-                org,
-                adminSignerName,
-                adminSignerTitle,
-                adminSignedAt,
-                adminSignatureImageBytes,
-                subSignerName,
-                subSignerTitle,
-                subSignedAt,
-                subSignatureImageBytes,
-                true);
         return generateStage2FinalPdf(
                 pkg, award, org, null,
                 adminSignerName, adminSignerTitle, adminSignedAt, adminSignatureImageBytes,
@@ -150,81 +134,8 @@ public class SubcontractPdfService {
 
         byte[] adminJpeg = toJpegBytes(adminSignatureImageBytes);
         byte[] subJpeg = isExecuted ? toJpegBytes(subSignatureImageBytes) : null;
-
         ImageDimensions adminDim = getImageDimensions(adminJpeg);
         ImageDimensions subDim = getImageDimensions(subJpeg);
-
-        String title = isExecuted ? "SUBCONTRACT AGREEMENT (EXECUTED)" : "SUBCONTRACT AGREEMENT";
-        String packageName = pkg != null && pkg.getName() != null ? pkg.getName() : "Subcontract Package";
-        String orgName = org != null && org.getLegalCompanyName() != null ? org.getLegalCompanyName() : "Subcontractor";
-        String value = award != null && award.getAwardedValue() != null
-                ? "AED " + award.getAwardedValue().setScale(2, java.math.RoundingMode.HALF_UP).toString()
-                : "AED 0.00";
-        String awardDate = award != null && award.getAwardedAt() != null
-                ? award.getAwardedAt().format(DATE_FORMATTER)
-                : "N/A";
-        String adminDateStr = adminSignedAt != null ? adminSignedAt.format(DATE_FORMATTER) : "N/A";
-        String subDateStr = subSignedAt != null ? subSignedAt.format(DATE_FORMATTER) : "N/A";
-
-        StringBuilder content = new StringBuilder();
-
-        // PDF Content Stream Operators
-        content.append("q\n");
-        // Title
-        content.append("0 0 0 rg\n");
-        content.append("BT /F1 18 Tf 50 750 Td (").append(escapePdf(title)).append(") Tj ET\n");
-        content.append("0.5 0.5 0.5 RG 50 740 m 550 740 l S\n");
-
-        // Contract details
-        content.append("BT /F1 11 Tf 50 710 Td (Package Name: ").append(escapePdf(packageName)).append(") Tj ET\n");
-        content.append("BT /F1 11 Tf 50 690 Td (Subcontractor: ").append(escapePdf(orgName)).append(") Tj ET\n");
-        content.append("BT /F1 11 Tf 50 670 Td (Awarded Value: ").append(escapePdf(value)).append(") Tj ET\n");
-        content.append("BT /F1 11 Tf 50 650 Td (Award Date: ").append(escapePdf(awardDate)).append(") Tj ET\n");
-
-        // Terms section
-        content.append("0.8 0.8 0.8 RG 50 630 m 550 630 l S\n");
-        content.append("BT /F1 12 Tf 50 605 Td (TERMS & AGREEMENT DECLARATION) Tj ET\n");
-        content.append("BT /F1 9 Tf 50 585 Td (1. This Subcontract Agreement incorporates all tender documents, scopes, and agreed BOQ items.) Tj ET\n");
-        content.append("BT /F1 9 Tf 50 570 Td (2. The Subcontractor agrees to execute the works in strict compliance with project specifications.) Tj ET\n");
-        content.append("BT /F1 9 Tf 50 555 Td (3. Digital signatures attached below constitute a legally binding electronic execution.) Tj ET\n");
-
-        content.append("0.8 0.8 0.8 RG 50 535 m 550 535 l S\n");
-
-        // Signature Boxes Header
-        content.append("BT /F1 12 Tf 50 510 Td (EXECUTION & SIGNATURES) Tj ET\n");
-
-        // Box 1: Admin (Left)
-        content.append("0.95 0.95 0.95 rg 50 360 230 130 re f 0.7 0.7 0.7 RG 50 360 230 130 re S\n");
-        content.append("BT /F1 10 Tf 60 475 Td (ADMIN) Tj ET\n");
-        content.append("BT /F1 9 Tf 60 460 Td (Name: ").append(escapePdf(adminSignerName != null ? adminSignerName : "Admin")).append(") Tj ET\n");
-        if (adminSignerTitle != null && !adminSignerTitle.isBlank()) {
-            content.append("BT /F1 9 Tf 60 448 Td (Title: ").append(escapePdf(adminSignerTitle)).append(") Tj ET\n");
-        }
-        content.append("BT /F1 8 Tf 60 435 Td (Signed: ").append(escapePdf(adminDateStr)).append(") Tj ET\n");
-        if (adminJpeg != null) {
-            content.append("q 120 0 0 45 60 380 cm /Im1 Do Q\n");
-
-        // Box 2: Subcontractor (Right)
-        content.append("0.95 0.95 0.95 rg 310 360 230 130 re f 0.7 0.7 0.7 RG 310 360 230 130 re S\n");
-        content.append("BT /F1 10 Tf 320 475 Td (SUBCONTRACTOR) Tj ET\n");
-        if (isExecuted) {
-            content.append("BT /F1 9 Tf 320 460 Td (Name: ").append(escapePdf(subSignerName != null ? subSignerName : orgName)).append(") Tj ET\n");
-            if (subSignerTitle != null && !subSignerTitle.isBlank()) {
-                content.append("BT /F1 9 Tf 320 448 Td (Title: ").append(escapePdf(subSignerTitle)).append(") Tj ET\n");
-            }
-            content.append("BT /F1 8 Tf 320 435 Td (Signed: ").append(escapePdf(subDateStr)).append(") Tj ET\n");
-            if (subJpeg != null) {
-                content.append("q 120 0 0 45 320 380 cm /Im2 Do Q\n");
-        } else {
-            content.append("0.4 0.4 0.4 rg BT /F1 10 Tf 320 430 Td ([ WAITING FOR SUBCONTRACTOR SIGNATURE ]) Tj ET\n");
-
-        content.append("Q\n");
-
-        return assemblePdf(content.toString(), adminJpeg, adminDim, subJpeg, subDim);
-    }
-
-    private byte[] assemblePdf(
-            String contentStream,
 
         List<String> pages = new ArrayList<>();
         pages.add(buildCoverPage(pkg, award, org, project, isExecuted));
@@ -235,6 +146,7 @@ public class SubcontractPdfService {
                 subSignerName, subSignerTitle, subSignedAt, subJpeg != null, isExecuted));
 
         return assembleMultiPagePdf(pages, adminJpeg, adminDim, subJpeg, subDim);
+    }
 
     private String buildCoverPage(
             SubcontractorPackage pkg,
@@ -267,6 +179,7 @@ public class SubcontractPdfService {
         c.append("BT /F1 9 Tf 40 778 Td (Premium Fit-Out & Interior Solutions) Tj ET\n");
         c.append("0.784 0.663 0.494 rg\n");
         c.append("BT /F1 10 Tf 400 815 Td (Cover Letter) Tj ET\n");
+        c.append("1 1 1 rg\n");
         c.append("BT /F1 10 Tf 400 795 Td (").append(escapePdf(ref)).append(") Tj ET\n");
         c.append("BT /F1 8 Tf 400 780 Td (").append(escapePdf(isExecuted ? "EXECUTED" : "PENDING EXECUTION")).append(") Tj ET\n");
 
@@ -290,6 +203,7 @@ public class SubcontractPdfService {
         if (StringUtils.hasText(trade)) {
             y -= 4;
             y = drawLabelValue(c, 40, y, "TRADE", trade);
+        }
         y -= 14;
         y = drawLabelValue(c, 40, y, "SUBJECT",
                 "SUBCONTRACT AWARD — " + clip(packageName, 48).toUpperCase(Locale.ROOT));
@@ -307,6 +221,7 @@ public class SubcontractPdfService {
         for (String para : body) {
             y = drawWrapped(c, para, 40, y, 515, 10, 13);
             y -= 8;
+        }
 
         // Total box
         y -= 6;
@@ -322,6 +237,7 @@ public class SubcontractPdfService {
         c.append("BT /F1 10 Tf 40 ").append(y).append(" Td (Respectfully,) Tj ET\n");
         y -= 16;
         c.append("BT /F1 10 Tf 40 ").append(y).append(" Td (For) Tj ET\n");
+        y -= 14;
         c.append("BT /F2 11 Tf 40 ").append(y).append(" Td (JCT Contracting) Tj ET\n");
         y -= 28;
         c.append("BT /F1 10 Tf 40 ").append(y).append(" Td (Grigoris Georgiou) Tj ET\n");
@@ -336,13 +252,18 @@ public class SubcontractPdfService {
         c.append("0.45 0.45 0.45 rg BT /F1 7 Tf 40 28 Td (JCT Contracting  |  Subcontract Agreement  |  Page 1 of 3) Tj ET\n");
         c.append("Q\n");
         return c.toString();
+    }
 
     private String buildTermsPage(SubcontractorPackage pkg, ScPackageAward award) {
+        StringBuilder c = new StringBuilder();
+        c.append("q\n");
         c.append("0.122 0.227 0.204 rg 0 802 595 40 re f\n");
         c.append("1 1 1 rg BT /F2 14 Tf 40 816 Td (Commercial Terms & JCT Conditions) Tj ET\n");
 
         float y = 770;
+        c.append("0 0 0 rg\n");
         y = drawSectionTitle(c, 40, y, "PACKAGE COMMERCIAL TERMS");
+        y -= 6;
 
         List<String[]> rows = new ArrayList<>();
         rows.add(new String[]{"Payment terms", text(pkg != null ? pkg.getPaymentTerms() : null,
@@ -357,12 +278,16 @@ public class SubcontractPdfService {
                     (pkg.getPlannedStart() != null ? "Start " + pkg.getPlannedStart() : "")
                             + (pkg.getPlannedStart() != null && pkg.getPlannedFinish() != null ? " · " : "")
                             + (pkg.getPlannedFinish() != null ? "Finish " + pkg.getPlannedFinish() : "")});
+        }
         if (pkg != null && StringUtils.hasText(pkg.getActivityCodes())) {
             rows.add(new String[]{"Activity codes", pkg.getActivityCodes().trim()});
+        }
         if (pkg != null && StringUtils.hasText(pkg.getTenderDescription())) {
             rows.add(new String[]{"Scope inclusions", clip(pkg.getTenderDescription().trim(), 280)});
+        }
         if (award != null && award.getAwardedValue() != null) {
             rows.add(new String[]{"Awarded value", "AED " + formatMoney(award.getAwardedValue()) + " (excl. VAT)"});
+        }
 
         for (String[] row : rows) {
             c.append("0.42 0.42 0.42 rg BT /F1 8 Tf 40 ").append(y).append(" Td (")
@@ -371,7 +296,9 @@ public class SubcontractPdfService {
             y = drawWrapped(c, row[1], 40, y, 515, 9, 12);
             y -= 10;
             if (y < 120) break;
+        }
 
+        y -= 6;
         y = drawSectionTitle(c, 40, y, "JCT TERMS & CONDITIONS — SUMMARY");
         y -= 4;
         int i = 1;
@@ -380,10 +307,18 @@ public class SubcontractPdfService {
             y = drawWrapped(c, i + ". " + clause, 40, y, 515, 8, 11);
             y -= 6;
             i++;
+        }
 
+        c.append("0.7 0.7 0.7 RG 40 40 m 555 40 l S\n");
         c.append("0.45 0.45 0.45 rg BT /F1 7 Tf 40 28 Td (Full JCT Terms & Conditions form part of this agreement  |  Page 2 of 3) Tj ET\n");
+        c.append("Q\n");
+        return c.toString();
+    }
 
     private String buildSignaturePage(
+            SubcontractorPackage pkg,
+            ScPackageAward award,
+            ScOrganization org,
             String adminSignerName,
             String adminSignerTitle,
             OffsetDateTime adminSignedAt,
@@ -392,57 +327,79 @@ public class SubcontractPdfService {
             String subSignerTitle,
             OffsetDateTime subSignedAt,
             boolean hasSubSig,
+            boolean isExecuted) {
 
         String packageName = text(pkg != null ? pkg.getName() : null, "Package");
         String orgName = text(org != null ? org.getLegalCompanyName() : null, "Subcontractor");
         String adminDate = adminSignedAt != null ? adminSignedAt.format(DATE_TIME) : "—";
         String subDate = subSignedAt != null ? subSignedAt.format(DATE_TIME) : "—";
 
+        StringBuilder c = new StringBuilder();
+        c.append("q\n");
+        c.append("0.122 0.227 0.204 rg 0 802 595 40 re f\n");
         c.append("1 1 1 rg BT /F2 14 Tf 40 816 Td (Execution & Signatures) Tj ET\n");
 
+        float y = 770;
+        c.append("0 0 0 rg\n");
         y = drawWrapped(c,
                 "By signing below, the parties confirm award of \"" + packageName
                         + "\" to " + orgName + " for AED "
                         + formatMoney(award != null ? award.getAwardedValue() : null)
                         + " (excl. VAT), and accept the commercial terms and JCT Terms & Conditions forming part of this Subcontract Agreement.",
                 40, y, 515, 9, 12);
+        y -= 24;
 
         // Admin box
         c.append("0.969 0.961 0.949 rg 40 ").append(y - 160).append(" 240 160 re f\n");
         c.append("0.7 0.7 0.7 RG 40 ").append(y - 160).append(" 240 160 re S\n");
         c.append("0.122 0.227 0.204 rg BT /F2 11 Tf 52 ").append(y - 16).append(" Td (MAIN CONTRACTOR — JCT) Tj ET\n");
+        c.append("0 0 0 rg\n");
         c.append("BT /F1 9 Tf 52 ").append(y - 34).append(" Td (Name: ")
                 .append(escapePdf(text(adminSignerName, "Admin"))).append(") Tj ET\n");
         if (StringUtils.hasText(adminSignerTitle)) {
             c.append("BT /F1 9 Tf 52 ").append(y - 48).append(" Td (Title: ")
                     .append(escapePdf(adminSignerTitle)).append(") Tj ET\n");
+        }
         c.append("BT /F1 8 Tf 52 ").append(y - 62).append(" Td (Signed: ")
                 .append(escapePdf(adminDate)).append(") Tj ET\n");
         if (hasAdminSig) {
             c.append("q 130 0 0 48 52 ").append(y - 145).append(" cm /Im1 Do Q\n");
+        }
 
         // Subcontractor box
         c.append("0.969 0.961 0.949 rg 315 ").append(y - 160).append(" 240 160 re f\n");
         c.append("0.7 0.7 0.7 RG 315 ").append(y - 160).append(" 240 160 re S\n");
         c.append("0.122 0.227 0.204 rg BT /F2 11 Tf 327 ").append(y - 16).append(" Td (SUBCONTRACTOR) Tj ET\n");
+        c.append("0 0 0 rg\n");
+        if (isExecuted) {
             c.append("BT /F1 9 Tf 327 ").append(y - 34).append(" Td (Name: ")
                     .append(escapePdf(text(subSignerName, orgName))).append(") Tj ET\n");
             if (StringUtils.hasText(subSignerTitle)) {
                 c.append("BT /F1 9 Tf 327 ").append(y - 48).append(" Td (Title: ")
                         .append(escapePdf(subSignerTitle)).append(") Tj ET\n");
+            }
             c.append("BT /F1 8 Tf 327 ").append(y - 62).append(" Td (Signed: ")
                     .append(escapePdf(subDate)).append(") Tj ET\n");
             if (hasSubSig) {
                 c.append("q 130 0 0 48 327 ").append(y - 145).append(" cm /Im2 Do Q\n");
+            }
+        } else {
             c.append("0.45 0.45 0.45 rg BT /F1 9 Tf 327 ").append(y - 80)
                     .append(" Td ([ Waiting for Subcontractor signature ]) Tj ET\n");
+        }
 
         y -= 190;
+        c.append("0.42 0.42 0.42 rg\n");
+        y = drawWrapped(c,
                 "This electronically signed document is the official subcontract award record. "
                         + "It should be read together with the agreed priced BOQ and package schedules shared in the portal.",
                 40, y, 515, 8, 11);
 
+        c.append("0.7 0.7 0.7 RG 40 40 m 555 40 l S\n");
         c.append("0.45 0.45 0.45 rg BT /F1 7 Tf 40 28 Td (JCT Contracting  |  Subcontract Agreement  |  Page 3 of 3) Tj ET\n");
+        c.append("Q\n");
+        return c.toString();
+    }
 
     private float drawSectionTitle(StringBuilder c, float x, float y, String title) {
         c.append("0.122 0.227 0.204 rg BT /F2 11 Tf ").append(x).append(' ').append(y)
@@ -450,6 +407,7 @@ public class SubcontractPdfService {
         c.append("0.784 0.663 0.494 RG ").append(x).append(' ').append(y - 4).append(" m ")
                 .append(x + 200).append(' ').append(y - 4).append(" l S\n");
         return y - 18;
+    }
 
     private float drawLabelValue(StringBuilder c, float x, float y, String label, String value) {
         c.append("0.42 0.42 0.42 rg BT /F1 8 Tf ").append(x).append(' ').append(y)
@@ -457,22 +415,27 @@ public class SubcontractPdfService {
         c.append("0 0 0 rg BT /F2 11 Tf ").append(x).append(' ').append(y - 14)
                 .append(" Td (").append(escapePdf(clip(value, 70))).append(") Tj ET\n");
         return y - 28;
+    }
 
     private float drawWrapped(StringBuilder c, String text, float x, float startY, float maxWidth,
                               float fontSize, float leading) {
         List<String> lines = wrapText(text, (int) (maxWidth / (fontSize * 0.5f)));
         float y = startY;
+        c.append("0.12 0.16 0.22 rg\n");
         for (String line : lines) {
             c.append("BT /F1 ").append(fontSize).append(" Tf ").append(x).append(' ').append(y)
                     .append(" Td (").append(escapePdf(line)).append(") Tj ET\n");
             y -= leading;
+        }
         return y;
+    }
 
     private List<String> wrapText(String text, int maxChars) {
         List<String> lines = new ArrayList<>();
         if (!StringUtils.hasText(text)) {
             lines.add("");
             return lines;
+        }
         String[] words = text.trim().split("\\s+");
         StringBuilder line = new StringBuilder();
         for (String word : words) {
@@ -483,8 +446,11 @@ public class SubcontractPdfService {
             } else {
                 lines.add(line.toString());
                 line = new StringBuilder(word);
+            }
+        }
         if (line.length() > 0) lines.add(line.toString());
         return lines;
+    }
 
     private byte[] assembleMultiPagePdf(
             List<String> pageContents,
@@ -499,54 +465,15 @@ public class SubcontractPdfService {
 
             writeString(pdfOut, "%PDF-1.4\n");
 
-            // Dynamic PDF object ID assignments
             int nextObj = 1;
-            int catalogObjId = nextObj++;   // 1
-            int pagesObjId = nextObj++;     // 2
-            int pageObjId = nextObj++;      // 3
-            int fontObjId = nextObj++;      // 4
-
-            Integer adminImgObjId = null;
-            if (adminJpeg != null) {
-                adminImgObjId = nextObj++;
-            }
-
-            Integer subImgObjId = null;
-            if (subJpeg != null) {
-                subImgObjId = nextObj++;
-
-            int contentObjId = nextObj++;
-
-            // Object 1: Catalog
-            xrefPositions.add((long) pdfOut.size());
-            writeString(pdfOut, catalogObjId + " 0 obj\n<< /Type /Catalog /Pages " + pagesObjId + " 0 R >>\nendobj\n");
-
-            // Object 2: Pages
-            writeString(pdfOut, pagesObjId + " 0 obj\n<< /Type /Pages /Count 1 /Kids [" + pageObjId + " 0 R] >>\nendobj\n");
-
-            // Resource dictionary
-            StringBuilder resDict = new StringBuilder();
-            resDict.append("<< /Font << /F1 ").append(fontObjId).append(" 0 R >> /XObject << ");
-            if (adminImgObjId != null) {
-                resDict.append("/Im1 ").append(adminImgObjId).append(" 0 R ");
-            if (subImgObjId != null) {
-                resDict.append("/Im2 ").append(subImgObjId).append(" 0 R ");
-            resDict.append(">> >>");
-
-            // Object 3: Page (pointing to actual contentObjId)
-            writeString(pdfOut, pageObjId + " 0 obj\n<< /Type /Page /Parent " + pagesObjId + " 0 R /MediaBox [0 0 595 842] /Resources "
-                    + resDict.toString() + " /Contents " + contentObjId + " 0 R >>\nendobj\n");
-
-            // Object 4: Font F1
-            writeString(pdfOut, fontObjId + " 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n");
-
-            // Object 5 & 6: Images (if present)
             int catalogObjId = nextObj++;
             int pagesObjId = nextObj++;
             int fontRegularId = nextObj++;
             int fontBoldId = nextObj++;
 
+            Integer adminImgObjId = null;
             if (adminJpeg != null) adminImgObjId = nextObj++;
+            Integer subImgObjId = null;
             if (subJpeg != null) subImgObjId = nextObj++;
 
             int pageCount = pageContents.size();
@@ -555,18 +482,24 @@ public class SubcontractPdfService {
             for (int i = 0; i < pageCount; i++) {
                 pageObjIds[i] = nextObj++;
                 contentObjIds[i] = nextObj++;
+            }
 
             // Catalog
+            xrefPositions.add((long) pdfOut.size());
+            writeString(pdfOut, catalogObjId + " 0 obj\n<< /Type /Catalog /Pages " + pagesObjId + " 0 R >>\nendobj\n");
 
             // Pages
             StringBuilder kids = new StringBuilder("[");
             for (int id : pageObjIds) kids.append(id).append(" 0 R ");
             kids.append("]");
+            xrefPositions.add((long) pdfOut.size());
             writeString(pdfOut, pagesObjId + " 0 obj\n<< /Type /Pages /Count " + pageCount
                     + " /Kids " + kids + " >>\nendobj\n");
 
             // Fonts
+            xrefPositions.add((long) pdfOut.size());
             writeString(pdfOut, fontRegularId + " 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n");
+            xrefPositions.add((long) pdfOut.size());
             writeString(pdfOut, fontBoldId + " 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n");
 
             if (adminImgObjId != null) {
@@ -578,14 +511,6 @@ public class SubcontractPdfService {
                 writeImageObj(pdfOut, subImgObjId, subJpeg, subDim);
             }
 
-            // Object contentObjId: Content Stream
-            xrefPositions.add((long) pdfOut.size());
-            byte[] contentBytes = contentStream.getBytes(StandardCharsets.ISO_8859_1);
-            writeString(pdfOut, contentObjId + " 0 obj\n<< /Length " + contentBytes.length + " >>\nstream\n");
-            pdfOut.write(contentBytes);
-            writeString(pdfOut, "\nendstream\nendobj\n");
-
-            // Cross-Reference Table (XRef)
             StringBuilder resDict = new StringBuilder();
             resDict.append("<< /Font << /F1 ").append(fontRegularId).append(" 0 R /F2 ")
                     .append(fontBoldId).append(" 0 R >> /XObject << ");
@@ -600,6 +525,7 @@ public class SubcontractPdfService {
                         + " /Contents " + contentObjIds[i] + " 0 R >>\nendobj\n");
 
                 byte[] contentBytes = pageContents.get(i).getBytes(StandardCharsets.ISO_8859_1);
+                xrefPositions.add((long) pdfOut.size());
                 writeString(pdfOut, contentObjIds[i] + " 0 obj\n<< /Length " + contentBytes.length + " >>\nstream\n");
                 pdfOut.write(contentBytes);
                 writeString(pdfOut, "\nendstream\nendobj\n");
@@ -611,11 +537,9 @@ public class SubcontractPdfService {
             for (Long pos : xrefPositions) {
                 writeString(pdfOut, String.format("%010d 00000 n \n", pos));
             }
-
-            // Trailer
-            writeString(pdfOut, "trailer\n<< /Size " + (xrefPositions.size() + 1) + " /Root " + catalogObjId + " 0 R >>\n");
+            writeString(pdfOut, "trailer\n<< /Size " + (xrefPositions.size() + 1)
+                    + " /Root " + catalogObjId + " 0 R >>\n");
             writeString(pdfOut, "startxref\n" + startXref + "\n%%EOF\n");
-
             return pdfOut.toByteArray();
         } catch (IOException e) {
             log.error("Failed to assemble PDF", e);
@@ -623,13 +547,11 @@ public class SubcontractPdfService {
         }
     }
 
-    private void writeImageObj(ByteArrayOutputStream out, int objId, byte[] jpegBytes, ImageDimensions dim) throws IOException {
+    private void writeImageObj(ByteArrayOutputStream out, int objId, byte[] jpegBytes, ImageDimensions dim)
+            throws IOException {
         int w = dim != null && dim.width > 0 ? dim.width : 200;
         int h = dim != null && dim.height > 0 ? dim.height : 80;
         writeString(out, objId + " 0 obj\n<< /Type /XObject /Subtype /Image /Width " + w + " /Height " + h
-                + " /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length " + jpegBytes.length + " >>\nstream\n");
-    private void writeImageObj(ByteArrayOutputStream out, int objId, byte[] jpegBytes, ImageDimensions dim)
-            throws IOException {
                 + " /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length "
                 + jpegBytes.length + " >>\nstream\n");
         out.write(jpegBytes);
@@ -646,9 +568,6 @@ public class SubcontractPdfService {
         if (jpegBytes == null || jpegBytes.length == 0) return new ImageDimensions(200, 80);
         try (ByteArrayInputStream bais = new ByteArrayInputStream(jpegBytes)) {
             BufferedImage img = ImageIO.read(bais);
-            if (img != null) {
-                return new ImageDimensions(img.getWidth(), img.getHeight());
-            }
             if (img != null) return new ImageDimensions(img.getWidth(), img.getHeight());
         } catch (Exception ignored) {
         }

@@ -312,12 +312,9 @@ public class ScEligibilityService {
     public ScAppointmentEligibilityResponse checkAppointmentEligibility(
             Long accountId, SubcontractorPackage packageEntity) {
         ScCompanyProfile profile = requireProfile(accountId);
-        List<String> reasons = collectBlockingReasons(profile, packageEntity);
-        return ScAppointmentEligibilityResponse.builder()
-                .eligible(reasons.isEmpty())
-                .blockingReasons(reasons)
         ScEligibilityResponse eligibility = checkEligibility(
                 profile.getOrganizationUuid(), packageEntity.getProjectId(), packageEntity.getUuid());
+        return ScAppointmentEligibilityResponse.builder()
                 .eligible(eligibility.isEligible())
                 .blockingReasons(eligibility.getBlockers().stream().map(ScEligibilityCheckResponse::getReason).toList())
                 .complianceStatus(computeComplianceStatus(profile).name())
@@ -326,9 +323,6 @@ public class ScEligibilityService {
     }
 
     public void assertEligibleForAppointment(Long accountId, SubcontractorPackage packageEntity) {
-        List<String> reasons = collectBlockingReasons(requireProfile(accountId), packageEntity);
-        if (!reasons.isEmpty()) {
-            throw new BadRequestException(reasons.get(0));
         ScCompanyProfile profile = requireProfile(accountId);
         ScEligibilityResponse eligibility = checkEligibility(
                 profile.getOrganizationUuid(), packageEntity.getProjectId(), packageEntity.getUuid());
@@ -534,18 +528,9 @@ public class ScEligibilityService {
     }
 
     Optional<ScComplianceDocType> resolveSpecialistDocType(SubcontractorPackage packageEntity) {
-        if (packageEntity == null || packageEntity.getTradePackageCode() == null) {
+        if (packageEntity == null || packageEntity.getSpecialistLicenceRequired() == null) {
             return Optional.empty();
         }
-        String code = packageEntity.getTradePackageCode();
-        UUID companyId = CompanyContext.get();
-        Optional<TradePackage> tradePackage = tradePackageRepository.findVisible(companyId).stream()
-                .filter(tp -> code.equals(tp.getCode()))
-                .findFirst();
-        return tradePackage
-                .map(TradePackage::getSpecialLicenceRequired)
-                .flatMap(ScEligibilityService::mapSpecialLicenceText);
-        if (packageEntity == null || packageEntity.getSpecialistLicenceRequired() == null) {
         return mapSpecialLicenceText(packageEntity.getSpecialistLicenceRequired());
     }
 
