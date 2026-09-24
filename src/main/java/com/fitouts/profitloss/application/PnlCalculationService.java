@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.fitouts.account.domain.AccountRepository;
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.procurement.domain.StockMovementRepository;
@@ -59,6 +60,7 @@ public class PnlCalculationService {
     private final ScPaymentCertificateRepository certificateRepository;
     private final ProjectRepository projectRepository;
     private final OverheadAllocationService overheadAllocationService;
+    private final AccountRepository accountRepository;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public ProjectPnlSnapshot recalculate(Long projectId, UUID companyId) {
@@ -72,7 +74,7 @@ public class PnlCalculationService {
         }
 
         ProjectCommercial commercial = commercialRepository
-                .findByProjectIdAndCompanyId(projectId, companyId)
+                .findFirstByProjectIdAndCompanyIdOrderByUuidAsc(projectId, companyId)
                 .orElse(null);
 
         BigDecimal contractValue = commercial != null && commercial.getCurrentContractValue() != null
@@ -115,7 +117,8 @@ public class PnlCalculationService {
 
         String period = currentPeriod();
         ProjectPnlSnapshot snapshot = snapshotRepository
-                .findByCompanyIdAndProjectIdAndPeriodYearMonth(companyId, projectId, period)
+                .findFirstByCompanyIdAndProjectIdAndPeriodYearMonthOrderByCalculatedAtDesc(
+                        companyId, projectId, period)
                 .orElseGet(ProjectPnlSnapshot::new);
         snapshot.setCompanyId(companyId);
         snapshot.setProjectId(projectId);
@@ -174,7 +177,8 @@ public class PnlCalculationService {
         List<Project> projects = projectRepository.findByCompanyIdAndIsDeletedFalse(companyId);
         for (Project project : projects) {
             if (snapshotRepository
-                    .findByCompanyIdAndProjectIdAndPeriodYearMonth(companyId, project.getId(), period)
+                    .findFirstByCompanyIdAndProjectIdAndPeriodYearMonthOrderByCalculatedAtDesc(
+                            companyId, project.getId(), period)
                     .isEmpty()
                     || period.equals(currentPeriod())) {
                 recalculateSafe(project.getId(), companyId);
@@ -298,8 +302,20 @@ public class PnlCalculationService {
 
     private AuthPrincipal requirePnlReader() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !(auth.getPrincipal() instanceof AuthPrincipal principal)) {
+        if (auth == null || !auth.isAuthenticated()) {
             throw new ForbiddenException("Authentication required");
+        }
+        AuthPrincipal principal;
+        if (auth.getPrincipal() instanceof AuthPrincipal p) {
+            principal = p;
+        } else {
+            String email = auth.getName();
+            if (email == null || !email.contains("@")) {
+                throw new ForbiddenException("Authentication required");
+            }
+            principal = accountRepository.findByEmailWithCompany(email.trim().toLowerCase())
+                    .map(AuthPrincipal::from)
+                    .orElseThrow(() -> new ForbiddenException("Authentication required"));
         }
         if (principal.getRoles() == null || principal.getRoles().stream().noneMatch(PNL_ROLES::contains)) {
             throw new ForbiddenException("Finance or Director role required");
@@ -309,10 +325,24 @@ public class PnlCalculationService {
 
     private UUID requireCompany() {
         UUID companyId = CompanyContext.get();
-        if (companyId == null) {
+        if (companyId != null) {
+            return companyId;
+        }
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof AuthPrincipal principal
+                && principal.getCompanyId() != null) {
+            return principal.getCompanyId();
+        }
+        AuthPrincipal reader;
+        try {
+            reader = requirePnlReader();
+        } catch (ForbiddenException ex) {
             throw new BadRequestException("Company context required");
         }
-        return companyId;
+        if (reader.getCompanyId() != null) {
+            return reader.getCompanyId();
+        }
+        throw new BadRequestException("Company context required");
     }
 
     private static BigDecimal nullSafe(BigDecimal value) {

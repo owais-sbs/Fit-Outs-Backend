@@ -11,6 +11,9 @@ public interface ProjectPnlSnapshotRepository extends JpaRepository<ProjectPnlSn
     Optional<ProjectPnlSnapshot> findByCompanyIdAndProjectIdAndPeriodYearMonth(
             UUID companyId, Long projectId, String periodYearMonth);
 
+    Optional<ProjectPnlSnapshot> findFirstByCompanyIdAndProjectIdAndPeriodYearMonthOrderByCalculatedAtDesc(
+            UUID companyId, Long projectId, String periodYearMonth);
+
     Optional<ProjectPnlSnapshot> findFirstByCompanyIdAndProjectIdOrderByCalculatedAtDesc(
             UUID companyId, Long projectId);
 

@@ -45,7 +45,7 @@ public class OriginalCostFreezeService {
         }
 
         ProjectCommercial commercial = commercialRepository
-                .findByProjectIdAndCompanyId(projectId, companyId)
+                .findFirstByProjectIdAndCompanyIdOrderByUuidAsc(projectId, companyId)
                 .orElseGet(() -> {
                     ProjectCommercial created = new ProjectCommercial();
                     created.setProjectId(projectId);

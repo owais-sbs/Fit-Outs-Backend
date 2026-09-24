@@ -144,12 +144,16 @@ public class EmployeeService {
     public List<EmployeeResponse> getAll() {
         var companyId = CompanyContext.get();
         if (companyId != null) {
-            return employeeRepository.findByCompanyAndIsDeletedFalse(companyService.getCompany(companyId))
+            // Include legacy employees with null company_id so tenant lists are not empty
+            // after company segregation was introduced.
+            return employeeRepository.findVisibleForCompany(companyId)
                     .stream()
                     .map(this::toResponse)
                     .toList();
         }
-        return employeeRepository.findByCompanyAndIsDeletedFalse(null)
+        // No company on the session (e.g. DevTools classloader / missing tenant):
+        // findByCompany(null) matches almost nothing — list all active staff instead.
+        return employeeRepository.findByIsDeletedFalse()
                 .stream()
                 .map(this::toResponse)
                 .toList();
