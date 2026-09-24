@@ -114,10 +114,8 @@ public class ScContractSignatureService {
                 ? request.getSignerTitle().trim()
                 : "Main Contractor Admin";
 
-        // Generate Stage 1 PDF with Admin signature embedded
-        byte[] pdfBytes = pdfService.generateStage1AdminPdf(
-                pkg, award, org, signerName, signerTitle, adminSignedAt, adminSigBytesOpt.get());
         // Generate Stage 1 PDF with Admin signature embedded (JCT cover-letter format)
+        byte[] pdfBytes = pdfService.generateStage1AdminPdf(
                 pkg, award, org, project, signerName, signerTitle, adminSignedAt, adminSigBytesOpt.get());
 
         String pdfFileName = "contract_" + packageUuid + "_stage1.pdf";
@@ -420,45 +418,6 @@ public class ScContractSignatureService {
 
         ScPackageAward savedAward = awardRepository.save(award);
         return toResponse(pkg, savedAward, org, portalUser);
-    }
-
-    // ── Response Mapping & Helpers ───────────────────────────────────────────
-
-    private ScSubcontractContractResponse toResponse(
-            SubcontractorPackage pkg, ScPackageAward award, ScOrganization org, ScPortalUser portalUser) {
-
-        ScContractStatus status = award.getContractStatus();
-        boolean adminSigned = award.getAdminSignedAt() != null;
-        boolean subSigned = award.getSignedAt() != null;
-        boolean subSigUploaded = portalUser != null && StringUtils.hasText(portalUser.getSignatureImagePath());
-        String subSigUrl = (portalUser != null && subSigUploaded)
-                ? SiteVisitEstimateMapper.toFileUrl(portalUser.getSignatureImagePath())
-                : null;
-
-        return ScSubcontractContractResponse.builder()
-                .awardUuid(award.getUuid())
-                .packageUuid(pkg.getUuid())
-                .packageName(pkg.getName())
-                .organizationUuid(award.getOrganizationUuid())
-                .organizationName(org != null ? org.getLegalCompanyName() : null)
-                .awardedValue(award.getAwardedValue())
-                .awardedAt(award.getAwardedAt())
-                .contractStatus(status.name())
-                .contractFilePath(award.getContractFilePath())
-                .contractAvailable(StringUtils.hasText(award.getContractFilePath()) || award.getUuid() != null)
-                .adminSigned(adminSigned)
-                .adminSignedAt(award.getAdminSignedAt())
-                .adminSignerName(award.getAdminSignerName())
-                .adminSignerTitle(award.getAdminSignerTitle())
-                .adminSignatureAuditJson(award.getAdminSignatureAuditJson())
-                .subcontractorSignatureUploaded(subSigUploaded)
-                .subcontractorSignatureUrl(subSigUrl)
-                .signed(subSigned)
-                .signedAt(award.getSignedAt())
-                .subcontractorSignerName(award.getSubcontractorSignerName())
-                .subcontractorSignerTitle(award.getSubcontractorSignerTitle())
-                .signatureAuditJson(award.getSignatureAuditJson())
-                .build();
     }
 
     private String buildAdminAuditJson(
