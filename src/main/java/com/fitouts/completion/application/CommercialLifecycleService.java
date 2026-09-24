@@ -243,6 +243,12 @@ public class CommercialLifecycleService {
                 boolean allSatisfied;
                 if (checklist != null && (checklist.isArchived() || checklist.isCommerciallyClosed())) {
                     allSatisfied = true;
+                } else if (checklist == null
+                        || !checklist.isFinalInvoiceConfirmed()
+                        || !checklist.isAccountingSynced()) {
+                    // Invoice and accounting are required, so the stage is NOT_READY.
+                    // Skip the per-project variation/snag scan; it times out the list.
+                    allSatisfied = false;
                 } else {
                     allSatisfied = closeoutChecklistService.isAllSatisfied(project);
                 }

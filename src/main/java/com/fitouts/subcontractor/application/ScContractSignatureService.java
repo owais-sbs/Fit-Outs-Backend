@@ -176,7 +176,7 @@ public class ScContractSignatureService {
 
     // ── Subcontractor Contract View & Sign ───────────────────────────────────
 
-    @Transactional(readOnly = true)
+    @Transactional
     public ScSubcontractContractResponse getContract(UUID packageUuid) {
         AuthPrincipal principal = requireAuthenticated();
         ScPortalUser portalUser = portalAccessService.requireActivePortalUser(principal);
