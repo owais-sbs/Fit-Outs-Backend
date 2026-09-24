@@ -61,6 +61,27 @@ public class ScWorker {
     @Column(name = "photo_file_path", columnDefinition = "TEXT")
     private String photoFilePath;
 
+    @Column(name = "passport_file_path", columnDefinition = "TEXT")
+    private String passportFilePath;
+
+    @Column(name = "visa_file_path", columnDefinition = "TEXT")
+    private String visaFilePath;
+
+    @Column(name = "emirates_id_file_path", columnDefinition = "TEXT")
+    private String emiratesIdFilePath;
+
+    @Column(name = "insurance_file_path", columnDefinition = "TEXT")
+    private String insuranceFilePath;
+
+    @Column(name = "induction_file_path", columnDefinition = "TEXT")
+    private String inductionFilePath;
+
+    @Column(name = "access_card_file_path", columnDefinition = "TEXT")
+    private String accessCardFilePath;
+
+    @Column(name = "trade_cert_file_path", columnDefinition = "TEXT")
+    private String tradeCertFilePath;
+
     @Column(name = "organization_uuid")
     private UUID organizationUuid;
 

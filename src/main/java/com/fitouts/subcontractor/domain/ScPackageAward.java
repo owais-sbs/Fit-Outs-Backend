@@ -36,6 +36,12 @@ public class ScPackageAward {
     @Column(name = "awarded_value", precision = 18, scale = 2)
     private BigDecimal awardedValue;
 
+    @Column(name = "award_value_reason", columnDefinition = "TEXT")
+    private String awardValueReason;
+
+    @Column(name = "awarded_by_account_id")
+    private Long awardedByAccountId;
+
     @Column(name = "awarded_at")
     private OffsetDateTime awardedAt;
 

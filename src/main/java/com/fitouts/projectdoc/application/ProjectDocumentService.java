@@ -13,6 +13,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
+import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.drawing.application.FileStorageService;
 import com.fitouts.drawing.domain.ProjectDrawing;
 import com.fitouts.drawing.domain.ProjectDrawingRepository;
@@ -39,6 +40,7 @@ public class ProjectDocumentService {
     private final ProjectDrawingRepository drawingRepository;
     private final ProjectService projectService;
     private final FileStorageService fileStorageService;
+    private final CommercialLifecycleService commercialLifecycleService;
 
     @Transactional(readOnly = true)
     public List<ProjectDocumentResponse> list(Long projectId) {
@@ -78,6 +80,7 @@ public class ProjectDocumentService {
     @Transactional
     public ProjectDocumentResponse create(Long projectId, ProjectDocumentRequest request) {
         AuthPrincipal principal = requireStaff();
+        commercialLifecycleService.assertNotArchived(projectId);
         Project project = requireProject(projectId);
         if (request == null || !StringUtils.hasText(request.getTitle())) {
             throw new BadRequestException("title is required");
@@ -106,6 +109,7 @@ public class ProjectDocumentService {
             MultipartFile file,
             UUID parentDocumentUuid) {
         AuthPrincipal principal = requireStaff();
+        commercialLifecycleService.assertNotArchived(projectId);
         Project project = requireProject(projectId);
         if (!StringUtils.hasText(title)) {
             throw new BadRequestException("title is required");
@@ -132,6 +136,7 @@ public class ProjectDocumentService {
     @Transactional
     public ProjectDocumentResponse update(Long projectId, UUID uuid, ProjectDocumentRequest request) {
         requireStaff();
+        commercialLifecycleService.assertNotArchived(projectId);
         requireProject(projectId);
         ProjectDocument doc = requireDocument(uuid, projectId);
         if (request == null) {
@@ -155,6 +160,7 @@ public class ProjectDocumentService {
     @Transactional
     public void delete(Long projectId, UUID uuid) {
         requireStaff();
+        commercialLifecycleService.assertNotArchived(projectId);
         requireProject(projectId);
         ProjectDocument doc = requireDocument(uuid, projectId);
         doc.setDeleted(true);
@@ -164,6 +170,7 @@ public class ProjectDocumentService {
     @Transactional
     public ProjectDocumentResponse publishToClient(Long projectId, UUID uuid) {
         requireStaff();
+        commercialLifecycleService.assertNotArchived(projectId);
         requireProject(projectId);
         ProjectDocument doc = requireDocument(uuid, projectId);
         doc.setPublishedToClient(true);
@@ -173,6 +180,7 @@ public class ProjectDocumentService {
     @Transactional
     public ProjectDocumentResponse unpublishFromClient(Long projectId, UUID uuid) {
         requireStaff();
+        commercialLifecycleService.assertNotArchived(projectId);
         requireProject(projectId);
         ProjectDocument doc = requireDocument(uuid, projectId);
         doc.setPublishedToClient(false);
@@ -251,6 +259,7 @@ public class ProjectDocumentService {
     @Transactional
     public int syncDrawingsIntoLibrary(Long projectId) {
         requireStaff();
+        commercialLifecycleService.assertNotArchived(projectId);
         requireProject(projectId);
         int created = 0;
         for (ProjectDrawing drawing : drawingRepository.findByProjectIdAndDeletedFalseOrderByCreatedAtDesc(projectId)) {

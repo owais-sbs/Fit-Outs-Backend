@@ -34,6 +34,8 @@ import com.fitouts.project.domain.Project;
 import com.fitouts.schedule.domain.ScheduleActivity;
 import com.fitouts.schedule.domain.ScheduleActivityRepository;
 import com.fitouts.schedule.domain.SchedulePublishStatus;
+import com.fitouts.schedule.domain.TradePackage;
+import com.fitouts.schedule.domain.TradePackageRepository;
 import com.fitouts.shared.context.CompanyContext;
 import com.fitouts.shared.enums.BoqDocumentStatus;
 import com.fitouts.shared.error.BadRequestException;
@@ -42,8 +44,13 @@ import com.fitouts.shared.error.NotFoundException;
 import com.fitouts.holdpoint.application.HoldPointGuardService;
 import com.fitouts.subcontractor.api.AppointSubcontractorRequest;
 import com.fitouts.subcontractor.api.ClaimRejectRequest;
+import com.fitouts.subcontractor.api.ScBoqLineView;
+import com.fitouts.subcontractor.api.ScAttendanceRequest;
+import com.fitouts.subcontractor.api.ScFreeIssueMaterialRequest;
 import com.fitouts.subcontractor.api.SubcontractorClaimRequest;
 import com.fitouts.subcontractor.api.SubcontractorClaimResponse;
+import com.fitouts.subcontractor.api.ScClaimLineRequest;
+import com.fitouts.subcontractor.api.ScClaimLineResponse;
 import com.fitouts.subcontractor.api.SubcontractorPackageRequest;
 import com.fitouts.subcontractor.api.SubcontractorPackageResponse;
 import com.fitouts.subcontractor.api.SubcontractorProjectSummary;
@@ -51,8 +58,14 @@ import com.fitouts.subcontractor.domain.SubcontractorClaim;
 import com.fitouts.subcontractor.domain.SubcontractorClaimRepository;
 import com.fitouts.subcontractor.domain.SubcontractorClaimStatus;
 import com.fitouts.subcontractor.domain.SubcontractorPackage;
+import com.fitouts.subcontractor.domain.SubcontractorPackageBoqLine;
+import com.fitouts.subcontractor.domain.SubcontractorPackageBoqLineRepository;
 import com.fitouts.subcontractor.domain.SubcontractorPackageRepository;
 import com.fitouts.subcontractor.domain.SubcontractorPackageStatus;
+import com.fitouts.subcontractor.domain.ScAwardBoqLine;
+import com.fitouts.subcontractor.domain.ScAwardBoqLineRepository;
+import com.fitouts.subcontractor.domain.ScClaimLine;
+import com.fitouts.subcontractor.domain.ScClaimLineRepository;
 import com.fitouts.subcontractor.domain.ScCompanyProfile;
 import com.fitouts.subcontractor.domain.ScCompanyProfileRepository;
 import com.fitouts.subcontractor.domain.ScOrganization;
@@ -62,9 +75,17 @@ import com.fitouts.subcontractor.domain.ScPackageAwardRepository;
 import com.fitouts.subcontractor.domain.ScBidderStatus;
 import com.fitouts.subcontractor.domain.ScPackageBidder;
 import com.fitouts.subcontractor.domain.ScPackageBidderRepository;
+import com.fitouts.subcontractor.domain.ScQuoteRepository;
+import com.fitouts.subcontractor.domain.ScFreeIssueMaterial;
+import com.fitouts.subcontractor.domain.ScFreeIssueMaterialRepository;
+import com.fitouts.subcontractor.domain.ScPackageAttendance;
+import com.fitouts.subcontractor.domain.ScPackageAttendanceRepository;
+import com.fitouts.subcontractor.domain.ScAttendanceParty;
+import com.fitouts.subcontractor.domain.ScFreeIssueSuppliedBy;
 import com.fitouts.subcontractor.domain.ScPortalRole;
 import com.fitouts.subcontractor.domain.ScPortalUser;
 import com.fitouts.subcontractor.domain.ScPortalUserRepository;
+import com.fitouts.completion.application.CommercialLifecycleService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -73,6 +94,8 @@ import lombok.RequiredArgsConstructor;
 public class SubcontractorService {
 
     private final SubcontractorPackageRepository packageRepository;
+    private final SubcontractorPackageBoqLineRepository packageBoqLineRepository;
+    private final TradePackageRepository tradePackageRepository;
     private final SubcontractorClaimRepository claimRepository;
     private final ProjectService projectService;
     private final PlanningService planningService;
@@ -88,9 +111,15 @@ public class SubcontractorService {
     private final ScPortalAccessService portalAccessService;
     private final ScPortalUserRepository portalUserRepository;
     private final ScPackageAwardRepository awardRepository;
+    private final ScAwardBoqLineRepository awardBoqLineRepository;
+    private final ScClaimLineRepository claimLineRepository;
     private final ScPackageBidderRepository bidderRepository;
+    private final ScQuoteRepository quoteRepository;
+    private final ScFreeIssueMaterialRepository freeIssueMaterialRepository;
+    private final ScPackageAttendanceRepository packageAttendanceRepository;
     private final ScCompanyProfileRepository profileRepository;
     private final ScOrganizationRepository organizationRepository;
+    private final CommercialLifecycleService commercialLifecycleService;
 
     @Transactional(readOnly = true)
     public List<SubcontractorPackageResponse> listPackages(Long projectId) {
@@ -112,6 +141,7 @@ public class SubcontractorService {
 
     @Transactional
     public SubcontractorPackageResponse createPackage(Long projectId, SubcontractorPackageRequest request) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requireStaff();
         Project project = requireProject(projectId);
         if (request == null || !StringUtils.hasText(request.getName())) {
@@ -125,12 +155,26 @@ public class SubcontractorService {
         pkg.setBoqSectionCode(trimToNull(request.getBoqSectionCode()));
         pkg.setStatus(request.getStatus() != null ? request.getStatus() : SubcontractorPackageStatus.OPEN);
         pkg = packageRepository.save(pkg);
+        UUID companyId = CompanyContext.get();
+        SubcontractorPackage pkg = StringUtils.hasText(request.getTradePackageCode())
+                ? packageRepository.findFirstByProjectIdAndCompanyIdAndTradePackageCodeOrderByCreatedAtAsc(
+                        project.getId(), companyId, request.getTradePackageCode().trim())
+                        .filter(existing -> scopeLines(existing).isEmpty()
+                                && existing.getTenderStatus() == null
+                                && existing.getAppointedAccountId() == null)
+                        .orElseGet(SubcontractorPackage::new)
+                : new SubcontractorPackage();
+        pkg.setCompanyId(companyId);
+        applyPackageDetails(pkg, request, project.getId(), CompanyContext.get());
+        replaceBoqScope(pkg, request.getBoqLineIds());
+        replaceStructuredPackageData(pkg, request);
         syncPlanning(project.getId(), principal.getAccountId());
         return toPackageResponse(pkg);
     }
 
     @Transactional
     public SubcontractorPackageResponse updatePackage(Long projectId, UUID uuid, SubcontractorPackageRequest request) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requireStaff();
         requireProject(projectId);
         SubcontractorPackage pkg = requirePackageForProject(uuid, projectId);
@@ -145,14 +189,23 @@ public class SubcontractorService {
             if (request.getStatus() != null) {
                 pkg.setStatus(request.getStatus());
             }
+            applyPackageDetails(pkg, request, projectId, CompanyContext.get());
+            if (request.getBoqLineIds() != null) {
+                if (pkg.getTenderStatus() != null || packageHasQuoteActivity(pkg.getUuid(), CompanyContext.get())) {
+                    throw new BadRequestException("BOQ scope cannot be changed after RFQ or quote activity has started");
+                }
+                replaceBoqScope(pkg, request.getBoqLineIds());
+            }
         }
         pkg = packageRepository.save(pkg);
+        replaceStructuredPackageData(pkg, request);
         syncPlanning(pkg.getProjectId(), principal.getAccountId());
         return toPackageResponse(pkg);
     }
 
     @Transactional
     public void deletePackage(Long projectId, UUID uuid) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requireStaff();
         requireProject(projectId);
         SubcontractorPackage pkg = requirePackageForProject(uuid, projectId);
@@ -163,6 +216,7 @@ public class SubcontractorService {
 
     @Transactional
     public SubcontractorPackageResponse appoint(Long projectId, UUID uuid, AppointSubcontractorRequest request) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requireStaff();
         requireProject(projectId);
         if (request == null) {
@@ -266,6 +320,7 @@ public class SubcontractorService {
         UUID companyId = requireCompany();
         SubcontractorPackage pkg = packageRepository.findByUuidAndCompanyId(uuid, companyId)
                 .orElseThrow(() -> new NotFoundException("Package not found"));
+        commercialLifecycleService.assertNotArchived(pkg.getProjectId());
         if (!isPackageVisibleToPortalUser(principal, pkg)) {
             throw new ForbiddenException("Not appointed to this package");
         }
@@ -285,6 +340,33 @@ public class SubcontractorService {
     }
 
     @Transactional
+    public SubcontractorPackageResponse completePackage(UUID uuid) {
+        AuthPrincipal principal = requireAuthenticated();
+        UUID companyId = requireCompany();
+        SubcontractorPackage pkg = packageRepository.findByUuidAndCompanyId(uuid, companyId)
+                .orElseThrow(() -> new NotFoundException("Package not found"));
+        if (!isPackageVisibleToPortalUser(principal, pkg) && !isStaff(principal)) {
+            throw new ForbiddenException("Not appointed to this package");
+        }
+        if (pkg.getStatus() != SubcontractorPackageStatus.IN_PROGRESS
+                && pkg.getStatus() != SubcontractorPackageStatus.APPOINTED) {
+            throw new BadRequestException("Only mobilised / in-progress packages can be completed");
+        }
+        ScPackageAward award = awardRepository.findByPackageUuid(uuid).orElse(null);
+        List<String> gaps = new ArrayList<>();
+        if (award == null) {
+            gaps.add("No award record");
+        } else if (award.getSignedAt() == null) {
+            gaps.add("Contract not fully signed");
+        }
+        if (!gaps.isEmpty()) {
+            throw new BadRequestException("Closeout incomplete: " + String.join("; ", gaps));
+        }
+        pkg.setStatus(SubcontractorPackageStatus.COMPLETE);
+        return toPackageResponse(packageRepository.save(pkg));
+    }
+
+    @Transactional
     public SubcontractorClaimResponse createClaim(UUID packageUuid, SubcontractorClaimRequest request) {
         AuthPrincipal principal = requireAuthenticated();
         portalAccessService.requireCommercialAccess(principal);
@@ -297,16 +379,149 @@ public class SubcontractorService {
         BigDecimal claimedQty = request != null && request.getClaimedQty() != null
                 ? request.getClaimedQty() : BigDecimal.ZERO;
         validateClaimQuantities(pkg, claimedQty, null, plannedQty);
+        commercialLifecycleService.assertNotArchived(pkg.getProjectId());
+        if (pkg.getStatus() == SubcontractorPackageStatus.COMPLETE) {
+            throw new BadRequestException("Claims are not allowed after package closeout");
+        }
+
+        List<ScAwardBoqLine> awardLines = awardBoqLineRepository
+                .findByPackageUuidAndCompanyIdOrderBySortOrderAsc(pkg.getUuid(), companyId);
+        boolean hasLineClaims = request != null && request.getLines() != null
+                && request.getLines().stream().anyMatch(l -> l != null && l.getClaimedQty() != null
+                        && l.getClaimedQty().compareTo(BigDecimal.ZERO) > 0);
+
+        BigDecimal claimedQty;
+        BigDecimal claimedValue = BigDecimal.ZERO;
 
         SubcontractorClaim claim = new SubcontractorClaim();
         claim.setPackageUuid(pkg.getUuid());
         claim.setProjectId(pkg.getProjectId());
         claim.setCompanyId(companyId);
+        claim.setNotes(request != null ? request.getNotes() : null);
+        claim.setClaimPeriodFrom(request != null ? request.getClaimPeriodFrom() : null);
+        claim.setClaimPeriodTo(request != null ? request.getClaimPeriodTo() : null);
+        claim.setStatus(SubcontractorClaimStatus.DRAFT);
+        claim = claimRepository.save(claim);
+        claim.setClaimNumber("CL-" + claim.getUuid().toString().substring(0, 8).toUpperCase());
+
+        if (hasLineClaims) {
+            if (awardLines.isEmpty()) {
+                throw new BadRequestException("No awarded BOQ snapshot found for this package — cannot claim by line");
+            }
+            java.util.Map<UUID, ScAwardBoqLine> awardById = new LinkedHashMap<>();
+            for (ScAwardBoqLine line : awardLines) {
+                awardById.put(line.getUuid(), line);
+            }
+            int sort = 0;
+            BigDecimal totalQty = BigDecimal.ZERO;
+            for (ScClaimLineRequest lineReq : request.getLines()) {
+                if (lineReq == null || lineReq.getAwardBoqLineUuid() == null) {
+                    continue;
+                }
+                BigDecimal qty = lineReq.getClaimedQty() != null ? lineReq.getClaimedQty() : BigDecimal.ZERO;
+                if (qty.compareTo(BigDecimal.ZERO) < 0) {
+                    throw new BadRequestException("Claim quantity cannot be negative");
+                }
+                if (qty.compareTo(BigDecimal.ZERO) == 0) {
+                    continue;
+                }
+                ScAwardBoqLine awardLine = awardById.get(lineReq.getAwardBoqLineUuid());
+                if (awardLine == null) {
+                    throw new BadRequestException("BOQ line is not part of the awarded package");
+                }
+                BigDecimal rate = awardLine.getRate() != null ? awardLine.getRate() : BigDecimal.ZERO;
+                BigDecimal contractQty = awardLine.getQuantity() != null ? awardLine.getQuantity() : BigDecimal.ZERO;
+                BigDecimal previous = sumPriorClaimedForAwardLine(awardLine.getUuid(), companyId, claim.getUuid());
+                BigDecimal cumulative = previous.add(qty);
+                if (contractQty.compareTo(BigDecimal.ZERO) > 0 && cumulative.compareTo(contractQty) > 0) {
+                    BigDecimal remaining = contractQty.subtract(previous).max(BigDecimal.ZERO);
+                    String label = StringUtils.hasText(awardLine.getSectionCode())
+                            ? awardLine.getSectionCode()
+                            : (StringUtils.hasText(awardLine.getDescription())
+                                    ? awardLine.getDescription()
+                                    : "line");
+                    throw new BadRequestException(
+                            "Claim qty " + qty + " for " + label
+                                    + " exceeds remaining contract qty (" + remaining
+                                    + " of " + contractQty + " "
+                                    + nullToEmpty(awardLine.getUnit()) + "). "
+                                    + "Already claimed on other open claims: " + previous + ".");
+                }
+                BigDecimal lineValue = qty.multiply(rate).setScale(2, RoundingMode.HALF_UP);
+                ScClaimLine line = new ScClaimLine();
+                line.setClaimUuid(claim.getUuid());
+                line.setAwardBoqLineUuid(awardLine.getUuid());
+                line.setBoqLineId(awardLine.getBoqLineId());
+                line.setPackageUuid(pkg.getUuid());
+                line.setCompanyId(companyId);
+                line.setSectionCode(awardLine.getSectionCode());
+                line.setDescription(awardLine.getDescription());
+                line.setUnit(awardLine.getUnit());
+                line.setContractQty(contractQty);
+                line.setAwardRate(rate);
+                line.setPreviousCertifiedQty(sumPriorCertifiedForAwardLine(awardLine.getUuid(), companyId, claim.getUuid()));
+                line.setClaimedQty(qty);
+                line.setClaimedValue(lineValue);
+                line.setSortOrder(sort++);
+                claimLineRepository.save(line);
+                totalQty = totalQty.add(qty);
+                claimedValue = claimedValue.add(lineValue);
+            }
+            if (totalQty.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new BadRequestException("At least one claim line quantity is required");
+            }
+            claimedQty = totalQty;
+            if (plannedQty.compareTo(BigDecimal.ZERO) <= 0) {
+                plannedQty = awardLines.stream()
+                        .map(ScAwardBoqLine::getQuantity)
+                        .filter(Objects::nonNull)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+            }
+        } else {
+            claimedQty = request != null && request.getClaimedQty() != null
+                    ? request.getClaimedQty() : BigDecimal.ZERO;
+            if (claimedQty.compareTo(BigDecimal.ZERO) < 0) {
+                throw new BadRequestException("Claim quantity cannot be negative");
+            }
+            validateClaimQuantities(pkg, claimedQty, claim.getUuid(), plannedQty);
+        }
+
         claim.setClaimedQty(claimedQty);
         claim.setPlannedQty(plannedQty);
-        claim.setNotes(request != null ? request.getNotes() : null);
-        claim.setStatus(SubcontractorClaimStatus.DRAFT);
+        claim.setClaimedValue(claimedValue.compareTo(BigDecimal.ZERO) > 0 ? claimedValue : null);
         return toClaimResponse(claimRepository.save(claim));
+    }
+
+    private BigDecimal sumPriorClaimedForAwardLine(UUID awardBoqLineUuid, UUID companyId, UUID excludeClaimUuid) {
+        return claimLineRepository.findByAwardBoqLineUuidAndCompanyId(awardBoqLineUuid, companyId).stream()
+                .filter(l -> excludeClaimUuid == null || !excludeClaimUuid.equals(l.getClaimUuid()))
+                .filter(l -> {
+                    SubcontractorClaim c = claimRepository.findById(l.getClaimUuid()).orElse(null);
+                    if (c == null) return false;
+                    return c.getStatus() == SubcontractorClaimStatus.SUBMITTED
+                            || c.getStatus() == SubcontractorClaimStatus.UNDER_REVIEW
+                            || c.getStatus() == SubcontractorClaimStatus.APPROVED
+                            || c.getStatus() == SubcontractorClaimStatus.MEASURED
+                            || c.getStatus() == SubcontractorClaimStatus.CERTIFIED;
+                })
+                .map(ScClaimLine::getClaimedQty)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal sumPriorCertifiedForAwardLine(UUID awardBoqLineUuid, UUID companyId, UUID excludeClaimUuid) {
+        return claimLineRepository.findByAwardBoqLineUuidAndCompanyId(awardBoqLineUuid, companyId).stream()
+                .filter(l -> excludeClaimUuid == null || !excludeClaimUuid.equals(l.getClaimUuid()))
+                .filter(l -> {
+                    SubcontractorClaim c = claimRepository.findById(l.getClaimUuid()).orElse(null);
+                    return c != null && c.getStatus() == SubcontractorClaimStatus.CERTIFIED;
+                })
+                .map(l -> l.getCertifiedQty() != null ? l.getCertifiedQty() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private static String nullToEmpty(String value) {
+        return value != null ? value : "";
     }
 
     @Transactional(readOnly = true)
@@ -343,6 +558,7 @@ public class SubcontractorService {
                 .orElseThrow(() -> new NotFoundException("Package not found"));
         assertCanClaimOnPackage(principal, pkg);
         holdPointGuardService.assertClaimAllowed(claim.getProjectId());
+        commercialLifecycleService.assertNotArchived(claim.getProjectId());
 
         if (claim.getStatus() != SubcontractorClaimStatus.DRAFT
                 && claim.getStatus() != SubcontractorClaimStatus.REJECTED) {
@@ -354,7 +570,30 @@ public class SubcontractorService {
             planned = computeBoqPlannedQty(pkg);
             claim.setPlannedQty(planned);
         }
-        validateClaimQuantities(pkg, claim.getClaimedQty(), claim.getUuid(), planned);
+        List<ScClaimLine> lines = claimLineRepository.findByClaimUuidOrderBySortOrderAsc(claim.getUuid());
+        if (!lines.isEmpty()) {
+            for (ScClaimLine line : lines) {
+                if (line.getClaimedQty() == null || line.getClaimedQty().compareTo(BigDecimal.ZERO) < 0) {
+                    throw new BadRequestException("Invalid claim line quantity");
+                }
+                if (line.getAwardBoqLineUuid() == null) {
+                    throw new BadRequestException("Claim line missing award BOQ reference");
+                }
+                BigDecimal previous = sumPriorClaimedForAwardLine(
+                        line.getAwardBoqLineUuid(), claim.getCompanyId(), claim.getUuid());
+                BigDecimal contractQty = line.getContractQty() != null ? line.getContractQty() : BigDecimal.ZERO;
+                if (contractQty.compareTo(BigDecimal.ZERO) > 0
+                        && previous.add(line.getClaimedQty()).compareTo(contractQty) > 0) {
+                    BigDecimal remaining = contractQty.subtract(previous).max(BigDecimal.ZERO);
+                    throw new BadRequestException(
+                            "Cumulative claim qty exceeds remaining contract qty for "
+                                    + nullToEmpty(line.getSectionCode())
+                                    + " (" + remaining + " of " + contractQty + " remaining)");
+                }
+            }
+        } else {
+            validateClaimQuantities(pkg, claim.getClaimedQty(), claim.getUuid(), planned);
+        }
 
         claim.setStatus(SubcontractorClaimStatus.SUBMITTED);
         claim.setSubmittedBy(principal.getAccountId());
@@ -376,6 +615,7 @@ public class SubcontractorService {
         SubcontractorPackage pkg = packageRepository.findByUuidAndCompanyId(claim.getPackageUuid(), claim.getCompanyId())
                 .orElseThrow(() -> new NotFoundException("Package not found"));
         assertCanClaimOnPackage(principal, pkg);
+        commercialLifecycleService.assertNotArchived(claim.getProjectId());
         if (claim.getStatus() != SubcontractorClaimStatus.DRAFT
                 && claim.getStatus() != SubcontractorClaimStatus.REJECTED) {
             throw new BadRequestException("Attachments can only be added to DRAFT or REJECTED claims");
@@ -388,6 +628,7 @@ public class SubcontractorService {
 
     @Transactional
     public SubcontractorClaimResponse approveClaim(Long projectId, UUID claimUuid) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requirePmOrAdmin();
         requireProject(projectId);
         SubcontractorClaim claim = requireSubmittedClaim(claimUuid, projectId);
@@ -404,6 +645,7 @@ public class SubcontractorService {
 
     @Transactional
     public SubcontractorClaimResponse rejectClaim(Long projectId, UUID claimUuid, ClaimRejectRequest request) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requirePmOrAdmin();
         requireProject(projectId);
         if (request == null || !StringUtils.hasText(request.getReason())) {
@@ -420,6 +662,31 @@ public class SubcontractorService {
     @Transactional
     public List<SubcontractorPackageResponse> generateFromBoq(Long projectId) {
         AuthPrincipal principal = requireStaff();
+    @Transactional(readOnly = true)
+    public List<TradePackage> listTradePackages() {
+        requireStaff();
+        return tradePackageRepository.findVisible(requireCompany());
+    }
+
+    public List<ScBoqLineView> listProjectBoqLines(Long projectId) {
+        Project project = requireProject(projectId);
+        BoqDocument approved = findLatestApprovedBoq(project.getId(), requireCompany());
+        if (approved == null) {
+            throw new BadRequestException("No APPROVED or FINAL BOQ found for this project");
+        }
+        List<BoqLine> lines = boqLineRepository.findByBoqIdOrderBySortOrderAsc(approved.getId());
+        Map<UUID, SubcontractorPackage> assigned = new LinkedHashMap<>();
+        for (SubcontractorPackage pkg : packageRepository
+                .findByProjectIdAndCompanyIdOrderByCreatedAtDesc(project.getId(), requireCompany())) {
+            for (SubcontractorPackageBoqLine scope : packageBoqLineRepository
+                    .findByPackageUuidAndCompanyIdOrderBySortOrderAsc(pkg.getUuid(), requireCompany())) {
+                assigned.putIfAbsent(scope.getBoqLineId(), pkg);
+            }
+            if (pkg.getBoqLineId() != null) {
+                assigned.putIfAbsent(pkg.getBoqLineId(), pkg);
+        return lines.stream().map(line -> toBoqLineView(line, assigned.get(line.getId()), project)).toList();
+
+        commercialLifecycleService.assertNotArchived(projectId);
         Project project = requireProject(projectId);
         UUID companyId = CompanyContext.get();
 
@@ -453,6 +720,10 @@ public class SubcontractorService {
 
         planningService.syncSubcontractorStatus(project.getId(), PlanAreaStatus.IN_PROGRESS, principal.getAccountId());
         return result;
+        // Kept for API compatibility: generation now returns existing packages only.
+        // New packages must be created deliberately with an explicit BOQ scope.
+        return packageRepository.findByProjectIdAndCompanyIdOrderByCreatedAtDesc(project.getId(), companyId)
+                .stream().map(this::toPackageResponse).toList();
     }
 
     private BoqDocument findLatestApprovedBoq(Long projectId, UUID companyId) {
@@ -491,6 +762,184 @@ public class SubcontractorService {
         return resolveCategoryName(line, resolveCategoryCode(line));
     }
 
+    private void applyPackageDetails(
+            SubcontractorPackage pkg, SubcontractorPackageRequest request, Long projectId, UUID companyId) {
+        if (StringUtils.hasText(request.getTradePackageCode())) {
+            TradePackage template = tradePackageRepository.findVisible(companyId).stream()
+                    .filter(t -> request.getTradePackageCode().trim().equalsIgnoreCase(t.getCode()))
+                    .findFirst()
+                    .orElseThrow(() -> new BadRequestException("Trade package template not found"));
+            pkg.setTradePackageCode(template.getCode());
+            pkg.setTradePackageName(template.getName());
+            pkg.setSpecialistLicenceRequired(template.getSpecialLicenceRequired());
+            if (!StringUtils.hasText(pkg.getPaymentTerms())) {
+                pkg.setPaymentTerms(template.getTypicalPaymentTerms());
+            }
+            if (pkg.getRetentionPct() == null) {
+                pkg.setRetentionPct(parseRetention(template.getTypicalRetention()));
+            }
+        }
+        if (request.getLdTerms() != null) pkg.setLdTerms(trimToNull(request.getLdTerms()));
+        if (request.getTenderDescription() != null) {
+            pkg.setTenderDescription(trimToNull(request.getTenderDescription()));
+        }
+        if (request.getSiteVisitAt() != null) pkg.setSiteVisitAt(request.getSiteVisitAt());
+        if (request.getTenderDeadline() != null) pkg.setTenderDeadline(request.getTenderDeadline());
+        if (request.getQuoteValidityDays() != null) pkg.setQuoteValidityDays(request.getQuoteValidityDays());
+        if (request.getPaymentTerms() != null) pkg.setPaymentTerms(trimToNull(request.getPaymentTerms()));
+        if (request.getRetentionPct() != null) pkg.setRetentionPct(request.getRetentionPct());
+        if (request.getBoqLineIds() != null) {
+            pkg.setEstimatedBoqValue(calculateBoqValue(projectId, companyId, request.getBoqLineIds()));
+        }
+    }
+
+    private void replaceStructuredPackageData(
+            SubcontractorPackage pkg, SubcontractorPackageRequest request) {
+        if (request == null) return;
+        UUID companyId = requireCompany();
+        if (request.getFreeIssueMaterials() != null) {
+            freeIssueMaterialRepository.deleteByPackageUuidAndCompanyId(pkg.getUuid(), companyId);
+            int order = 0;
+            for (ScFreeIssueMaterialRequest item : request.getFreeIssueMaterials()) {
+                if (item == null || !StringUtils.hasText(item.getItemDescription())
+                        || item.getSuppliedBy() == null) {
+                    throw new BadRequestException("Free-issue material requires itemDescription and suppliedBy");
+                }
+                ScFreeIssueMaterial material = new ScFreeIssueMaterial();
+                material.setPackageUuid(pkg.getUuid());
+                material.setCompanyId(companyId);
+                material.setItemDescription(item.getItemDescription().trim());
+                material.setSuppliedBy(item.getSuppliedBy());
+                material.setQuantity(item.getQuantity());
+                material.setUnit(trimToNull(item.getUnit()));
+                material.setNotes(trimToNull(item.getNotes()));
+                material.setSortOrder(order++);
+                freeIssueMaterialRepository.save(material);
+            }
+        }
+        if (request.getAttendanceMatrix() != null) {
+            packageAttendanceRepository.deleteByPackageUuidAndCompanyId(pkg.getUuid(), companyId);
+            int order = 0;
+            for (ScAttendanceRequest item : request.getAttendanceMatrix()) {
+                if (item == null || !StringUtils.hasText(item.getResponsibilityType())
+                        || item.getResponsibleParty() == null) {
+                    throw new BadRequestException("Attendance item requires responsibilityType and responsibleParty");
+                }
+                ScPackageAttendance attendance = new ScPackageAttendance();
+                attendance.setPackageUuid(pkg.getUuid());
+                attendance.setCompanyId(companyId);
+                attendance.setResponsibilityType(item.getResponsibilityType().trim().toUpperCase().replace(' ', '_'));
+                attendance.setResponsibleParty(item.getResponsibleParty());
+                attendance.setNotes(trimToNull(item.getNotes()));
+                attendance.setSortOrder(order++);
+                packageAttendanceRepository.save(attendance);
+            }
+        }
+    }
+
+    private BigDecimal parseRetention(String value) {
+        if (!StringUtils.hasText(value)) return null;
+        String numeric = value.replaceAll("[^0-9.]", "");
+        try {
+            return numeric.isBlank() ? null : new BigDecimal(numeric);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private BigDecimal calculateBoqValue(Long projectId, UUID companyId, List<UUID> lineIds) {
+        if (lineIds == null || lineIds.isEmpty()) return BigDecimal.ZERO;
+        BoqDocument approved = findLatestApprovedBoq(projectId, companyId);
+        if (approved == null) throw new BadRequestException("No approved BOQ found for this project");
+        BigDecimal total = BigDecimal.ZERO;
+        for (UUID id : lineIds) {
+            BoqLine line = boqLineRepository.findById(id)
+                    .orElseThrow(() -> new BadRequestException("BOQ line not found: " + id));
+            assertLineBelongsToProject(line, approved, projectId, companyId);
+            BigDecimal lineAmount = line.getAmount();
+            if (lineAmount == null
+                    && line.getQuantity() != null
+                    && line.getRate() != null) {
+                lineAmount = line.getQuantity().multiply(line.getRate());
+            }
+            if (lineAmount != null) {
+                total = total.add(lineAmount);
+            }
+        }
+        return total;
+    }
+
+    private void replaceBoqScope(SubcontractorPackage pkg, List<UUID> lineIds) {
+        if (lineIds == null) return;
+        UUID companyId = requireCompany();
+        BoqDocument approved = findLatestApprovedBoq(pkg.getProjectId(), companyId);
+        if (approved == null) throw new BadRequestException("No approved BOQ found for this project");
+        packageBoqLineRepository.deleteByPackageUuidAndCompanyId(pkg.getUuid(), companyId);
+        int order = 0;
+        for (UUID id : lineIds.stream().distinct().toList()) {
+            List<SubcontractorPackageBoqLine> assigned =
+                    packageBoqLineRepository.findByCompanyIdAndBoqLineId(companyId, id);
+            if (assigned.stream().anyMatch(scope -> !pkg.getUuid().equals(scope.getPackageUuid()))) {
+                throw new BadRequestException("BOQ line is already assigned to another subcontractor package: " + id);
+            }
+            BoqLine line = boqLineRepository.findById(id)
+                    .orElseThrow(() -> new BadRequestException("BOQ line not found: " + id));
+            assertLineBelongsToProject(line, approved, pkg.getProjectId(), companyId);
+            SubcontractorPackageBoqLine scope = new SubcontractorPackageBoqLine();
+            scope.setPackageUuid(pkg.getUuid());
+            scope.setBoqLineId(id);
+            scope.setCompanyId(companyId);
+            scope.setSortOrder(order++);
+            packageBoqLineRepository.save(scope);
+        }
+        pkg.setEstimatedBoqValue(calculateBoqValue(pkg.getProjectId(), companyId, lineIds));
+        pkg.setBoqLineId(lineIds.size() == 1 ? lineIds.get(0) : null);
+        packageRepository.save(pkg);
+    }
+
+    private void assertLineBelongsToProject(
+            BoqLine line, BoqDocument approved, Long projectId, UUID companyId) {
+        if (line.getBoq() == null || line.getBoq().getProject() == null
+                || !projectId.equals(line.getBoq().getProject().getId())
+                || !companyId.equals(line.getBoq().getCompanyId())
+                || !approved.getId().equals(line.getBoq().getId())) {
+            throw new BadRequestException("BOQ line does not belong to this project's approved BOQ");
+        }
+    }
+
+    private boolean packageHasQuoteActivity(UUID packageUuid, UUID companyId) {
+        return !quoteRepository.findByPackageUuidOrderByVersionDesc(packageUuid).isEmpty();
+    }
+
+    private List<BoqLine> scopeLines(SubcontractorPackage pkg) {
+        List<SubcontractorPackageBoqLine> mappings =
+                packageBoqLineRepository.findByPackageUuidAndCompanyIdOrderBySortOrderAsc(pkg.getUuid(), pkg.getCompanyId());
+        if (!mappings.isEmpty()) {
+            return mappings.stream().map(m -> boqLineRepository.findById(m.getBoqLineId()).orElse(null))
+                    .filter(Objects::nonNull).toList();
+        }
+        BoqLine legacy = resolveBoqLine(pkg);
+        return legacy == null ? List.of() : List.of(legacy);
+    }
+
+    private ScBoqLineView toBoqLineView(BoqLine line, SubcontractorPackage pkg, Project project) {
+        return ScBoqLineView.builder()
+                .boqLineId(line.getId())
+                .packageUuid(pkg != null ? pkg.getUuid() : null)
+                .projectId(project.getId())
+                .projectName(project.getName())
+                .packageName(pkg != null ? pkg.getName() : null)
+                .sectionCode(resolveCategoryCode(line))
+                .description(line.getDescription())
+                .unit(line.getUnit())
+                .roomLabel(line.getRoomLabel())
+                .floorLabel(line.getFloorLabel())
+                .plannedQty(line.getQuantity())
+                .rate(line.getRate())
+                .amount(line.getAmount())
+                .build();
+    }
+
     private BoqLine resolveBoqLine(SubcontractorPackage pkg) {
         if (pkg == null || pkg.getBoqLineId() == null) {
             return null;
@@ -499,6 +948,11 @@ public class SubcontractorService {
     }
 
     private BigDecimal computeBoqPlannedQty(SubcontractorPackage pkg) {
+        List<BoqLine> scoped = scopeLines(pkg);
+        if (!scoped.isEmpty()) {
+            return scoped.stream().map(BoqLine::getQuantity).filter(Objects::nonNull)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+        }
         if (pkg.getBoqLineId() != null) {
             BoqLine line = resolveBoqLine(pkg);
             if (line != null && line.getQuantity() != null) {
@@ -553,6 +1007,10 @@ public class SubcontractorService {
         BigDecimal reserved = sumClaimedQty(pkg.getUuid(), excludeClaimUuid,
                 SubcontractorClaimStatus.APPROVED,
                 SubcontractorClaimStatus.SUBMITTED);
+                SubcontractorClaimStatus.SUBMITTED,
+                SubcontractorClaimStatus.UNDER_REVIEW,
+                SubcontractorClaimStatus.MEASURED,
+                SubcontractorClaimStatus.CERTIFIED);
         BigDecimal total = reserved.add(newClaimed != null ? newClaimed : BigDecimal.ZERO);
         if (total.compareTo(plannedQty) > 0) {
             BigDecimal remaining = plannedQty.subtract(reserved).max(BigDecimal.ZERO);
@@ -913,6 +1371,17 @@ public class SubcontractorService {
                 .name(pkg.getName())
                 .boqSectionCode(pkg.getBoqSectionCode())
                 .boqLineId(pkg.getBoqLineId())
+                .boqLines(scopeLines(pkg).stream()
+                        .map(scope -> toBoqLineView(scope, pkg, project)).toList())
+                .boqLineCount(scopeLines(pkg).size())
+                .estimatedBoqValue(pkg.getEstimatedBoqValue() != null
+                        ? pkg.getEstimatedBoqValue()
+                        : scopeLines(pkg).stream().map(BoqLine::getAmount).filter(Objects::nonNull)
+                                .reduce(BigDecimal.ZERO, BigDecimal::add))
+                .tradePackageCode(pkg.getTradePackageCode())
+                .tradePackageName(pkg.getTradePackageName())
+                .specialistLicenceRequired(pkg.getSpecialistLicenceRequired())
+                .ldTerms(pkg.getLdTerms())
                 .boqLineDescription(line != null ? line.getDescription() : null)
                 .boqLineUnit(line != null ? line.getUnit() : null)
                 .boqRoomLabel(line != null ? line.getRoomLabel() : null)
@@ -938,8 +1407,13 @@ public class SubcontractorService {
                 .retentionPct(pkg.getRetentionPct())
                 .siteVisitAt(pkg.getSiteVisitAt())
                 .tenderDescription(pkg.getTenderDescription())
+                .freeIssueMaterials(freeIssueMaterialRepository
+                        .findByPackageUuidAndCompanyIdOrderBySortOrderAsc(pkg.getUuid(), pkg.getCompanyId()))
+                .attendanceMatrix(packageAttendanceRepository
+                        .findByPackageUuidAndCompanyIdOrderBySortOrderAsc(pkg.getUuid(), pkg.getCompanyId()))
                 .build();
     }
+
 
     private Project resolveProject(Long projectId) {
         if (projectId == null) {
@@ -958,6 +1432,18 @@ public class SubcontractorService {
     }
 
     private SubcontractorClaimResponse toClaimResponse(SubcontractorClaim claim) {
+        List<ScClaimLineResponse> lines = claimLineRepository.findByClaimUuidOrderBySortOrderAsc(claim.getUuid())
+                .stream()
+                .map(this::toClaimLineResponse)
+                .toList();
+        String paymentStatus = null;
+        if (claim.getCertificateUuid() != null) {
+            // Lazy: certificate payment status is enriched by Wave7 tracker when available
+            paymentStatus = null;
+        }
+        BigDecimal originalAward = awardRepository.findByPackageUuid(claim.getPackageUuid())
+                .map(ScPackageAward::getAwardedValue)
+                .orElse(null);
         return SubcontractorClaimResponse.builder()
                 .uuid(claim.getUuid())
                 .packageUuid(claim.getPackageUuid())
@@ -965,6 +1451,10 @@ public class SubcontractorService {
                 .companyId(claim.getCompanyId())
                 .claimedQty(claim.getClaimedQty())
                 .plannedQty(claim.getPlannedQty())
+                .claimedValue(claim.getClaimedValue())
+                .claimNumber(claim.getClaimNumber())
+                .claimPeriodFrom(claim.getClaimPeriodFrom())
+                .claimPeriodTo(claim.getClaimPeriodTo())
                 .notes(claim.getNotes())
                 .status(claim.getStatus())
                 .submittedBy(claim.getSubmittedBy())
@@ -981,6 +1471,32 @@ public class SubcontractorService {
                 .measuredBy(claim.getMeasuredBy())
                 .measuredAt(claim.getMeasuredAt())
                 .certificateUuid(claim.getCertificateUuid())
+                .paymentStatus(paymentStatus)
+                .lines(lines)
+                .originalAwardValue(originalAward)
+                .build();
+    }
+
+    private ScClaimLineResponse toClaimLineResponse(ScClaimLine line) {
+        return ScClaimLineResponse.builder()
+                .uuid(line.getUuid())
+                .claimUuid(line.getClaimUuid())
+                .awardBoqLineUuid(line.getAwardBoqLineUuid())
+                .boqLineId(line.getBoqLineId())
+                .sectionCode(line.getSectionCode())
+                .description(line.getDescription())
+                .unit(line.getUnit())
+                .contractQty(line.getContractQty())
+                .awardRate(line.getAwardRate())
+                .previousCertifiedQty(line.getPreviousCertifiedQty())
+                .claimedQty(line.getClaimedQty())
+                .claimedValue(line.getClaimedValue())
+                .measuredQty(line.getMeasuredQty())
+                .measuredValue(line.getMeasuredValue())
+                .certifiedQty(line.getCertifiedQty())
+                .certifiedValue(line.getCertifiedValue())
+                .qsComment(line.getQsComment())
+                .sortOrder(line.getSortOrder())
                 .build();
     }
 
@@ -1031,6 +1547,7 @@ public class SubcontractorService {
         AuthPrincipal principal = requireAuthenticated();
         if (principal.getRoles() == null) {
             throw new ForbiddenException("PM/Admin access required");
+            throw new ForbiddenException("PM/Admin/QS access required");
         }
         boolean allowed = principal.getRoles().contains(Role.ADMIN)
                 || principal.getRoles().contains(Role.SUPER_ADMIN)
@@ -1038,6 +1555,10 @@ public class SubcontractorService {
                 || principal.getRoles().contains(Role.PROJECT_MANAGER);
         if (!allowed) {
             throw new ForbiddenException("PM/Admin access required");
+                || principal.getRoles().contains(Role.PROJECT_MANAGER)
+                || principal.getRoles().contains(Role.QS)
+                || principal.getRoles().contains(Role.SENIOR_QS);
+            throw new ForbiddenException("PM/Admin/QS access required");
         }
         return principal;
     }

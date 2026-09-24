@@ -3,6 +3,7 @@ package com.fitouts.shared.api;
 import java.time.OffsetDateTime;
 import java.util.stream.Collectors;
 
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -55,10 +56,29 @@ public class ApiExceptionHandler {
         return build(HttpStatus.BAD_REQUEST, message, request.getRequestURI());
     }
 
+    @ExceptionHandler(DataAccessException.class)
+    public ResponseEntity<ApiErrorResponse> handleDataAccess(
+            DataAccessException exception,
+            HttpServletRequest request) {
+        exception.printStackTrace();
+        return build(HttpStatus.INTERNAL_SERVER_ERROR,
+                "A database error occurred. Please try again or contact support.",
+                request.getRequestURI());
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiErrorResponse> handleUnexpected(Exception exception, HttpServletRequest request) {
         exception.printStackTrace();
-        return build(HttpStatus.INTERNAL_SERVER_ERROR, exception.getMessage() != null ? exception.getMessage() : "Unexpected server error", request.getRequestURI());
+        String raw = exception.getMessage();
+        String message = "Unexpected server error";
+        if (raw != null && !raw.isBlank()
+                && !raw.contains("JDBC")
+                && !raw.contains("SQLGrammar")
+                && !raw.contains("PSQLException")
+                && !raw.contains("does not exist")) {
+            message = raw;
+        }
+        return build(HttpStatus.INTERNAL_SERVER_ERROR, message, request.getRequestURI());
     }
 
     private ResponseEntity<ApiErrorResponse> build(HttpStatus status, String message, String path) {

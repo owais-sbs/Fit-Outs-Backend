@@ -40,6 +40,21 @@ public class ScRetentionLedger {
     @Column(name = "amount_held", nullable = false, precision = 18, scale = 2)
     private BigDecimal amountHeld;
 
+    @Column(name = "retention_pct", precision = 8, scale = 4)
+    private BigDecimal retentionPct;
+
+    @Column(name = "certified_value", precision = 18, scale = 2)
+    private BigDecimal certifiedValue;
+
+    @Column(name = "amount_released", precision = 18, scale = 2)
+    private BigDecimal amountReleased = BigDecimal.ZERO;
+
+    @Column(name = "released_at")
+    private OffsetDateTime releasedAt;
+
+    @Column(name = "released_by")
+    private Long releasedBy;
+
     @Column(name = "release_date")
     private LocalDate releaseDate;
 

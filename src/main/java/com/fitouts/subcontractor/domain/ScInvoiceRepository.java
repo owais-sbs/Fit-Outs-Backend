@@ -15,4 +15,6 @@ public interface ScInvoiceRepository extends JpaRepository<ScInvoice, UUID> {
     List<ScInvoice> findByCompanyIdAndStatusOrderBySubmittedAtDesc(UUID companyId, ScInvoiceStatus status);
 
     List<ScInvoice> findByProjectIdAndCompanyIdOrderByCreatedAtDesc(Long projectId, UUID companyId);
+
+    List<ScInvoice> findByCertificateUuidAndCompanyId(UUID certificateUuid, UUID companyId);
 }

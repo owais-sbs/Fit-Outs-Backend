@@ -62,6 +62,8 @@ public class ValidationInboxService {
     @Transactional(readOnly = true)
     public ValidationInboxResponse inbox() {
         requirePmOrAdmin();
+
+        requireInboxAccess();
         UUID companyId = requireCompany();
         return buildInbox(companyId, null);
     }
@@ -88,6 +90,21 @@ public class ValidationInboxService {
                 : claimRepository.findByProjectIdAndCompanyIdOrderByCreatedAtDesc(projectId, companyId)
                         .stream()
                         .filter(c -> c.getStatus() == SubcontractorClaimStatus.SUBMITTED)
+                ? claimRepository.findByCompanyIdAndStatusInOrderBySubmittedAtDesc(
+                        companyId,
+                        List.of(
+                                SubcontractorClaimStatus.SUBMITTED,
+                                SubcontractorClaimStatus.UNDER_REVIEW,
+                                SubcontractorClaimStatus.APPROVED,
+                                SubcontractorClaimStatus.MEASURED,
+                                SubcontractorClaimStatus.CERTIFIED,
+                                SubcontractorClaimStatus.REJECTED))
+                        .filter(c -> c.getStatus() == SubcontractorClaimStatus.SUBMITTED
+                                || c.getStatus() == SubcontractorClaimStatus.UNDER_REVIEW
+                                || c.getStatus() == SubcontractorClaimStatus.APPROVED
+                                || c.getStatus() == SubcontractorClaimStatus.MEASURED
+                                || c.getStatus() == SubcontractorClaimStatus.CERTIFIED
+                                || c.getStatus() == SubcontractorClaimStatus.REJECTED)
                         .toList();
 
         Map<Long, Project> projects = loadProjects(validations, claims);
@@ -105,6 +122,8 @@ public class ValidationInboxService {
         List<ProgressValidationResponse> progressItems = validations.stream()
                 .map(v -> toProgressResponse(
                         v, projects, activities, progressUpdates, accounts, materialIssuesByProgress))
+
+                .map(v -> toProgressResponse(v, projects, activities, progressUpdates, accounts))
                 .toList();
 
         List<SubcontractorClaimResponse> claimItems = claims.stream()
@@ -113,6 +132,15 @@ public class ValidationInboxService {
 
         List<ScVariationResponse> variationItems = portalService.pendingVariationsForInbox();
         List<ScInvoiceResponse> invoiceItems = portalService.pendingInvoicesForInbox();
+        List<ScVariationResponse> variationItems;
+        List<ScInvoiceResponse> invoiceItems;
+        try {
+            variationItems = portalService.pendingVariationsForInbox();
+        } catch (Exception e) {
+            variationItems = List.of();
+        }
+            invoiceItems = portalService.pendingInvoicesForInbox();
+            invoiceItems = List.of();
 
         return ValidationInboxResponse.builder()
                 .progressItems(progressItems)
@@ -121,6 +149,11 @@ public class ValidationInboxService {
                 .invoiceItems(invoiceItems)
                 .pendingProgressCount(progressItems.size())
                 .pendingClaimCount(claimItems.size())
+                .pendingClaimCount((int) claimItems.stream()
+                        .filter(c -> c.getStatus() != com.fitouts.subcontractor.domain.SubcontractorClaimStatus.REJECTED
+                                && c.getStatus() != com.fitouts.subcontractor.domain.SubcontractorClaimStatus.CERTIFIED
+                                && c.getStatus() != com.fitouts.subcontractor.domain.SubcontractorClaimStatus.APPROVED)
+                        .count())
                 .pendingVariationCount(variationItems.size())
                 .pendingInvoiceCount(invoiceItems.size())
                 .build();
@@ -214,6 +247,7 @@ public class ValidationInboxService {
             Map<UUID, ActivityProgressUpdate> progressUpdates,
             Map<Long, Account> accounts,
             Map<UUID, List<MaterialIssueResponse>> materialIssuesByProgress) {
+            Map<Long, Account> accounts) {
         Project project = projects.get(validation.getProjectId());
         ScheduleActivity activity = activities.get(validation.getActivityUuid());
         ActivityProgressUpdate progress = progressUpdates.get(validation.getProgressUpdateUuid());
@@ -259,6 +293,8 @@ public class ValidationInboxService {
                 .companyId(claim.getCompanyId())
                 .claimedQty(claim.getClaimedQty())
                 .plannedQty(claim.getPlannedQty())
+                .claimedValue(claim.getClaimedValue())
+                .claimNumber(claim.getClaimNumber())
                 .notes(claim.getNotes())
                 .status(claim.getStatus())
                 .submittedBy(claim.getSubmittedBy())
@@ -269,6 +305,12 @@ public class ValidationInboxService {
                 .createdAt(claim.getCreatedAt())
                 .updatedAt(claim.getUpdatedAt())
                 .attachmentPaths(claim.getAttachmentPaths())
+                .measuredQty(claim.getMeasuredQty())
+                .measuredValue(claim.getMeasuredValue())
+                .certifiedValue(claim.getCertifiedValue())
+                .measuredBy(claim.getMeasuredBy())
+                .measuredAt(claim.getMeasuredAt())
+                .certificateUuid(claim.getCertificateUuid())
                 .packageName(pkg != null ? pkg.getName() : null)
                 .projectName(project != null ? project.getName() : null)
                 .subcontractorName(pkg != null ? pkg.getAppointedCompanyName() : null)
@@ -327,6 +369,25 @@ public class ValidationInboxService {
                 || principal.getRoles().contains(Role.PROJECT_MANAGER);
         if (!allowed) {
             throw new ForbiddenException("PM/Admin access required");
+        }
+        return principal;
+    }
+
+    /** Company-wide Validation Inbox: PM/Admin plus QS (Module 26 claim measurement). */
+    private AuthPrincipal requireInboxAccess() {
+        AuthPrincipal principal = requireAuthenticated();
+        if (principal.getRoles() == null) {
+            throw new ForbiddenException("Staff access required");
+        }
+        boolean allowed = principal.getRoles().contains(Role.ADMIN)
+                || principal.getRoles().contains(Role.SUPER_ADMIN)
+                || principal.getRoles().contains(Role.BUSINESS_OWNER)
+                || principal.getRoles().contains(Role.PROJECT_MANAGER)
+                || principal.getRoles().contains(Role.QS)
+                || principal.getRoles().contains(Role.SENIOR_QS)
+                || principal.getRoles().contains(Role.FINANCE);
+        if (!allowed) {
+            throw new ForbiddenException("Validation inbox access required");
         }
         return principal;
     }

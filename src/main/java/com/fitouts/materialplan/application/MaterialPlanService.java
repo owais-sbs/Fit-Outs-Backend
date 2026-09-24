@@ -28,6 +28,7 @@ import com.fitouts.boq.domain.BoqDocument;
 import com.fitouts.boq.domain.BoqDocumentRepository;
 import com.fitouts.boq.domain.BoqLine;
 import com.fitouts.boq.domain.BoqLineRepository;
+import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.materialplan.api.MaterialPlanLineRequest;
 import com.fitouts.materialplan.api.MaterialPlanLineResponse;
 import com.fitouts.materialplan.api.MaterialPlanResponse;
@@ -71,6 +72,7 @@ public class MaterialPlanService {
     private final WorkItemRepository workItemRepository;
     private final MaterialStockRepository materialStockRepository;
     private final StockService stockService;
+    private final CommercialLifecycleService commercialLifecycleService;
 
     @Transactional(readOnly = true)
     public MaterialPlanResponse get(Long projectId) {
@@ -84,6 +86,7 @@ public class MaterialPlanService {
     @Transactional
     public MaterialPlanResponse generate(Long projectId) {
         AuthPrincipal principal = requireStaff();
+        commercialLifecycleService.assertNotArchived(projectId);
         Project project = requireProject(projectId);
         UUID companyId = CompanyContext.get();
 
@@ -127,6 +130,7 @@ public class MaterialPlanService {
     @Transactional
     public MaterialPlanResponse update(Long projectId, MaterialPlanUpdateRequest request) {
         AuthPrincipal principal = requireStaff();
+        commercialLifecycleService.assertNotArchived(projectId);
         Project project = requireProject(projectId);
         UUID companyId = CompanyContext.get();
 
@@ -166,6 +170,7 @@ public class MaterialPlanService {
     @Transactional
     public MaterialPlanResponse reserve(Long projectId) {
         AuthPrincipal principal = requireStaff();
+        commercialLifecycleService.assertNotArchived(projectId);
         Project project = requireProject(projectId);
         UUID companyId = CompanyContext.get();
 

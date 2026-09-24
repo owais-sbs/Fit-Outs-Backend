@@ -55,6 +55,26 @@ public class SubcontractorPackage {
     @Column(name = "trade_package_code", length = 32)
     private String tradePackageCode;
 
+    /** Snapshot of the selected catalogue template name at package creation. */
+    @Column(name = "trade_package_name", length = 160)
+    private String tradePackageName;
+
+    @Column(name = "specialist_licence_required", length = 240)
+    private String specialistLicenceRequired;
+
+    @Column(name = "estimated_boq_value", precision = 14, scale = 2)
+    private java.math.BigDecimal estimatedBoqValue;
+
+    /** Frozen award commercial value; never overwritten by later variations. */
+    @Column(name = "original_award_value", precision = 18, scale = 2)
+    private java.math.BigDecimal originalAwardValue;
+
+    @Column(name = "closeout_notes", columnDefinition = "TEXT")
+    private String closeoutNotes;
+
+    @Column(name = "ld_terms", columnDefinition = "TEXT")
+    private String ldTerms;
+
     /** Earliest start across the trade's activities. Moves when the programme moves. */
     @Column(name = "planned_start")
     private java.time.LocalDate plannedStart;

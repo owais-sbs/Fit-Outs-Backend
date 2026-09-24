@@ -37,6 +37,7 @@ import com.fitouts.billing.domain.BillingMilestoneRepository;
 import com.fitouts.billing.domain.BillingStatus;
 import com.fitouts.billing.domain.PaymentRequest;
 import com.fitouts.billing.domain.PaymentRequestRepository;
+import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
 import com.fitouts.schedule.domain.ScheduleActivityRepository;
@@ -66,6 +67,8 @@ class BillingModuleTest {
         activityRepository = mock(ScheduleActivityRepository.class);
         billingPaymentEmailService = mock(BillingPaymentEmailService.class);
         accountRepository = mock(AccountRepository.class);
+        CommercialLifecycleService commercialLifecycleService = mock(CommercialLifecycleService.class);
+        org.mockito.Mockito.doNothing().when(commercialLifecycleService).assertCommercialMutable(any());
 
         billingService = new BillingService(
                 milestoneRepository,
@@ -74,7 +77,8 @@ class BillingModuleTest {
                 projectService,
                 activityRepository,
                 billingPaymentEmailService,
-                accountRepository
+                accountRepository,
+                commercialLifecycleService
         );
     }
 

@@ -24,4 +24,13 @@ public class ScWorkerResponse {
     private final boolean active;
     private final boolean siteEligible;
     private final String siteEligibilityNote;
+
+    private final String photoFileUrl;
+    private final String passportFileUrl;
+    private final String visaFileUrl;
+    private final String emiratesIdFileUrl;
+    private final String insuranceFileUrl;
+    private final String inductionFileUrl;
+    private final String accessCardFileUrl;
+    private final String tradeCertFileUrl;
 }

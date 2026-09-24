@@ -19,6 +19,7 @@ import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.boq.api.*;
 import com.fitouts.boq.domain.*;
+import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.notification.application.NotificationService;
 import com.fitouts.profitloss.application.OriginalCostFreezeService;
 import com.fitouts.profitloss.application.PnlCalculationService;
@@ -47,6 +48,7 @@ public class BoqApprovalService {
     private final BoqProjectRules boqProjectRules;
     private final NotificationService notificationService;
     private final AccountRepository accountRepository;
+    private final CommercialLifecycleService commercialLifecycleService;
     private final OriginalCostFreezeService originalCostFreezeService;
     private final PnlCalculationService pnlCalculationService;
 
@@ -55,6 +57,7 @@ public class BoqApprovalService {
         boqAuthHelper.requireSubmitRole(principal);
 
         BoqDocument doc = findDocument(boqId);
+        commercialLifecycleService.assertCommercialMutable(doc.getProject().getId());
         boqProjectRules.assertNotObsolete(doc);
         boqProjectRules.assertNotFrozen(doc.getProject().getId());
         if (doc.getStatus() != BoqDocumentStatus.DRAFT) {
@@ -81,6 +84,7 @@ public class BoqApprovalService {
     public BoqDocumentResponse approve(UUID boqId, String comments) {
         AuthPrincipal principal = boqAuthHelper.requirePrincipal();
         BoqDocument doc = findDocument(boqId);
+        commercialLifecycleService.assertCommercialMutable(doc.getProject().getId());
         boqProjectRules.assertNotObsolete(doc);
         assertClientOwnsIfNeeded(principal, doc);
         boqAuthHelper.requireApproverForStatus(principal, doc.getStatus());
@@ -131,6 +135,7 @@ public class BoqApprovalService {
     public BoqDocumentResponse reject(UUID boqId, String comments) {
         AuthPrincipal principal = boqAuthHelper.requirePrincipal();
         BoqDocument doc = findDocument(boqId);
+        commercialLifecycleService.assertCommercialMutable(doc.getProject().getId());
         assertClientOwnsIfNeeded(principal, doc);
         boqAuthHelper.requireApproverForStatus(principal, doc.getStatus());
 
@@ -239,6 +244,7 @@ public class BoqApprovalService {
         AuthPrincipal principal = boqAuthHelper.requirePrincipal();
         boqAuthHelper.requireSubmitRole(principal);
         BoqDocument doc = findDocument(boqId);
+        commercialLifecycleService.assertCommercialMutable(doc.getProject().getId());
         boqProjectRules.assertNotFrozen(doc.getProject().getId());
         throw new BadRequestException(
                 "Separate revisions are not used. Save a new survey BOQ to replace the pending version.");

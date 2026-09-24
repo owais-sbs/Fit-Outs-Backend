@@ -14,6 +14,9 @@ public interface SubcontractorPackageRepository extends JpaRepository<Subcontrac
 
     Optional<SubcontractorPackage> findByBoqLineIdAndCompanyId(UUID boqLineId, UUID companyId);
 
+    Optional<SubcontractorPackage> findFirstByProjectIdAndCompanyIdAndTradePackageCodeOrderByCreatedAtAsc(
+            Long projectId, UUID companyId, String tradePackageCode);
+
     List<SubcontractorPackage> findByAppointedAccountIdAndCompanyIdOrderByCreatedAtDesc(
             Long appointedAccountId, UUID companyId);
 

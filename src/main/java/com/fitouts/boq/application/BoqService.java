@@ -21,6 +21,7 @@ import com.fitouts.boq.domain.BoqDocument;
 import com.fitouts.boq.domain.BoqDocumentRepository;
 import com.fitouts.boq.domain.BoqLine;
 import com.fitouts.boq.domain.BoqLineRepository;
+import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
 import com.fitouts.qto.application.QtoService;
@@ -57,11 +58,13 @@ public class BoqService {
     private final PortalAccessHelper portalAccess;
     private final BoqProjectRules boqProjectRules;
     private final WorkItemRepository workItemRepository;
+    private final CommercialLifecycleService commercialLifecycleService;
     private final ProjectCommercialRepository projectCommercialRepository;
 
     public BoqDocumentResponse generateFromQto(UUID sessionId) {
         QtoSession session = qtoService.findSession(sessionId);
         Long projectId = session.getProject().getId();
+        commercialLifecycleService.assertCommercialMutable(projectId);
         boqProjectRules.assertNotFrozen(projectId);
 
         Optional<BoqDocument> liveDraft = boqProjectRules.findLiveDraft(projectId);
@@ -83,6 +86,7 @@ public class BoqService {
     public BoqDocumentResponse saveFromSurvey(BoqSurveySaveRequest request) {
         UUID companyId = CompanyContext.get();
         Project project = projectService.getById(request.getProjectId());
+        commercialLifecycleService.assertCommercialMutable(project.getId());
         boqProjectRules.assertNotFrozen(project.getId());
 
         Optional<BoqDocument> liveDraft = boqProjectRules.findLiveDraft(project.getId());
@@ -108,6 +112,7 @@ public class BoqService {
 
     public BoqDocumentResponse update(UUID id, BoqUpdateRequest request) {
         BoqDocument doc = findDocument(id);
+        commercialLifecycleService.assertCommercialMutable(doc.getProject().getId());
         assertEditable(doc);
         if (request.getNotes() != null) {
             doc.setNotes(request.getNotes());
@@ -121,6 +126,7 @@ public class BoqService {
 
     public BoqDocumentResponse finalizeBoq(UUID id) {
         BoqDocument doc = findDocument(id);
+        commercialLifecycleService.assertCommercialMutable(doc.getProject().getId());
         boqProjectRules.assertNotObsolete(doc);
         Long projectId = doc.getProject().getId();
         Optional<BoqDocument> approved = boqProjectRules.findApproved(projectId);

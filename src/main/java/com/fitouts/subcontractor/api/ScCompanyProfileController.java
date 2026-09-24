@@ -41,6 +41,15 @@ public class ScCompanyProfileController extends BaseController {
         }
     }
 
+    @PostMapping("/api/subcontractor/company-profile/submit-for-review")
+    public Object submitForReview() {
+        try {
+            return successResponse(profileService.submitForPrequalificationReview());
+        } catch (Exception e) {
+            return failureResponse("Failed to submit for prequalification review", e.getMessage());
+        }
+    }
+
     @GetMapping("/api/subcontractor/company-profile/trade-categories")
     public Object tradeCategories() {
         try {
@@ -120,6 +129,19 @@ public class ScCompanyProfileController extends BaseController {
         }
     }
 
+    @PostMapping(value = "/api/subcontractor/workers/{uuid}/documents/{docType}",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Object uploadWorkerDocument(
+            @PathVariable java.util.UUID uuid,
+            @PathVariable String docType,
+            @RequestParam("file") MultipartFile file) {
+        try {
+            return successResponse(profileService.uploadWorkerDocument(uuid, parseWorkerDocType(docType), file));
+        } catch (Exception e) {
+            return failureResponse("Failed to upload worker document", e.getMessage());
+        }
+    }
+
     @GetMapping("/api/sc-companies/{accountId}/appointment-eligibility")
     public Object appointmentEligibility(
             @PathVariable Long accountId,
@@ -133,5 +155,9 @@ public class ScCompanyProfileController extends BaseController {
 
     private static ScComplianceDocType parseDocType(String raw) {
         return ScComplianceDocType.valueOf(raw.trim().toUpperCase());
+    }
+
+    private static com.fitouts.subcontractor.domain.ScWorkerDocType parseWorkerDocType(String raw) {
+        return com.fitouts.subcontractor.domain.ScWorkerDocType.valueOf(raw.trim().toUpperCase());
     }
 }

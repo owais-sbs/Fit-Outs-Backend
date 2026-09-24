@@ -35,6 +35,7 @@ import com.fitouts.boq.domain.BoqLineRepository;
 import com.fitouts.commercialapproval.application.CommercialApprovalService;
 import com.fitouts.commercialapproval.domain.CommercialApprovalRun;
 import com.fitouts.commercialapproval.domain.CommercialEventType;
+import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.drawing.application.FileStorageService;
 import com.fitouts.notification.application.NotificationService;
 import com.fitouts.profitloss.application.PnlCalculationService;
@@ -123,12 +124,17 @@ class VariationModuleTest {
         when(variationBoqChangeRepository.findByVariationUuidOrderByCreatedAtAsc(any()))
                 .thenReturn(List.of());
 
+        CommercialLifecycleService commercialLifecycleService = mock(CommercialLifecycleService.class);
+        org.mockito.Mockito.doNothing().when(commercialLifecycleService).assertCommercialMutable(any());
+
         service = new VariationService(
                 variationRepository, lineRepository, linkRepository, attachmentRepository,
                 eventRepository, commercialRepository, projectService, boqProjectRules,
                 boqLineRepository, workItemRepository, fileStorageService,
                 commercialApprovalService, notificationService, accountRepository,
                 rebaselineService, variationBoqApplyService, variationBoqChangeRepository,
+                rebaselineService, commercialLifecycleService,
+                variationBoqApplyService, variationBoqChangeRepository,
                 mock(PnlCalculationService.class));
 
         Project project = new Project();

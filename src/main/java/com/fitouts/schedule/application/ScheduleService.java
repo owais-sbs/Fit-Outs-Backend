@@ -25,6 +25,7 @@ import com.fitouts.account.domain.AccountRepository;
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.billing.application.BillingService;
+import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.holdpoint.application.HoldPointGuardService;
 import com.fitouts.drawing.application.FileStorageService;
 import com.fitouts.planning.application.PlanningService;
@@ -96,6 +97,7 @@ public class ScheduleService {
     private final ScPortalAccessService portalAccessService;
     private final ActivityMaterialIssueService activityMaterialIssueService;
     private final ScheduleRescheduleService scheduleRescheduleService;
+    private final CommercialLifecycleService commercialLifecycleService;
 
     @Transactional(readOnly = true)
     public ProjectScheduleResponse getSchedule(Long projectId) {
@@ -166,6 +168,7 @@ public class ScheduleService {
     @Transactional
     public ScheduleActivityResponse createActivity(Long projectId, ScheduleActivityRequest request) {
         AuthPrincipal principal = requireStaff();
+        commercialLifecycleService.assertNotArchived(projectId);
         Project project = requireProject(projectId);
         validateActivityRequest(request);
 
@@ -184,6 +187,7 @@ public class ScheduleService {
 
     @Transactional
     public ScheduleActivityResponse createActivityFromRoomTask(Long projectId, ScheduleFromRoomTaskRequest request) {
+        commercialLifecycleService.assertNotArchived(projectId);
         if (request == null || request.getRoomTaskId() == null) {
             throw new BadRequestException("roomTaskId is required");
         }
@@ -215,6 +219,7 @@ public class ScheduleService {
     public ScheduleActivityResponse updateActivity(UUID activityUuid, ScheduleActivityRequest request) {
         requireStaff();
         ScheduleActivity activity = requireActivity(activityUuid);
+        commercialLifecycleService.assertNotArchived(activity.getProjectId());
         if (request.getStartDate() != null && request.getEndDate() != null
                 && request.getEndDate().isBefore(request.getStartDate())) {
             throw new BadRequestException("endDate must be on or after startDate");
@@ -243,6 +248,7 @@ public class ScheduleService {
         requireStaff();
         ScheduleActivity activity = requireActivity(activityUuid);
         Long projectId = activity.getProjectId();
+        commercialLifecycleService.assertNotArchived(projectId);
         dependencyRepository.deleteByPredecessorUuidOrSuccessorUuid(activityUuid, activityUuid);
         activityRepository.delete(activity);
         refreshCpmQuietly(projectId);
@@ -251,6 +257,7 @@ public class ScheduleService {
     @Transactional
     public ScheduleDependencyResponse addDependency(Long projectId, ScheduleDependencyRequest request) {
         requireStaff();
+        commercialLifecycleService.assertNotArchived(projectId);
         Project project = requireProject(projectId);
         if (request.getPredecessorUuid() == null || request.getSuccessorUuid() == null) {
             throw new BadRequestException("predecessorUuid and successorUuid are required");
@@ -291,6 +298,7 @@ public class ScheduleService {
                 .orElseThrow(() -> new NotFoundException("Dependency not found"));
         assertCompanyId(dep.getCompanyId());
         Long projectId = dep.getProjectId();
+        commercialLifecycleService.assertNotArchived(projectId);
         dependencyRepository.delete(dep);
         refreshCpmQuietly(projectId);
     }
@@ -298,6 +306,7 @@ public class ScheduleService {
     @Transactional
     public ProjectScheduleResponse publish(Long projectId) {
         requireStaff();
+        commercialLifecycleService.assertNotArchived(projectId);
         requireProject(projectId);
         planningService.assertCanPublishGantt(projectId);
         UUID companyId = CompanyContext.get();
@@ -316,6 +325,7 @@ public class ScheduleService {
     @Transactional
     public ScheduleBaselineResponse createBaseline(Long projectId, ScheduleBaselineRequest request) {
         AuthPrincipal principal = requireStaff();
+        commercialLifecycleService.assertNotArchived(projectId);
         UUID companyId = CompanyContext.get();
         String name = StringUtils.hasText(request.getName())
                 ? request.getName().trim()
@@ -326,6 +336,7 @@ public class ScheduleService {
 
     @Transactional
     public ScheduleBaselineResponse createBaselineForSystem(Long projectId, String name, Long actorAccountId) {
+        commercialLifecycleService.assertNotArchived(projectId);
         Project project = requireProject(projectId);
         UUID companyId = CompanyContext.get();
         String finalName = StringUtils.hasText(name)
@@ -390,6 +401,7 @@ public class ScheduleService {
     public ProgressUpdateResponse postProgress(UUID activityUuid, ProgressUpdateRequest request) {
         AuthPrincipal principal = requireAuthenticated();
         ScheduleActivity activity = requireActivity(activityUuid);
+        commercialLifecycleService.assertNotArchived(activity.getProjectId());
         assertCanReportProgress(principal, activity);
 
         if (request.getPercentComplete() == null) {
@@ -451,6 +463,7 @@ public class ScheduleService {
         }
         ActivityProgressUpdate update = progressRepository.findById(progressUuid)
                 .orElseThrow(() -> new NotFoundException("Progress update not found"));
+        commercialLifecycleService.assertNotArchived(update.getProjectId());
         if (!update.getCompanyId().equals(CompanyContext.get())) {
             throw new ForbiddenException("Progress update not in your company");
         }

@@ -25,6 +25,7 @@ import com.fitouts.subcontractor.domain.ScSubmittalRepository;
 import com.fitouts.subcontractor.domain.ScSubmittalStatus;
 import com.fitouts.subcontractor.domain.SubcontractorPackage;
 import com.fitouts.subcontractor.domain.SubcontractorPackageRepository;
+import com.fitouts.completion.application.CommercialLifecycleService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -36,6 +37,7 @@ public class ScSubmittalService {
     private final SubcontractorPackageRepository packageRepository;
     private final ScPortalAccessService portalAccessService;
     private final ProjectService projectService;
+    private final CommercialLifecycleService commercialLifecycleService;
 
     @Transactional(readOnly = true)
     public List<ScSubmittalResponse> listMySubmittals() {
@@ -59,6 +61,7 @@ public class ScSubmittalService {
             throw new BadRequestException("title and projectId are required");
         }
         requireProject(request.getProjectId());
+        commercialLifecycleService.assertNotArchived(request.getProjectId());
         if (request.getPackageUuid() != null) {
             SubcontractorPackage pkg = packageRepository.findByUuidAndCompanyId(request.getPackageUuid(), requireCompany())
                     .orElseThrow(() -> new NotFoundException("Package not found"));

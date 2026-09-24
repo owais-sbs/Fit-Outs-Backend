@@ -5,6 +5,7 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -20,6 +21,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
+import com.fitouts.checklist.mapper.SiteVisitEstimateMapper;
 import com.fitouts.drawing.application.FileStorageService;
 import com.fitouts.shared.context.CompanyContext;
 import com.fitouts.shared.error.BadRequestException;
@@ -43,8 +45,11 @@ import com.fitouts.subcontractor.api.ScOrganizationReferenceResponse;
 import com.fitouts.subcontractor.api.ScPortalContextResponse;
 import com.fitouts.subcontractor.api.ScPortalTeamMemberResponse;
 import com.fitouts.subcontractor.api.ScUpdateTeamMemberRequest;
+import com.fitouts.subcontractor.api.ScVendorSummaryResponse;
 import com.fitouts.subcontractor.api.ScWorkerRequest;
 import com.fitouts.subcontractor.api.ScWorkerResponse;
+import com.fitouts.subcontractor.api.ScNominateWorkerRequest;
+import com.fitouts.subcontractor.api.ScPackageWorkerResponse;
 import com.fitouts.subcontractor.domain.ScOrgDocumentCode;
 import com.fitouts.subcontractor.domain.ScOrganization;
 import com.fitouts.subcontractor.domain.ScCompanyProfile;
@@ -53,10 +58,18 @@ import com.fitouts.subcontractor.domain.ScCompanyStatus;
 import com.fitouts.subcontractor.domain.ScComplianceDocType;
 import com.fitouts.subcontractor.domain.ScComplianceDocument;
 import com.fitouts.subcontractor.domain.ScComplianceDocumentRepository;
+import com.fitouts.subcontractor.domain.ScPackageAward;
+import com.fitouts.subcontractor.domain.ScPackageAwardRepository;
+import com.fitouts.subcontractor.domain.ScPackageWorker;
+import com.fitouts.subcontractor.domain.ScPackageWorkerRepository;
+import com.fitouts.subcontractor.domain.ScPackageWorkerStatus;
+import com.fitouts.subcontractor.domain.ScPortalUser;
 import com.fitouts.subcontractor.domain.ScWorker;
+import com.fitouts.subcontractor.domain.ScWorkerDocType;
 import com.fitouts.subcontractor.domain.ScWorkerRepository;
 import com.fitouts.subcontractor.domain.SubcontractorPackage;
 import com.fitouts.subcontractor.domain.SubcontractorPackageRepository;
+import com.fitouts.subcontractor.domain.SubcontractorPackageStatus;
 
 import lombok.RequiredArgsConstructor;
 
@@ -93,6 +106,8 @@ public class ScCompanyProfileService {
     private final ScOrganizationProfileService organizationProfileService;
     private final ScPortalAccessService portalAccessService;
     private final ScPortalTeamService portalTeamService;
+    private final ScPackageWorkerRepository packageWorkerRepository;
+    private final ScPackageAwardRepository awardRepository;
 
     @Transactional
     public ScCompanyProfile ensureProfileForAccount(Long accountId) {
@@ -141,6 +156,14 @@ public class ScCompanyProfileService {
     }
 
     @Transactional
+    public ScVendorSummaryResponse submitForPrequalificationReview() {
+        AuthPrincipal principal = requireSubcontractor();
+        portalAccessService.requireOrgAdmin(principal);
+        ensureProfileForAccount(principal.getAccountId());
+        return vendorService.submitForPrequalificationReview();
+    }
+
+    @Transactional
     public ScCompanyProfileResponse uploadTradeLicence(MultipartFile file) {
         AuthPrincipal principal = requireSubcontractor();
         portalAccessService.requireOrgAdmin(principal);
@@ -183,6 +206,7 @@ public class ScCompanyProfileService {
             profileRepository.save(profile);
         }
         return toComplianceResponse(complianceRepository.save(doc), isCoreInsurance(docType));
+        return toComplianceResponseForProfile(complianceRepository.save(doc), profile);
     }
 
     @Transactional
@@ -207,6 +231,7 @@ public class ScCompanyProfileService {
             profileRepository.save(profile);
         }
         return toComplianceResponse(complianceRepository.save(doc), isCoreInsurance(docType));
+        return toComplianceResponseForProfile(complianceRepository.save(doc), profile);
     }
 
     @Transactional
@@ -254,6 +279,124 @@ public class ScCompanyProfileService {
         ScWorker worker = workerRepository.findByUuidAndProfileUuid(workerUuid, profile.getUuid())
                 .orElseThrow(() -> new NotFoundException("Worker not found"));
         workerRepository.delete(worker);
+    }
+
+    @Transactional
+    public ScWorkerResponse uploadWorkerDocument(java.util.UUID workerUuid, ScWorkerDocType docType, MultipartFile file) {
+        AuthPrincipal principal = requireSubcontractor();
+        portalAccessService.requireOrgAdmin(principal);
+        ScCompanyProfile profile = ensureProfileForAccount(principal.getAccountId());
+        if (docType == null) {
+            throw new BadRequestException("Document type is required");
+        }
+        if (file == null || file.isEmpty()) {
+            throw new BadRequestException("File is required");
+        }
+        ScWorker worker = workerRepository.findByUuidAndProfileUuid(workerUuid, profile.getUuid())
+                .orElseThrow(() -> new NotFoundException("Worker not found"));
+        String path = fileStorageService.store(file, "sc-worker/" + worker.getUuid());
+        String previous = switch (docType) {
+            case PASSPORT -> worker.getPassportFilePath();
+            case VISA -> worker.getVisaFilePath();
+            case EMIRATES_ID -> worker.getEmiratesIdFilePath();
+            case INSURANCE -> worker.getInsuranceFilePath();
+            case INDUCTION -> worker.getInductionFilePath();
+            case ACCESS_CARD -> worker.getAccessCardFilePath();
+            case TRADE_CERT -> worker.getTradeCertFilePath();
+            case PHOTO -> worker.getPhotoFilePath();
+        };
+        switch (docType) {
+            case PASSPORT -> worker.setPassportFilePath(path);
+            case VISA -> worker.setVisaFilePath(path);
+            case EMIRATES_ID -> worker.setEmiratesIdFilePath(path);
+            case INSURANCE -> worker.setInsuranceFilePath(path);
+            case INDUCTION -> worker.setInductionFilePath(path);
+            case ACCESS_CARD -> worker.setAccessCardFilePath(path);
+            case TRADE_CERT -> worker.setTradeCertFilePath(path);
+            case PHOTO -> worker.setPhotoFilePath(path);
+        }
+        ScWorker saved = workerRepository.save(worker);
+        if (StringUtils.hasText(previous) && !previous.equals(path)) {
+            fileStorageService.deleteIfExists(previous);
+        }
+        return toWorkerResponse(saved);
+    }
+
+    @Transactional
+    public ScPackageWorkerResponse nominateWorkerToPackage(java.util.UUID packageUuid, ScNominateWorkerRequest request) {
+        AuthPrincipal principal = requireSubcontractor();
+        portalAccessService.requireOrgAdmin(principal);
+        ScPortalUser portalUser = portalAccessService.requireActivePortalUser(principal);
+        ScCompanyProfile profile = ensureProfileForAccount(principal.getAccountId());
+        if (request == null || request.getWorkerUuid() == null) {
+            throw new BadRequestException("workerUuid is required");
+        }
+        SubcontractorPackage pkg = packageRepository.findByUuidAndCompanyId(packageUuid, requireCompany())
+                .orElseThrow(() -> new NotFoundException("Package not found"));
+        ScPackageAward award = awardRepository.findByPackageUuid(packageUuid)
+                .orElseThrow(() -> new BadRequestException("Package is not awarded"));
+        if (!award.getOrganizationUuid().equals(portalUser.getOrganizationUuid())) {
+            throw new ForbiddenException("Not appointed to this package");
+        }
+        if (pkg.getStatus() != SubcontractorPackageStatus.APPOINTED
+                && pkg.getStatus() != SubcontractorPackageStatus.IN_PROGRESS) {
+            throw new BadRequestException("Workers can only be nominated after award/appointment");
+        }
+        ScWorker worker = workerRepository.findByUuidAndProfileUuid(request.getWorkerUuid(), profile.getUuid())
+                .orElseThrow(() -> new NotFoundException("Worker not found"));
+        SiteEligibility eligibility = computeSiteEligibility(worker);
+        if (!eligibility.eligible()) {
+            throw new BadRequestException(eligibility.note());
+        }
+        ScPackageWorker row = packageWorkerRepository.findByPackageUuidAndWorkerUuid(packageUuid, worker.getUuid())
+                .orElseGet(ScPackageWorker::new);
+        row.setPackageUuid(packageUuid);
+        row.setWorkerUuid(worker.getUuid());
+        row.setOrganizationUuid(portalUser.getOrganizationUuid());
+        row.setCompanyId(requireCompany());
+        row.setNominatedByAccountId(principal.getAccountId());
+        row.setStatus(ScPackageWorkerStatus.SITE_ELIGIBLE);
+        row.setNotes(trimToNull(request.getNotes()));
+        return toPackageWorkerResponse(packageWorkerRepository.save(row), worker, eligibility);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ScPackageWorkerResponse> listPackageWorkers(java.util.UUID packageUuid) {
+        AuthPrincipal principal = requireSubcontractor();
+        portalAccessService.requireExecutionAccess(principal);
+        ScPortalUser portalUser = portalAccessService.requireActivePortalUser(principal);
+        SubcontractorPackage pkg = packageRepository.findByUuidAndCompanyId(packageUuid, requireCompany())
+                .orElseThrow(() -> new NotFoundException("Package not found"));
+        ScPackageAward award = awardRepository.findByPackageUuid(packageUuid).orElse(null);
+        if (award == null || !award.getOrganizationUuid().equals(portalUser.getOrganizationUuid())) {
+            throw new ForbiddenException("Not appointed to this package");
+        }
+        return packageWorkerRepository.findByPackageUuidAndCompanyIdOrderByCreatedAtAsc(packageUuid, requireCompany())
+                .stream()
+                .map(row -> {
+                    ScWorker worker = workerRepository.findById(row.getWorkerUuid()).orElse(null);
+                    SiteEligibility eligibility = worker == null
+                            ? new SiteEligibility(false, "Worker missing")
+                            : computeSiteEligibility(worker);
+                    return toPackageWorkerResponse(row, worker, eligibility);
+                })
+                .toList();
+    }
+
+    private ScPackageWorkerResponse toPackageWorkerResponse(
+            ScPackageWorker row, ScWorker worker, SiteEligibility eligibility) {
+        return ScPackageWorkerResponse.builder()
+                .uuid(row.getUuid())
+                .packageUuid(row.getPackageUuid())
+                .workerUuid(row.getWorkerUuid())
+                .workerName(worker != null ? worker.getFullName() : null)
+                .trade(worker != null ? worker.getTrade() : null)
+                .status(row.getStatus() != null ? row.getStatus().name() : null)
+                .siteEligible(eligibility.eligible())
+                .siteEligibilityNote(eligibility.note())
+                .notes(row.getNotes())
+                .nominatedAt(row.getCreatedAt())
+                .build();
     }
 
     @Transactional(readOnly = true)
@@ -375,6 +518,8 @@ public class ScCompanyProfileService {
 
     private ScCompanyProfileResponse toProfileResponse(ScCompanyProfile profile, AuthPrincipal principal) {
         List<ScComplianceDocument> docs = complianceRepository.findByProfileUuidOrderByDocumentTypeAsc(profile.getUuid());
+        List<String> trades = readCategories(profile.getTradeCategories());
+        Set<ScComplianceDocType> specialistRequired = specialistDocsForTrades(trades);
         List<ScComplianceDocumentResponse> docResponses = new ArrayList<>();
         for (ScComplianceDocType type : ScComplianceDocType.values()) {
             ScComplianceDocument doc = docs.stream()
@@ -384,6 +529,10 @@ public class ScCompanyProfileService {
             docResponses.add(toComplianceResponse(
                     doc != null ? doc : placeholderDoc(profile.getUuid(), type),
                     isCoreInsurance(type)));
+            String applicability = documentApplicability(type, specialistRequired, trades);
+            boolean required = "MANDATORY".equals(applicability);
+                    required,
+                    applicability));
         }
         return ScCompanyProfileResponse.builder()
                 .uuid(profile.getUuid())
@@ -401,12 +550,57 @@ public class ScCompanyProfileService {
                 .accountsContactEmail(profile.getAccountsContactEmail())
                 .accountsContactPhone(profile.getAccountsContactPhone())
                 .tradeCategories(readCategories(profile.getTradeCategories()))
+                .tradeCategories(trades)
                 .declaredCapacity(profile.getDeclaredCapacity())
                 .status(profile.getStatus().name())
                 .complianceStatus(eligibilityService.computeComplianceStatus(profile).name())
                 .complianceDocuments(docResponses)
                 .organizationExtension(organizationProfileService.getExtension(principal, profile))
                 .build();
+    }
+
+    private static Set<ScComplianceDocType> specialistDocsForTrades(List<String> trades) {
+        Set<ScComplianceDocType> required = new java.util.HashSet<>();
+        if (trades == null) {
+            return required;
+        }
+        for (String trade : trades) {
+            if (trade == null) {
+                continue;
+            }
+            String lower = trade.toLowerCase();
+            if (lower.contains("fire")) {
+                required.add(ScComplianceDocType.CIVIL_DEFENCE);
+            }
+            if (lower.contains("security") || lower.contains("cctv") || lower.contains("low voltage")) {
+                required.add(ScComplianceDocType.SIRA);
+            }
+            if (lower.contains("electrical")) {
+                required.add(ScComplianceDocType.DEWA_ELECTRICAL);
+            }
+            ScEligibilityService.mapSpecialLicenceText(trade).ifPresent(required::add);
+        }
+        return required;
+    }
+
+    private static String documentApplicability(
+            ScComplianceDocType type, Set<ScComplianceDocType> specialistRequired, List<String> trades) {
+        if (isCoreInsurance(type)) {
+            return "MANDATORY";
+        }
+        boolean specialistType = type == ScComplianceDocType.CIVIL_DEFENCE
+                || type == ScComplianceDocType.SIRA
+                || type == ScComplianceDocType.DEWA_ELECTRICAL;
+        if (specialistType) {
+            if (specialistRequired.contains(type)) {
+                return "MANDATORY";
+            }
+            if (trades != null && !trades.isEmpty()) {
+                return "NOT_APPLICABLE";
+            }
+            return "OPTIONAL";
+        }
+        return "OPTIONAL";
     }
 
     private ScComplianceDocument placeholderDoc(java.util.UUID profileUuid, ScComplianceDocType type) {
@@ -417,6 +611,16 @@ public class ScCompanyProfileService {
     }
 
     private ScComplianceDocumentResponse toComplianceResponse(ScComplianceDocument doc, boolean required) {
+    private ScComplianceDocumentResponse toComplianceResponseForProfile(
+            ScComplianceDocument doc, ScCompanyProfile profile) {
+        List<String> trades = readCategories(profile.getTradeCategories());
+        Set<ScComplianceDocType> specialist = specialistDocsForTrades(trades);
+        String applicability = documentApplicability(doc.getDocumentType(), specialist, trades);
+        return toComplianceResponse(doc, "MANDATORY".equals(applicability), applicability);
+    }
+
+    private ScComplianceDocumentResponse toComplianceResponse(
+            ScComplianceDocument doc, boolean required, String applicability) {
         return ScComplianceDocumentResponse.builder()
                 .uuid(doc.getUuid())
                 .documentType(doc.getDocumentType().name())
@@ -425,6 +629,7 @@ public class ScCompanyProfileService {
                 .expiryDate(formatDate(doc.getExpiryDate()))
                 .filePath(doc.getFilePath())
                 .requiredForAppointment(required)
+                .applicability(applicability)
                 .itemStatus(ScEligibilityService.itemStatus(doc.getExpiryDate(), doc.getFilePath(), required))
                 .build();
     }
@@ -447,7 +652,19 @@ public class ScCompanyProfileService {
                 .active(worker.isActive())
                 .siteEligible(eligibility.eligible)
                 .siteEligibilityNote(eligibility.note)
+                .photoFileUrl(toFileUrl(worker.getPhotoFilePath()))
+                .passportFileUrl(toFileUrl(worker.getPassportFilePath()))
+                .visaFileUrl(toFileUrl(worker.getVisaFilePath()))
+                .emiratesIdFileUrl(toFileUrl(worker.getEmiratesIdFilePath()))
+                .insuranceFileUrl(toFileUrl(worker.getInsuranceFilePath()))
+                .inductionFileUrl(toFileUrl(worker.getInductionFilePath()))
+                .accessCardFileUrl(toFileUrl(worker.getAccessCardFilePath()))
+                .tradeCertFileUrl(toFileUrl(worker.getTradeCertFilePath()))
                 .build();
+    }
+
+    private static String toFileUrl(String path) {
+        return StringUtils.hasText(path) ? SiteVisitEstimateMapper.toFileUrl(path) : null;
     }
 
     private record SiteEligibility(boolean eligible, String note) {}

@@ -39,6 +39,7 @@ import com.fitouts.billing.domain.BillingMilestoneRepository;
 import com.fitouts.billing.domain.BillingStatus;
 import com.fitouts.billing.domain.PaymentRequest;
 import com.fitouts.billing.domain.PaymentRequestRepository;
+import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
 import com.fitouts.schedule.domain.ScheduleActivity;
@@ -61,6 +62,7 @@ public class BillingService {
     private final ScheduleActivityRepository activityRepository;
     private final BillingPaymentEmailService billingPaymentEmailService;
     private final AccountRepository accountRepository;
+    private final CommercialLifecycleService commercialLifecycleService;
     private final Set<UUID> activeReminderProcessing = ConcurrentHashMap.newKeySet();
 
     @Transactional(readOnly = true)
@@ -190,6 +192,7 @@ public class BillingService {
     @Transactional
     public BillingMilestoneResponse createMilestone(Long projectId, BillingMilestoneRequest request) {
         AuthPrincipal principal = requireFinanceOrAdmin();
+        commercialLifecycleService.assertCommercialMutable(projectId);
         Project project = requireProject(projectId);
         if (request == null || !StringUtils.hasText(request.getName())) {
             throw new BadRequestException("name is required");
@@ -212,6 +215,7 @@ public class BillingService {
     @Transactional
     public BillingMilestoneResponse updateMilestone(Long projectId, UUID uuid, BillingMilestoneRequest request) {
         requireFinanceOrAdmin();
+        commercialLifecycleService.assertCommercialMutable(projectId);
         requireProject(projectId);
         BillingMilestone milestone = requireMilestone(uuid, projectId);
         if (milestone.getStatus() != BillingStatus.DRAFT) {
@@ -244,6 +248,7 @@ public class BillingService {
     @Transactional
     public void deleteMilestone(Long projectId, UUID uuid) {
         requireFinanceOrAdmin();
+        commercialLifecycleService.assertCommercialMutable(projectId);
         requireProject(projectId);
         BillingMilestone milestone = requireMilestone(uuid, projectId);
         if (milestone.getStatus() != BillingStatus.DRAFT) {
@@ -259,6 +264,7 @@ public class BillingService {
     @Transactional
     public PaymentRequestResponse submitForApproval(Long projectId, UUID milestoneUuid, RequestPaymentBody body) {
         AuthPrincipal principal = requireFinanceOrAdmin();
+        commercialLifecycleService.assertCommercialMutable(projectId);
         requireProject(projectId);
         BillingMilestone milestone = requireMilestone(milestoneUuid, projectId);
         if (milestone.getStatus() != BillingStatus.DRAFT) {
@@ -292,6 +298,7 @@ public class BillingService {
     @Transactional
     public PaymentRequestResponse requestPayment(Long projectId, UUID milestoneUuid, RequestPaymentBody body) {
         AuthPrincipal principal = requireFinanceOrAdmin();
+        commercialLifecycleService.assertCommercialMutable(projectId);
         requireProject(projectId);
         BillingMilestone milestone = requireMilestone(milestoneUuid, projectId);
 
@@ -312,6 +319,7 @@ public class BillingService {
     public PaymentRequestResponse submit(UUID paymentRequestUuid) {
         AuthPrincipal principal = requireFinanceOrAdmin();
         PaymentRequest pr = requirePayment(paymentRequestUuid);
+        commercialLifecycleService.assertCommercialMutable(pr.getProjectId());
         if (pr.getStatus() != BillingStatus.DRAFT) {
             throw new BadRequestException("Only DRAFT payment requests can be submitted");
         }
@@ -351,6 +359,7 @@ public class BillingService {
     public PaymentRequestResponse approve(UUID paymentRequestUuid, PaymentApproveRequest request) {
         AuthPrincipal principal = requireAuthenticated();
         PaymentRequest pr = requirePayment(paymentRequestUuid);
+        commercialLifecycleService.assertCommercialMutable(pr.getProjectId());
         BillingMilestone milestone = requireMilestoneByUuid(pr.getMilestoneUuid());
         Project project = requireProject(milestone.getProjectId());
         String comments = request != null ? request.getComments() : null;
@@ -415,6 +424,7 @@ public class BillingService {
     public PaymentRequestResponse acceptPaymentRequest(UUID paymentRequestUuid) {
         AuthPrincipal principal = requireAuthenticated();
         PaymentRequest pr = requirePayment(paymentRequestUuid);
+        commercialLifecycleService.assertCommercialMutable(pr.getProjectId());
         BillingMilestone milestone = requireMilestoneByUuid(pr.getMilestoneUuid());
         Project project = requireProject(milestone.getProjectId());
 
@@ -455,6 +465,7 @@ public class BillingService {
             throw new BadRequestException("reason is required");
         }
         PaymentRequest pr = requirePayment(paymentRequestUuid);
+        commercialLifecycleService.assertCommercialMutable(pr.getProjectId());
         String rejectStep = "CLIENT";
         if (pr.getStatus() == BillingStatus.PENDING_PM) {
             requireProjectManagerRole(principal);
@@ -483,6 +494,7 @@ public class BillingService {
     public PaymentRequestResponse markPaid(UUID paymentRequestUuid) {
         AuthPrincipal principal = requireFinanceOrAdmin();
         PaymentRequest pr = requirePayment(paymentRequestUuid);
+        commercialLifecycleService.assertCommercialMutable(pr.getProjectId());
         if (pr.getStatus() != BillingStatus.CLIENT_ACCEPTED && pr.getStatus() != BillingStatus.PART_PAID) {
             throw new BadRequestException("Only CLIENT_ACCEPTED or PART_PAID payment requests can be marked paid");
         }
@@ -501,6 +513,7 @@ public class BillingService {
     public PaymentRequestResponse sendReminder(UUID paymentRequestUuid) {
         AuthPrincipal principal = requireStaff();
         PaymentRequest pr = requirePayment(paymentRequestUuid);
+        commercialLifecycleService.assertCommercialMutable(pr.getProjectId());
 
         if (pr.getReminderSentAt() != null) {
             throw new BadRequestException("Payment reminder email has already been sent for this payment request.");
@@ -560,6 +573,12 @@ public class BillingService {
     public boolean processSinglePaymentReminder(UUID paymentRequestUuid) {
         PaymentRequest pr = paymentRequestRepository.findById(paymentRequestUuid).orElse(null);
         if (pr == null || pr.getReminderSentAt() != null || pr.getStatus() != BillingStatus.CLIENT_ACCEPTED) {
+            return false;
+        }
+
+        try {
+            commercialLifecycleService.assertCommercialMutable(pr.getProjectId());
+        } catch (ForbiddenException ex) {
             return false;
         }
 

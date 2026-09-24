@@ -18,6 +18,8 @@ import com.fitouts.company.application.CoverLetterBrandingService;
 import com.fitouts.company.domain.Company;
 import com.fitouts.company.domain.CompanyRepository;
 import com.fitouts.drawing.application.FileStorageService;
+import com.fitouts.project.domain.Project;
+import com.fitouts.project.domain.ProjectRepository;
 import com.fitouts.shared.context.CompanyContext;
 import com.fitouts.shared.error.BadRequestException;
 import com.fitouts.shared.error.ForbiddenException;
@@ -32,8 +34,11 @@ import com.fitouts.subcontractor.domain.ScPackageAward;
 import com.fitouts.subcontractor.domain.ScPackageAwardRepository;
 import com.fitouts.subcontractor.domain.ScPortalUser;
 import com.fitouts.subcontractor.domain.ScPortalUserRepository;
+import com.fitouts.subcontractor.domain.ScQuote;
+import com.fitouts.subcontractor.domain.ScQuoteRepository;
 import com.fitouts.subcontractor.domain.SubcontractorPackage;
 import com.fitouts.subcontractor.domain.SubcontractorPackageRepository;
+import com.fitouts.completion.application.CommercialLifecycleService;
 
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -47,15 +52,19 @@ public class ScContractSignatureService {
     private final ScOrganizationRepository organizationRepository;
     private final ScPortalUserRepository portalUserRepository;
     private final CompanyRepository companyRepository;
+    private final ProjectRepository projectRepository;
+    private final ScQuoteRepository quoteRepository;
     private final ScPortalAccessService portalAccessService;
     private final FileStorageService fileStorageService;
     private final SubcontractPdfService pdfService;
+    private final CommercialLifecycleService commercialLifecycleService;
 
     // ── Admin Signature Flow (Main Contractor / Staff) ─────────────────────────
 
     @Transactional
     public ScSubcontractContractResponse adminSignContract(
             Long projectId, UUID packageUuid, ScAdminSignContractRequest request, HttpServletRequest servletRequest) {
+        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requireAdmin();
         UUID companyId = requireCompany();
 
@@ -96,6 +105,7 @@ public class ScContractSignatureService {
         }
 
         ScOrganization org = organizationRepository.findById(award.getOrganizationUuid()).orElse(null);
+        Project project = projectRepository.findById(pkg.getProjectId()).orElse(null);
         OffsetDateTime adminSignedAt = OffsetDateTime.now();
         String signerName = StringUtils.hasText(request != null ? request.getSignatureName() : null)
                 ? request.getSignatureName().trim()
@@ -107,6 +117,8 @@ public class ScContractSignatureService {
         // Generate Stage 1 PDF with Admin signature embedded
         byte[] pdfBytes = pdfService.generateStage1AdminPdf(
                 pkg, award, org, signerName, signerTitle, adminSignedAt, adminSigBytesOpt.get());
+        // Generate Stage 1 PDF with Admin signature embedded (JCT cover-letter format)
+                pkg, award, org, project, signerName, signerTitle, adminSignedAt, adminSigBytesOpt.get());
 
         String pdfFileName = "contract_" + packageUuid + "_stage1.pdf";
         String contractFilePath = fileStorageService.storeBytes(
@@ -187,7 +199,130 @@ public class ScContractSignatureService {
         }
 
         ScOrganization org = organizationRepository.findById(award.getOrganizationUuid()).orElse(null);
+        refreshStoredContractPdf(pkg, award, org);
         return toResponse(pkg, award, org, portalUser);
+    }
+
+    /**
+     * Re-renders the stored contract PDF in the current JCT cover-letter format
+     * using already-captured signatures (upgrades legacy stub PDFs).
+     */
+    @Transactional
+    public void refreshStoredContractPdf(SubcontractorPackage pkg, ScPackageAward award, ScOrganization organization) {
+        if (pkg == null || award == null || !StringUtils.hasText(award.getContractFilePath())) {
+            return;
+        }
+        if (award.getAdminSignedAt() == null) {
+            return;
+        }
+        try {
+            Company company = companyRepository.findById(pkg.getCompanyId()).orElse(null);
+            byte[] adminSigBytes = null;
+            if (company != null && StringUtils.hasText(company.getSignatureImagePath())) {
+                adminSigBytes = fileStorageService.readBytes(company.getSignatureImagePath()).orElse(null);
+            }
+            if (adminSigBytes == null || adminSigBytes.length == 0) {
+                return;
+            }
+            Project project = projectRepository.findById(pkg.getProjectId()).orElse(null);
+            byte[] pdfBytes;
+            String fileName;
+            if (award.getSignedAt() != null) {
+                ScPortalUser subUser = null;
+                if (award.getSubcontractorSignedBy() != null) {
+                    subUser = portalUserRepository.findByAccountId(award.getSubcontractorSignedBy()).orElse(null);
+                }
+                byte[] subSigBytes = null;
+                if (subUser != null && StringUtils.hasText(subUser.getSignatureImagePath())) {
+                    subSigBytes = fileStorageService.readBytes(subUser.getSignatureImagePath()).orElse(null);
+                }
+                if (subSigBytes == null || subSigBytes.length == 0) {
+                    return;
+                }
+                pdfBytes = pdfService.generateStage2FinalPdf(
+                        pkg, award, organization, project,
+                        award.getAdminSignerName(), award.getAdminSignerTitle(), award.getAdminSignedAt(), adminSigBytes,
+                        award.getSubcontractorSignerName(), award.getSubcontractorSignerTitle(),
+                        award.getSignedAt(), subSigBytes);
+                fileName = "contract_" + pkg.getUuid() + "_executed.pdf";
+            } else {
+                pdfBytes = pdfService.generateStage1AdminPdf(
+                        pkg, award, organization, project,
+                        award.getAdminSignerName(), award.getAdminSignerTitle(),
+                        award.getAdminSignedAt(), adminSigBytes);
+                fileName = "contract_" + pkg.getUuid() + "_stage1.pdf";
+            }
+            String previous = award.getContractFilePath();
+            String path = fileStorageService.storeBytes(
+                    pdfBytes, fileName, pkg.getCompanyId(), pkg.getProjectId(), "sc-contracts");
+            award.setContractFilePath(path);
+            awardRepository.save(award);
+            if (StringUtils.hasText(previous) && !previous.equals(path)) {
+                fileStorageService.deleteIfExists(previous);
+            }
+        } catch (Exception ex) {
+            org.slf4j.LoggerFactory.getLogger(ScContractSignatureService.class)
+                    .warn("Could not refresh contract PDF for {}: {}", pkg.getUuid(), ex.getMessage());
+        }
+    }
+
+    // ── Response Mapping & Helpers ───────────────────────────────────────────
+
+    private ScSubcontractContractResponse toResponse(
+            SubcontractorPackage pkg, ScPackageAward award, ScOrganization org, ScPortalUser portalUser) {
+
+        ScContractStatus status = award.getContractStatus();
+        boolean adminSigned = award.getAdminSignedAt() != null;
+        boolean subSigned = award.getSignedAt() != null;
+        boolean subSigUploaded = portalUser != null && StringUtils.hasText(portalUser.getSignatureImagePath());
+        String subSigUrl = (portalUser != null && subSigUploaded)
+                ? SiteVisitEstimateMapper.toFileUrl(portalUser.getSignatureImagePath())
+                : null;
+
+        Project project = pkg.getProjectId() != null
+                ? projectRepository.findById(pkg.getProjectId()).orElse(null)
+                : null;
+        ScQuote quote = award.getQuoteUuid() != null
+                ? quoteRepository.findById(award.getQuoteUuid()).orElse(null)
+                : null;
+
+        return ScSubcontractContractResponse.builder()
+                .awardUuid(award.getUuid())
+                .packageUuid(pkg.getUuid())
+                .packageName(pkg.getName())
+                .projectId(pkg.getProjectId())
+                .projectName(project != null ? project.getName() : null)
+                .projectLocation(project != null ? project.getLocation() : null)
+                .organizationUuid(award.getOrganizationUuid())
+                .organizationName(org != null ? org.getLegalCompanyName() : null)
+                .awardedValue(award.getAwardedValue())
+                .awardedAt(award.getAwardedAt())
+                .tradePackageCode(pkg.getTradePackageCode())
+                .tradePackageName(pkg.getTradePackageName())
+                .tenderDescription(pkg.getTenderDescription())
+                .paymentTerms(pkg.getPaymentTerms())
+                .retentionPct(pkg.getRetentionPct())
+                .ldTerms(pkg.getLdTerms())
+                .plannedStart(pkg.getPlannedStart())
+                .plannedFinish(pkg.getPlannedFinish())
+                .exclusionsText(quote != null ? quote.getExclusionsText() : null)
+                .qualificationsText(quote != null ? quote.getQualificationsText() : null)
+                .contractStatus(status.name())
+                .contractFilePath(award.getContractFilePath())
+                .contractAvailable(StringUtils.hasText(award.getContractFilePath()) || award.getUuid() != null)
+                .adminSigned(adminSigned)
+                .adminSignedAt(award.getAdminSignedAt())
+                .adminSignerName(award.getAdminSignerName())
+                .adminSignerTitle(award.getAdminSignerTitle())
+                .adminSignatureAuditJson(award.getAdminSignatureAuditJson())
+                .subcontractorSignatureUploaded(subSigUploaded)
+                .subcontractorSignatureUrl(subSigUrl)
+                .signed(subSigned)
+                .signedAt(award.getSignedAt())
+                .subcontractorSignerName(award.getSubcontractorSignerName())
+                .subcontractorSignerTitle(award.getSubcontractorSignerTitle())
+                .signatureAuditJson(award.getSignatureAuditJson())
+                .build();
     }
 
     @Transactional
@@ -209,6 +344,7 @@ public class ScContractSignatureService {
 
         SubcontractorPackage pkg = packageRepository.findByUuidAndCompanyId(packageUuid, companyId)
                 .orElseThrow(() -> new NotFoundException("Subcontractor package not found"));
+        commercialLifecycleService.assertNotArchived(pkg.getProjectId());
 
         ScPackageAward award = awardRepository.findByPackageUuid(packageUuid)
                 .orElseThrow(() -> new NotFoundException("No subcontract award recorded for this package"));
@@ -245,6 +381,7 @@ public class ScContractSignatureService {
         }
 
         ScOrganization org = organizationRepository.findById(award.getOrganizationUuid()).orElse(null);
+        Project project = projectRepository.findById(pkg.getProjectId()).orElse(null);
         OffsetDateTime signedAt = OffsetDateTime.now();
         String subSignerName = request.getSignatureName().trim();
         String subSignerTitle = StringUtils.hasText(request.getSignerTitle()) ? request.getSignerTitle().trim() : "Subcontractor Representative";
@@ -254,6 +391,7 @@ public class ScContractSignatureService {
                 pkg,
                 award,
                 org,
+                project,
                 award.getAdminSignerName() != null ? award.getAdminSignerName() : "Main Contractor",
                 award.getAdminSignerTitle() != null ? award.getAdminSignerTitle() : "",
                 award.getAdminSignedAt(),

@@ -1,7 +1,9 @@
 package com.fitouts.subcontractor.api;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import com.fitouts.subcontractor.domain.SubcontractorClaimStatus;
@@ -18,6 +20,10 @@ public class SubcontractorClaimResponse {
     private UUID companyId;
     private BigDecimal claimedQty;
     private BigDecimal plannedQty;
+    private BigDecimal claimedValue;
+    private String claimNumber;
+    private LocalDate claimPeriodFrom;
+    private LocalDate claimPeriodTo;
     private String notes;
     private SubcontractorClaimStatus status;
     private Long submittedBy;
@@ -40,8 +46,17 @@ public class SubcontractorClaimResponse {
     private UUID certificateUuid;
 
     /** Enriched display fields */
+    private BigDecimal measuredQty;
+    private BigDecimal measuredValue;
+    private BigDecimal certifiedValue;
+    /** Downstream payment status from linked certificate (not a primary claim status). */
+    private String paymentStatus;
+    private List<ScClaimLineResponse> lines;
     private String packageName;
     private String projectName;
     private String subcontractorName;
     private String submittedByName;
+    private BigDecimal originalAwardValue;
+    private BigDecimal previousCertifiedAmount;
+    private BigDecimal remainingContractValue;
 }
