@@ -13,6 +13,7 @@ import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.resource.api.ResourceTypeRequest;
 import com.fitouts.resource.api.ResourceTypeResponse;
+import com.fitouts.resource.domain.ResourceKind;
 import com.fitouts.resource.domain.ResourceType;
 import com.fitouts.resource.domain.ResourceTypeRepository;
 import com.fitouts.shared.context.CompanyContext;
@@ -30,11 +31,17 @@ public class ResourceTypeService {
 
     @Transactional(readOnly = true)
     public List<ResourceTypeResponse> list() {
+        return list(null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ResourceTypeResponse> list(ResourceKind kind) {
         requireStaff();
         UUID companyId = requireCompany();
-        return repository.findByCompanyIdOrderByNameAsc(companyId).stream()
-                .map(this::toResponse)
-                .toList();
+        List<ResourceType> rows = kind != null
+                ? repository.findByCompanyIdAndKindOrderByNameAsc(companyId, kind)
+                : repository.findByCompanyIdOrderByNameAsc(companyId);
+        return rows.stream().map(this::toResponse).toList();
     }
 
     @Transactional
