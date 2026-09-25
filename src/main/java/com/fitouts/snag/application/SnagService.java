@@ -1,10 +1,13 @@
 package com.fitouts.snag.application;
 
 import java.time.OffsetDateTime;
+import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -120,6 +123,7 @@ public class SnagService {
         snag.setRaisedByClient(byClient);
         snag.setAssigneeAccountId(request.getAssigneeAccountId());
         snag.setClientVisible(byClient || Boolean.TRUE.equals(request.getClientVisible()));
+        applyScVisibility(snag, request, byClient);
         return toResponse(snagRepository.save(snag));
     }
 
@@ -174,6 +178,9 @@ public class SnagService {
         }
         if (request.getClientVisible() != null) {
             snag.setClientVisible(request.getClientVisible());
+        }
+        if (request.getScVisible() != null || request.getScRecipientAccountIds() != null) {
+            applyScVisibility(snag, request, false);
         }
         if (request.getCategory() != null) {
             snag.setCategory(request.getCategory());
@@ -383,12 +390,91 @@ public class SnagService {
                 .assigneeAccountId(snag.getAssigneeAccountId())
                 .assigneeName(displayName(snag.getAssigneeAccountId()))
                 .clientVisible(snag.isClientVisible())
+                .scVisible(snag.isScVisible())
+                .scRecipientAccountIds(parseRecipientIds(snag.getScRecipientAccountIds()))
+                .scRecipientNames(parseRecipientIds(snag.getScRecipientAccountIds()).stream()
+                        .map(this::displayName)
+                        .filter(Objects::nonNull)
+                        .toList())
                 .clientApprovedAt(snag.getClientApprovedAt())
                 .clientApprovedBy(snag.getClientApprovedBy())
                 .clientApprovedByName(displayName(snag.getClientApprovedBy()))
                 .createdAt(snag.getCreatedAt())
                 .updatedAt(snag.getUpdatedAt())
                 .build();
+    }
+
+    private void applyScVisibility(Snag snag, SnagRequest request, boolean byClient) {
+        if (byClient) {
+            // Client-raised snags are not pushed to SC portal unless staff later shares them.
+            if (request.getScVisible() == null && request.getScRecipientAccountIds() == null) {
+                return;
+            }
+        }
+        boolean visible = request.getScVisible() != null
+                ? Boolean.TRUE.equals(request.getScVisible())
+                : snag.isScVisible();
+        List<Long> recipients = request.getScRecipientAccountIds() != null
+                ? normalizeRecipientIds(request.getScRecipientAccountIds())
+                : parseRecipientIds(snag.getScRecipientAccountIds());
+        if (!visible) {
+            snag.setScVisible(false);
+            snag.setScRecipientAccountIds(null);
+            return;
+        }
+        snag.setScVisible(true);
+        snag.setScRecipientAccountIds(encodeRecipientIds(recipients));
+    }
+
+    static List<Long> parseRecipientIds(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return List.of();
+        }
+        return Arrays.stream(raw.split(","))
+                .map(String::trim)
+                .filter(StringUtils::hasText)
+                .map(s -> {
+                    try {
+                        return Long.parseLong(s);
+                    } catch (NumberFormatException e) {
+                        return null;
+                    }
+                })
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+    }
+
+    private static List<Long> normalizeRecipientIds(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        return ids.stream()
+                .filter(Objects::nonNull)
+                .filter(id -> id > 0)
+                .distinct()
+                .toList();
+    }
+
+    private static String encodeRecipientIds(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return null;
+        }
+        return ids.stream().map(String::valueOf).collect(Collectors.joining(","));
+    }
+
+    /** Whether an SC portal account should see this snag. */
+    public static boolean isVisibleToSubcontractor(Snag snag, Long accountId) {
+        if (snag == null || accountId == null) {
+            return false;
+        }
+        if (accountId.equals(snag.getAssigneeAccountId())) {
+            return true;
+        }
+        if (!snag.isScVisible()) {
+            return false;
+        }
+        return parseRecipientIds(snag.getScRecipientAccountIds()).contains(accountId);
     }
 
     private String displayName(Long accountId) {

@@ -1,6 +1,7 @@
 package com.fitouts.snag.api;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 import com.fitouts.snag.domain.SnagCategory;
@@ -23,4 +24,7 @@ public class SnagRequest {
     private LocalDate dueDate;
     private Long assigneeAccountId;
     private Boolean clientVisible;
+    private Boolean scVisible;
+    /** Appointed SC account ids that should see this snag when scVisible is true. */
+    private List<Long> scRecipientAccountIds;
 }

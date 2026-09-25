@@ -4,6 +4,7 @@ import java.util.List;
 
 import com.fitouts.subcontractor.api.SubcontractorClaimResponse;
 import com.fitouts.subcontractor.api.ScInvoiceResponse;
+import com.fitouts.subcontractor.api.ScSiteReportResponse;
 import com.fitouts.subcontractor.api.ScVariationResponse;
 
 import lombok.Builder;
@@ -16,8 +17,10 @@ public class ValidationInboxResponse {
     private List<SubcontractorClaimResponse> claimItems;
     private List<ScVariationResponse> variationItems;
     private List<ScInvoiceResponse> invoiceItems;
+    private List<ScSiteReportResponse> siteReportItems;
     private int pendingProgressCount;
     private int pendingClaimCount;
     private int pendingVariationCount;
     private int pendingInvoiceCount;
+    private int pendingSiteReportCount;
 }

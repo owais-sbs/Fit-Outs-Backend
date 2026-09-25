@@ -28,6 +28,7 @@ import com.fitouts.shared.error.BadRequestException;
 import com.fitouts.shared.error.ForbiddenException;
 import com.fitouts.subcontractor.api.SubcontractorClaimResponse;
 import com.fitouts.subcontractor.api.ScInvoiceResponse;
+import com.fitouts.subcontractor.api.ScSiteReportResponse;
 import com.fitouts.subcontractor.api.ScVariationResponse;
 import com.fitouts.subcontractor.application.SubcontractorPortalService;
 import com.fitouts.subcontractor.domain.SubcontractorClaim;
@@ -115,6 +116,7 @@ public class ValidationInboxService {
 
         List<ScVariationResponse> variationItems;
         List<ScInvoiceResponse> invoiceItems;
+        List<ScSiteReportResponse> siteReportItems;
         try {
             variationItems = portalService.pendingVariationsForInbox();
         } catch (Exception e) {
@@ -125,12 +127,18 @@ public class ValidationInboxService {
         } catch (Exception e) {
             invoiceItems = List.of();
         }
+        try {
+            siteReportItems = portalService.pendingSiteReportsForInbox(projectId);
+        } catch (Exception e) {
+            siteReportItems = List.of();
+        }
 
         return ValidationInboxResponse.builder()
                 .progressItems(progressItems)
                 .claimItems(claimItems)
                 .variationItems(variationItems)
                 .invoiceItems(invoiceItems)
+                .siteReportItems(siteReportItems)
                 .pendingProgressCount(progressItems.size())
                 .pendingClaimCount((int) claimItems.stream()
                         .filter(c -> c.getStatus() != com.fitouts.subcontractor.domain.SubcontractorClaimStatus.REJECTED
@@ -139,6 +147,10 @@ public class ValidationInboxService {
                         .count())
                 .pendingVariationCount(variationItems.size())
                 .pendingInvoiceCount(invoiceItems.size())
+                .pendingSiteReportCount((int) siteReportItems.stream()
+                        .filter(r -> r.getStatus() == com.fitouts.subcontractor.domain.ScSiteReportStatus.OPEN
+                                || r.getStatus() == com.fitouts.subcontractor.domain.ScSiteReportStatus.ACKNOWLEDGED)
+                        .count())
                 .build();
     }
 

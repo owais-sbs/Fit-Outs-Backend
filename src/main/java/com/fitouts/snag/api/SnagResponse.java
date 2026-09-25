@@ -2,6 +2,7 @@ package com.fitouts.snag.api;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import com.fitouts.snag.domain.SnagCategory;
@@ -35,6 +36,9 @@ public class SnagResponse {
     private Long assigneeAccountId;
     private String assigneeName;
     private boolean clientVisible;
+    private boolean scVisible;
+    private List<Long> scRecipientAccountIds;
+    private List<String> scRecipientNames;
     private OffsetDateTime clientApprovedAt;
     private Long clientApprovedBy;
     private String clientApprovedByName;

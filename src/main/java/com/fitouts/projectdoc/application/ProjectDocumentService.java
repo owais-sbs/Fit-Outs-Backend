@@ -27,6 +27,8 @@ import com.fitouts.shared.context.CompanyContext;
 import com.fitouts.shared.error.BadRequestException;
 import com.fitouts.shared.error.ForbiddenException;
 import com.fitouts.shared.error.NotFoundException;
+import com.fitouts.subcontractor.domain.SubcontractorPackageRepository;
+import com.fitouts.subcontractor.domain.SubcontractorPackageStatus;
 
 import lombok.RequiredArgsConstructor;
 
@@ -41,6 +43,7 @@ public class ProjectDocumentService {
     private final ProjectService projectService;
     private final FileStorageService fileStorageService;
     private final CommercialLifecycleService commercialLifecycleService;
+    private final SubcontractorPackageRepository packageRepository;
 
     @Transactional(readOnly = true)
     public List<ProjectDocumentResponse> list(Long projectId) {
@@ -97,6 +100,7 @@ public class ProjectDocumentService {
         doc.setFilePath(request.getFilePath().trim());
         doc.setUploadedBy(principal.getAccountId());
         doc.setPublishedToClient(Boolean.TRUE.equals(request.getPublishedToClient()));
+        doc.setPublishedToSc(Boolean.TRUE.equals(request.getPublishedToSc()));
         applyVersioning(doc, projectId, request.getParentDocumentUuid());
         return toResponse(documentRepository.save(doc));
     }
@@ -129,6 +133,7 @@ public class ProjectDocumentService {
         doc.setFilePath(relativePath);
         doc.setUploadedBy(principal.getAccountId());
         doc.setPublishedToClient(false);
+        doc.setPublishedToSc(false);
         applyVersioning(doc, projectId, parentDocumentUuid);
         return toResponse(documentRepository.save(doc));
     }
@@ -153,6 +158,9 @@ public class ProjectDocumentService {
         }
         if (request.getPublishedToClient() != null) {
             doc.setPublishedToClient(request.getPublishedToClient());
+        }
+        if (request.getPublishedToSc() != null) {
+            doc.setPublishedToSc(request.getPublishedToSc());
         }
         return toResponse(documentRepository.save(doc));
     }
@@ -187,6 +195,26 @@ public class ProjectDocumentService {
         return toResponse(documentRepository.save(doc));
     }
 
+    @Transactional
+    public ProjectDocumentResponse publishToSc(Long projectId, UUID uuid) {
+        requireStaff();
+        commercialLifecycleService.assertNotArchived(projectId);
+        requireProject(projectId);
+        ProjectDocument doc = requireDocument(uuid, projectId);
+        doc.setPublishedToSc(true);
+        return toResponse(documentRepository.save(doc));
+    }
+
+    @Transactional
+    public ProjectDocumentResponse unpublishFromSc(Long projectId, UUID uuid) {
+        requireStaff();
+        commercialLifecycleService.assertNotArchived(projectId);
+        requireProject(projectId);
+        ProjectDocument doc = requireDocument(uuid, projectId);
+        doc.setPublishedToSc(false);
+        return toResponse(documentRepository.save(doc));
+    }
+
     @Transactional(readOnly = true)
     public List<ProjectDocumentResponse> listPublished(Long projectId) {
         requireAuthenticated();
@@ -194,6 +222,19 @@ public class ProjectDocumentService {
         return documentRepository
                 .findByProjectIdAndCompanyIdAndPublishedToClientTrueAndDeletedFalseOrderByCreatedAtDesc(
                         project.getId(), CompanyContext.get())
+                .stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProjectDocumentResponse> listPublishedToSc(Long projectId) {
+        AuthPrincipal principal = requireAuthenticated();
+        requireProject(projectId);
+        assertCanViewScDocuments(principal, projectId);
+        return documentRepository
+                .findByProjectIdAndCompanyIdAndPublishedToScTrueAndDeletedFalseOrderByCreatedAtDesc(
+                        projectId, CompanyContext.get())
                 .stream()
                 .map(this::toResponse)
                 .toList();
@@ -317,6 +358,7 @@ public class ProjectDocumentService {
                 .filePath(doc.getFilePath())
                 .version(doc.getVersion())
                 .publishedToClient(doc.isPublishedToClient())
+                .publishedToSc(doc.isPublishedToSc())
                 .uploadedBy(doc.getUploadedBy())
                 .parentDocumentUuid(doc.getParentDocumentUuid())
                 .sourceType(doc.getSourceType())
@@ -325,6 +367,23 @@ public class ProjectDocumentService {
                 .createdAt(doc.getCreatedAt())
                 .updatedAt(doc.getUpdatedAt())
                 .build();
+    }
+
+    private void assertCanViewScDocuments(AuthPrincipal principal, Long projectId) {
+        if (principal.getRoles() != null
+                && principal.getRoles().stream().anyMatch(r -> r != Role.CLIENT && r != Role.SUBCONTRACTOR)) {
+            // Staff may preview the SC-published set
+            return;
+        }
+        boolean appointed = packageRepository
+                .findByProjectIdAndCompanyIdOrderByCreatedAtDesc(projectId, requireCompany())
+                .stream()
+                .anyMatch(pkg -> principal.getAccountId() != null
+                        && principal.getAccountId().equals(pkg.getAppointedAccountId())
+                        && pkg.getStatus() != SubcontractorPackageStatus.OPEN);
+        if (!appointed) {
+            throw new ForbiddenException("Not appointed on this project");
+        }
     }
 
     private Project requireProject(Long projectId) {

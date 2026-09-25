@@ -17,6 +17,7 @@ public class ProjectDocumentResponse {
     private String filePath;
     private int version;
     private boolean publishedToClient;
+    private boolean publishedToSc;
     private Long uploadedBy;
     private UUID parentDocumentUuid;
     private String sourceType;
