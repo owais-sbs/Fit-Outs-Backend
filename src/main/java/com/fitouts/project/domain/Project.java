@@ -145,6 +145,10 @@ public class Project {
     @JsonProperty("hasApprovedBoq")
     private Boolean hasApprovedBoq;
 
+    /** Populated for assigned-project portal lists; not a DB column. */
+    @Transient
+    private String clientName;
+
     @PrePersist
     void onCreate() {
         createdAt = LocalDateTime.now();

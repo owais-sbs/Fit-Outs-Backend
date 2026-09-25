@@ -31,6 +31,9 @@ import com.fitouts.drawing.application.FileStorageService;
 import com.fitouts.planning.application.PlanningService;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
+import com.fitouts.project.domain.ProjectTeamAssignment;
+import com.fitouts.project.domain.ProjectTeamAssignmentRepository;
+import com.fitouts.project.domain.ProjectTeamRole;
 import com.fitouts.roomcollab.domain.ProjectRoom;
 import com.fitouts.roomcollab.domain.ProjectRoomRepository;
 import com.fitouts.roomcollab.domain.RoomTask;
@@ -51,7 +54,11 @@ import com.fitouts.schedule.api.ScheduleDependencyResponse;
 import com.fitouts.schedule.api.ScheduleFromRoomTaskRequest;
 import com.fitouts.schedule.domain.ActivityProgressUpdate;
 import com.fitouts.schedule.domain.ActivityProgressUpdateRepository;
+import com.fitouts.boq.domain.BoqLine;
+import com.fitouts.boq.domain.BoqLineRepository;
 import com.fitouts.schedule.domain.ScheduleActivity;
+import com.fitouts.schedule.domain.ScheduleActivityBoqLine;
+import com.fitouts.schedule.domain.ScheduleActivityBoqLineRepository;
 import com.fitouts.schedule.domain.ScheduleActivityRepository;
 import com.fitouts.schedule.domain.ScheduleBaseline;
 import com.fitouts.schedule.domain.ScheduleBaselineActivity;
@@ -98,6 +105,9 @@ public class ScheduleService {
     private final ActivityMaterialIssueService activityMaterialIssueService;
     private final ScheduleRescheduleService scheduleRescheduleService;
     private final CommercialLifecycleService commercialLifecycleService;
+    private final ScheduleActivityBoqLineRepository activityBoqLineRepository;
+    private final BoqLineRepository boqLineRepository;
+    private final ProjectTeamAssignmentRepository teamAssignmentRepository;
 
     @Transactional(readOnly = true)
     public ProjectScheduleResponse getSchedule(Long projectId) {
@@ -432,11 +442,14 @@ public class ScheduleService {
         activityMaterialIssueService.declareIssues(
                 activity, update.getUuid(), request.getMaterialIssues(), principal.getAccountId());
 
-        // PM validation gate: activity % updates only after approve()
-        progressValidationService.createPendingForProgress(update);
-
-        // UAT closeout: auto-trigger billing milestones linked to this activity
-        billingService.evaluateTriggersForActivity(activity.getUuid());
+        // PM validation gate: activity % updates only after approve() — except team Site Engineers
+        ProgressValidation validation = progressValidationService.createPendingForProgress(update);
+        if (isTeamSiteEngineer(principal, activity.getProjectId())) {
+            progressValidationService.applyPendingImmediate(validation, principal.getAccountId());
+        } else {
+            // UAT closeout: auto-trigger billing milestones linked to this activity
+            billingService.evaluateTriggersForActivity(activity.getUuid());
+        }
 
         return toProgress(update);
     }
@@ -513,6 +526,21 @@ public class ScheduleService {
                     activities.add(a);
                     seen.add(a.getUuid());
                 });
+
+        // Team-assigned Site Engineers see all published activities on their projects
+        List<ProjectTeamAssignment> seAssignments = teamAssignmentRepository
+                .findByAccountIdAndCompanyIdAndRole(
+                        principal.getAccountId(), companyId, ProjectTeamRole.SITE_ENGINEER);
+        for (ProjectTeamAssignment assignment : seAssignments) {
+            List<ScheduleActivity> projectActs = activityRepository
+                    .findByProjectIdAndCompanyIdAndPublishStatus(
+                            assignment.getProjectId(), companyId, SchedulePublishStatus.PUBLISHED);
+            for (ScheduleActivity activity : projectActs) {
+                if (seen.add(activity.getUuid())) {
+                    activities.add(activity);
+                }
+            }
+        }
 
         if (isSubcontractor(principal)) {
             List<SubcontractorPackage> packages = subcontractorPackageRepository
@@ -607,6 +635,7 @@ public class ScheduleService {
         Map<UUID, ProjectRoom> roomsById = new HashMap<>();
         Map<UUID, RoomTask> tasksById = new HashMap<>();
         Map<Long, Account> accountsById = new HashMap<>();
+        Map<UUID, List<ScheduleActivityResponse.AttachedBoqLine>> attachmentsByActivity = new HashMap<>();
 
         for (ScheduleActivity a : activities) {
             if (a.getProjectRoomId() != null) {
@@ -630,7 +659,35 @@ public class ScheduleService {
             accountRepository.findById(accountId).ifPresent(acc -> accountsById.put(accountId, acc));
         }
 
-        return new ActivityEnrichment(roomsById, tasksById, accountsById);
+        if (!activities.isEmpty()) {
+            List<UUID> uuids = activities.stream().map(ScheduleActivity::getUuid).toList();
+            List<ScheduleActivityBoqLine> links = activityBoqLineRepository.findByScheduleActivityUuidIn(uuids);
+            Set<UUID> lineIds = new HashSet<>();
+            for (ScheduleActivityBoqLine link : links) {
+                lineIds.add(link.getBoqLineId());
+            }
+            Map<UUID, BoqLine> linesById = new HashMap<>();
+            if (!lineIds.isEmpty()) {
+                for (BoqLine line : boqLineRepository.findAllById(lineIds)) {
+                    linesById.put(line.getId(), line);
+                }
+            }
+            for (ScheduleActivityBoqLine link : links) {
+                BoqLine line = linesById.get(link.getBoqLineId());
+                attachmentsByActivity
+                        .computeIfAbsent(link.getScheduleActivityUuid(), k -> new ArrayList<>())
+                        .add(ScheduleActivityResponse.AttachedBoqLine.builder()
+                                .boqLineId(link.getBoqLineId())
+                                .description(line != null ? line.getDescription() : null)
+                                .categoryCode(line != null ? line.getCategoryCode() : null)
+                                .categoryName(line != null ? line.getCategoryName() : null)
+                                .matchSource(link.getMatchSource() != null ? link.getMatchSource().name() : null)
+                                .sortOrder(line != null ? line.getSortOrder() : null)
+                                .build());
+            }
+        }
+
+        return new ActivityEnrichment(roomsById, tasksById, accountsById, attachmentsByActivity);
     }
 
     private Map<Long, String> loadProjectNames(List<ScheduleActivity> activities) {
@@ -652,7 +709,8 @@ public class ScheduleService {
     private record ActivityEnrichment(
             Map<UUID, ProjectRoom> roomsById,
             Map<UUID, RoomTask> tasksById,
-            Map<Long, Account> accountsById) {
+            Map<Long, Account> accountsById,
+            Map<UUID, List<ScheduleActivityResponse.AttachedBoqLine>> attachmentsByActivity) {
     }
 
     private void applyRequest(ScheduleActivity activity, ScheduleActivityRequest request, boolean allowPercentEdit) {
@@ -724,10 +782,25 @@ public class ScheduleService {
                 && activity.getAssigneeAccountId().equals(principal.getAccountId())) {
             return;
         }
+        if (isTeamSiteEngineer(principal, activity.getProjectId())) {
+            return;
+        }
         if (isSubcontractor(principal) && canSubcontractorReportOnActivity(principal, activity)) {
             return;
         }
-        throw new ForbiddenException("Only the assignee or PM/Admin can post progress");
+        throw new ForbiddenException("Only the assignee, project Site Engineer, or PM/Admin can post progress");
+    }
+
+    private boolean isTeamSiteEngineer(AuthPrincipal principal, Long projectId) {
+        if (principal == null || projectId == null) {
+            return false;
+        }
+        UUID companyId = CompanyContext.get();
+        if (companyId == null) {
+            return false;
+        }
+        return teamAssignmentRepository.existsByProjectIdAndAccountIdAndCompanyIdAndRole(
+                projectId, principal.getAccountId(), companyId, ProjectTeamRole.SITE_ENGINEER);
     }
 
     private boolean canSubcontractorReportOnActivity(AuthPrincipal principal, ScheduleActivity activity) {
@@ -845,6 +918,10 @@ public class ScheduleService {
                 .critical(critical)
                 .totalFloat(totalFloat)
                 .freeFloat(freeFloat)
+                .boqLineId(a.getBoqLineId())
+                .attachedBoqLineCount(enrichment.attachmentsByActivity()
+                        .getOrDefault(a.getUuid(), List.of()).size())
+                .attachedBoqLines(enrichment.attachmentsByActivity().get(a.getUuid()))
                 .build();
     }
 

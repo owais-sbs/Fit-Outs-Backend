@@ -55,6 +55,10 @@ public class ScheduleActivity {
     @Column(name = "room_task_id")
     private UUID roomTaskId;
 
+    /** Set when this activity was created from a BOQ line (Mode 2 / Mode 3 unmatched). */
+    @Column(name = "boq_line_id")
+    private UUID boqLineId;
+
     @Column(name = "assignee_account_id")
     private Long assigneeAccountId;
 

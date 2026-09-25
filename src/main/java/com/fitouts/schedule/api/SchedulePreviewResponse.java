@@ -68,6 +68,11 @@ public class SchedulePreviewResponse {
         private String constraintNote;
         /** Set when the source file's own day numbers disagree with the computed dates. */
         private String seedVarianceNote;
+
+        /** Blend mode: BOQ lines attached to this template activity (not separate bars). */
+        private int attachedBoqLineCount;
+        private java.util.List<java.util.UUID> attachedBoqLineIds;
+        private java.util.UUID boqLineId;
     }
 
     @Getter

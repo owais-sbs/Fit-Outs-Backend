@@ -87,7 +87,7 @@ public class ScheduleTemplateService {
     private final ScheduleOrderByRepository orderByRepository;
     private final TemplatePlanner planner;
     private final WorkCalendarService workCalendarService;
-    private final ScheduleApplyCascade cascade;
+    private final ProgrammeReplaceWriter programmeReplaceWriter;
     private final ProjectService projectService;
     private final ApprovalCaseRepository approvalCaseRepository;
     private final ObjectMapper objectMapper;
@@ -362,123 +362,22 @@ public class ScheduleTemplateService {
                             + String.join("; ", unacknowledged(template, request)));
         }
 
-        List<ScheduleActivity> existing = activityRepository
-                .findByProjectIdAndCompanyIdOrderBySortOrderAscStartDateAsc(projectId, companyId);
-        int replaced = existing.size();
-
-        // Progress already reported against a code is worth keeping across a re-apply.
-        Map<String, Integer> priorProgress = new HashMap<>();
-        Map<String, UUID> priorUuids = new HashMap<>();
-        for (ScheduleActivity a : existing) {
-            if (a.getActivityCode() != null) {
-                priorProgress.put(a.getActivityCode(), a.getPercentComplete());
-                priorUuids.put(a.getActivityCode(), a.getUuid());
-            }
-        }
-
-        for (ScheduleActivity a : existing) {
-            dependencyRepository.deleteByPredecessorUuidOrSuccessorUuid(a.getUuid(), a.getUuid());
-        }
-        activityRepository.deleteAll(existing);
-        activityRepository.flush();
-
-        Map<String, ScheduleActivity> written = new LinkedHashMap<>();
-        int order = 0;
-        for (CpmActivity ca : plan.getActivities()) {
-            TemplateActivity ta = plan.getTemplateActivities().get(ca.getCode());
-            ScheduleActivity a = new ScheduleActivity();
-            a.setProjectId(projectId);
-            a.setCompanyId(companyId);
-            a.setName(ca.getName());
-            a.setActivityCode(ca.getCode());
-            a.setWbsPhase(ca.getWbsPhase());
-            a.setTradePackageCode(ca.getTradePackageCode());
-            a.setStartDate(ca.getEarlyStart());
-            a.setEndDate(ca.getEarlyFinish());
-            a.setEarlyStart(ca.getEarlyStart());
-            a.setEarlyFinish(ca.getEarlyFinish());
-            a.setLateStart(ca.getLateStart());
-            a.setLateFinish(ca.getLateFinish());
-            a.setTotalFloat(ca.getTotalFloat());
-            a.setFreeFloat(ca.getFreeFloat());
-            a.setCritical(ca.isCritical());
-            a.setDurationWorkingDays(ca.effectiveDuration());
-            a.setMilestone(ca.isMilestone());
-            a.setLockedDuration(ca.isLockedDuration());
-            a.setConstraintNote(ca.getConstraintNote());
-            a.setScalingMethod(plan.getScaling().containsKey(ca.getCode())
-                    ? plan.getScaling().get(ca.getCode()).methodUsed() : null);
-            a.setPercentComplete(priorProgress.getOrDefault(ca.getCode(), 0));
-            a.setPublishStatus(SchedulePublishStatus.DRAFT);
-            a.setSortOrder(order++);
-            a.setCreatedBy(principal.getAccountId());
-            if (ta != null && ta.isMilestone()) a.setWeight(java.math.BigDecimal.ZERO);
-            written.put(ca.getCode(), activityRepository.save(a));
-        }
-
-        int dependencyCount = 0;
-        for (CpmLink link : plan.getLinks()) {
-            ScheduleActivity pred = written.get(link.getPredecessorCode());
-            ScheduleActivity succ = written.get(link.getSuccessorCode());
-            if (pred == null || succ == null) continue;
-            ScheduleDependency dep = new ScheduleDependency();
-            dep.setProjectId(projectId);
-            dep.setCompanyId(companyId);
-            dep.setPredecessorUuid(pred.getUuid());
-            dep.setSuccessorUuid(succ.getUuid());
-            dep.setDependencyType(link.getType().name());
-            dep.setLagWorkingDays(link.getLagWorkingDays());
-            dep.setLocked(link.isLocked());
-            dep.setLockReason(link.getLockReason());
-            dependencyRepository.save(dep);
-            dependencyCount++;
-        }
-
-        ProjectSchedule schedule = projectScheduleRepository.findByProjectId(projectId)
-                .orElseGet(ProjectSchedule::new);
-        schedule.setProjectId(projectId);
-        schedule.setCompanyId(companyId);
-        schedule.setTemplateUuid(template.getUuid());
-        schedule.setTemplateCode(template.getCode());
-        schedule.setTemplateVersion(template.getVersion());
-        schedule.setParametersJson(writeJson(request));
-        schedule.setTogglesJson(writeJson(request.getScopeToggles()));
-        schedule.setWorkCalendarUuid(request.getWorkCalendarUuid());
-        schedule.setDataDate(LocalDate.now());
-        schedule.setCurrentFinishDate(plan.finishDate());
-        schedule.setComputedWorkingDays(plan.getResult().getTotalWorkingDays());
-        if (schedule.getBaselineFinishDate() == null) {
-            schedule.setBaselineFinishDate(plan.finishDate());
-            schedule.setBaselineSavedAt(OffsetDateTime.now());
-        }
-        if (template.isFastTrack()) {
-            schedule.setFastTrackAckJson(writeJson(request.getFastTrackAcknowledgements()));
-        }
-        schedule.setPublishedBy(principal.getAccountId());
-        schedule.setPublishedAt(OffsetDateTime.now());
-        projectScheduleRepository.save(schedule);
-
-        ScheduleApplyCascade.Summary summary = cascade.run(project, companyId, plan, written, calendar);
-
-        return ScheduleApplyResponse.builder()
-                .preview(preview)
-                .activitiesWritten(written.size())
-                .dependenciesWritten(dependencyCount)
-                .activitiesReplaced(replaced)
-                .packagesUpserted(summary.packages)
-                .billingMilestonesCreated(summary.billingMilestones)
-                .holdPointsCreated(summary.holdPoints)
-                .approvalTargetsUpdated(summary.approvalTargets)
-                .orderByRowsWritten(summary.orderByRows)
-                .note(String.format(
-                        "%s applied: %d activities finishing %s (%d working days). "
-                                + "%d packages, %d billing drafts, %d hold points and %d order-by dates written. "
-                                + "Finance reviews schedule-seeded billing drafts (or creates From BOQ / Manual).",
-                        template.getName(), written.size(), plan.finishDate(),
-                        plan.getResult().getTotalWorkingDays(), summary.packages.size(),
-                        summary.billingMilestones.size(),
-                        summary.holdPoints.size(), summary.orderByRows))
-                .build();
+        return programmeReplaceWriter.write(new ProgrammeReplaceWriter.WriteRequest(
+                project,
+                companyId,
+                principal.getAccountId(),
+                plan,
+                calendar,
+                request.getWorkCalendarUuid(),
+                template,
+                template.getCode(),
+                writeJson(request),
+                writeJson(request.getScopeToggles()),
+                template.isFastTrack() ? writeJson(request.getFastTrackAcknowledgements()) : null,
+                preview,
+                Map.of(),
+                List.of()
+        ));
     }
 
     // ------------------------------------------------------------- order-by

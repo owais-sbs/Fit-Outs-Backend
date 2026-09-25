@@ -1,6 +1,8 @@
 package com.fitouts.boq.api;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -35,5 +37,7 @@ public class BoqPortfolioProjectResponse {
     private String boqVersion;
     private String currentApprovalStep;
     private BigDecimal currentContractValue;
+    private LocalDate startDate;
+    private LocalDateTime createdAt;
     private List<BoqPortfolioDocumentResponse> boqs;
 }

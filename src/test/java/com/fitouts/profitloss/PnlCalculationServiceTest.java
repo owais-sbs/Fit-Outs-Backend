@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+import com.fitouts.account.domain.AccountRepository;
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.procurement.domain.StockMovementRepository;
@@ -49,6 +50,7 @@ class PnlCalculationServiceTest {
     private ScPaymentCertificateRepository certificateRepository;
     private ProjectRepository projectRepository;
     private OverheadRuleRepository overheadRuleRepository;
+    private AccountRepository accountRepository;
     private PnlCalculationService service;
     private PnlExportService exportService;
 
@@ -60,6 +62,7 @@ class PnlCalculationServiceTest {
         certificateRepository = mock(ScPaymentCertificateRepository.class);
         projectRepository = mock(ProjectRepository.class);
         overheadRuleRepository = mock(OverheadRuleRepository.class);
+        accountRepository = mock(AccountRepository.class);
 
         OverheadAllocationService overheadAllocationService =
                 new OverheadAllocationService(overheadRuleRepository);
@@ -69,7 +72,8 @@ class PnlCalculationServiceTest {
                 stockMovementRepository,
                 certificateRepository,
                 projectRepository,
-                overheadAllocationService);
+                overheadAllocationService,
+                accountRepository);
         exportService = new PnlExportService(service);
 
         CompanyContext.set(companyId);
@@ -89,7 +93,7 @@ class PnlCalculationServiceTest {
             }
             return s;
         });
-        when(snapshotRepository.findByCompanyIdAndProjectIdAndPeriodYearMonth(eq(companyId), eq(projectId), any()))
+        when(snapshotRepository.findFirstByCompanyIdAndProjectIdAndPeriodYearMonthOrderByCalculatedAtDesc(eq(companyId), eq(projectId), any()))
                 .thenReturn(Optional.empty());
         when(snapshotRepository.findFirstByCompanyIdAndProjectIdOrderByCalculatedAtDesc(companyId, projectId))
                 .thenReturn(Optional.empty());
@@ -108,7 +112,7 @@ class PnlCalculationServiceTest {
         commercial.setCurrentCost(new BigDecimal("25000"));
         commercial.setOriginalContractValue(new BigDecimal("900000"));
         commercial.setOriginalCost(new BigDecimal("400000"));
-        when(commercialRepository.findByProjectIdAndCompanyId(projectId, companyId))
+        when(commercialRepository.findFirstByProjectIdAndCompanyIdOrderByUuidAsc(projectId, companyId))
                 .thenReturn(Optional.of(commercial));
 
         when(stockMovementRepository.sumTotalCostByProjectAndType(
@@ -126,8 +130,8 @@ class PnlCalculationServiceTest {
         rule.setPercentage(new BigDecimal("5"));
         rule.setBasis(OverheadBasis.CONTRACT_VALUE);
         rule.setActive(true);
-        when(overheadRuleRepository.findFirstByCompanyIdAndActiveTrueOrderByUpdatedAtDesc(companyId))
-                .thenReturn(Optional.of(rule));
+        when(overheadRuleRepository.findByCompanyIdAndActiveTrueOrderByUpdatedAtDesc(companyId))
+                .thenReturn(List.of(rule));
 
         ProjectPnlSnapshot snap = service.recalculate(projectId, companyId);
 
@@ -146,14 +150,14 @@ class PnlCalculationServiceTest {
     @Test
     @DisplayName("CSV export contains expected columns and project row")
     void export_csv() {
-        when(commercialRepository.findByProjectIdAndCompanyId(projectId, companyId))
+        when(commercialRepository.findFirstByProjectIdAndCompanyIdOrderByUuidAsc(projectId, companyId))
                 .thenReturn(Optional.empty());
         when(stockMovementRepository.sumTotalCostByProjectAndType(any(), any(), any()))
                 .thenReturn(BigDecimal.ZERO);
         when(certificateRepository.findByProjectIdAndCompanyIdOrderByCreatedAtDesc(any(), any()))
                 .thenReturn(List.of());
-        when(overheadRuleRepository.findFirstByCompanyIdAndActiveTrueOrderByUpdatedAtDesc(companyId))
-                .thenReturn(Optional.empty());
+        when(overheadRuleRepository.findByCompanyIdAndActiveTrueOrderByUpdatedAtDesc(companyId))
+                .thenReturn(List.of());
 
         String csv = exportService.companyCsv(null);
         assertThat(csv).contains("period,projectId,projectName");
@@ -163,14 +167,14 @@ class PnlCalculationServiceTest {
     @Test
     @DisplayName("PDF export returns non-empty PDF bytes")
     void export_pdf() {
-        when(commercialRepository.findByProjectIdAndCompanyId(projectId, companyId))
+        when(commercialRepository.findFirstByProjectIdAndCompanyIdOrderByUuidAsc(projectId, companyId))
                 .thenReturn(Optional.empty());
         when(stockMovementRepository.sumTotalCostByProjectAndType(any(), any(), any()))
                 .thenReturn(BigDecimal.ZERO);
         when(certificateRepository.findByProjectIdAndCompanyIdOrderByCreatedAtDesc(any(), any()))
                 .thenReturn(List.of());
-        when(overheadRuleRepository.findFirstByCompanyIdAndActiveTrueOrderByUpdatedAtDesc(companyId))
-                .thenReturn(Optional.empty());
+        when(overheadRuleRepository.findByCompanyIdAndActiveTrueOrderByUpdatedAtDesc(companyId))
+                .thenReturn(List.of());
 
         byte[] pdf = exportService.companyPdf(null);
         assertThat(pdf).isNotEmpty();

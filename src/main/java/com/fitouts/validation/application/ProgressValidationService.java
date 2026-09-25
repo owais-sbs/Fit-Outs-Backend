@@ -111,6 +111,26 @@ public class ProgressValidationService {
     public ProgressValidationResponse approve(UUID uuid) {
         AuthPrincipal principal = requirePmOrAdmin();
         ProgressValidation validation = requirePending(uuid);
+        return applyPendingValidation(validation, principal.getAccountId());
+    }
+
+    /**
+     * Auto-apply a pending validation (e.g. team Site Engineer progress) so Gantt
+     * percentComplete updates without a separate PM approve click.
+     */
+    @Transactional
+    public ProgressValidationResponse applyPendingImmediate(ProgressValidation validation, Long decidedByAccountId) {
+        if (validation == null) {
+            throw new BadRequestException("Validation is required");
+        }
+        if (validation.getStatus() != ProgressValidationStatus.PENDING) {
+            throw new BadRequestException("Validation is already " + validation.getStatus());
+        }
+        return applyPendingValidation(validation, decidedByAccountId);
+    }
+
+    private ProgressValidationResponse applyPendingValidation(
+            ProgressValidation validation, Long decidedByAccountId) {
         commercialLifecycleService.assertNotArchived(validation.getProjectId());
         ActivityProgressUpdate progress = progressRepository.findById(validation.getProgressUpdateUuid())
                 .orElseThrow(() -> new NotFoundException("Progress update not found"));
@@ -125,7 +145,7 @@ public class ProgressValidationService {
         activityRepository.save(activity);
 
         validation.setStatus(ProgressValidationStatus.APPROVED);
-        validation.setDecidedBy(principal.getAccountId());
+        validation.setDecidedBy(decidedByAccountId);
         validation.setDecidedAt(OffsetDateTime.now());
         validation.setReason(null);
         validationRepository.save(validation);

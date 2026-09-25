@@ -1,8 +1,11 @@
 package com.fitouts.project.application;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -61,10 +64,14 @@ public class ProjectTeamAssignmentService {
         Project project = requireProject(projectId);
         UUID companyId = CompanyContext.get();
 
-        List<ProjectTeamAssignmentItemRequest> items =
+        List<ProjectTeamAssignmentItemRequest> raw =
                 request.getAssignments() != null ? request.getAssignments() : List.of();
+        // CLIENT is always seeded from Project.clientId — never accept from the request.
+        List<ProjectTeamAssignmentItemRequest> items = raw.stream()
+                .filter(item -> item.getRole() != ProjectTeamRole.CLIENT)
+                .toList();
 
-        Set<String> seen = new HashSet<>();
+        Set<String> desiredKeys = new HashSet<>();
         for (ProjectTeamAssignmentItemRequest item : items) {
             if (item.getRole() == null || item.getAccountId() == null) {
                 throw new BadRequestException("Each assignment requires role and accountId");
@@ -72,18 +79,51 @@ public class ProjectTeamAssignmentService {
             if (!ASSIGNABLE_ROLES.contains(item.getRole())) {
                 throw new BadRequestException("Invalid team role: " + item.getRole());
             }
-            String key = item.getRole().name() + ":" + item.getAccountId();
-            if (!seen.add(key)) {
+            String key = assignmentKey(item.getRole(), item.getAccountId());
+            if (!desiredKeys.add(key)) {
                 throw new BadRequestException("Duplicate assignment for role and account");
             }
             validateAccountForRole(item.getRole(), item.getAccountId(), companyId);
         }
 
-        assignmentRepository.deleteByProjectIdAndCompanyId(project.getId(), companyId);
+        // Load by projectId only — unique constraint ignores company_id.
+        List<ProjectTeamAssignment> existing =
+                assignmentRepository.findByProjectIdOrderByRoleAscDisplayNameAsc(project.getId());
 
+        Map<String, ProjectTeamAssignment> existingStaffByKey = new LinkedHashMap<>();
+        for (ProjectTeamAssignment assignment : existing) {
+            if (assignment.getRole() == ProjectTeamRole.CLIENT) {
+                continue;
+            }
+            existingStaffByKey.putIfAbsent(
+                    assignmentKey(assignment.getRole(), assignment.getAccountId()), assignment);
+        }
+
+        List<ProjectTeamAssignment> toDelete = new ArrayList<>();
+        for (Map.Entry<String, ProjectTeamAssignment> entry : existingStaffByKey.entrySet()) {
+            if (!desiredKeys.contains(entry.getKey())) {
+                toDelete.add(entry.getValue());
+            }
+        }
+        if (!toDelete.isEmpty()) {
+            assignmentRepository.deleteAll(toDelete);
+            assignmentRepository.flush();
+        }
+
+        Set<ProjectTeamAssignment> deleted = new HashSet<>(toDelete);
         for (ProjectTeamAssignmentItemRequest item : items) {
+            String key = assignmentKey(item.getRole(), item.getAccountId());
+            ProjectTeamAssignment current = existingStaffByKey.get(key);
             Account account = accountRepository.findByIdAndCompanyUuid(item.getAccountId(), companyId)
                     .orElseThrow(() -> new NotFoundException("Account not found"));
+
+            if (current != null && !deleted.contains(current)) {
+                current.setCompanyId(companyId);
+                current.setDisplayName(account.getFullName());
+                current.setEmail(account.getEmail());
+                assignmentRepository.save(current);
+                continue;
+            }
 
             ProjectTeamAssignment assignment = new ProjectTeamAssignment();
             assignment.setProjectId(project.getId());
@@ -95,6 +135,7 @@ public class ProjectTeamAssignmentService {
             assignmentRepository.save(assignment);
         }
 
+        seedClientAssignment(project, companyId);
         syncLegacyProjectManager(project, items);
 
         return assignmentRepository
@@ -102,6 +143,72 @@ public class ProjectTeamAssignmentService {
                 .stream()
                 .map(this::toResponse)
                 .toList();
+    }
+
+    /**
+     * Upserts the CLIENT team row from {@link Project#getClientId()}.
+     * Called after sync and optionally after project create. When clientId is null,
+     * any existing CLIENT rows for the project are removed.
+     */
+    @Transactional
+    public void seedClientAssignment(Project project) {
+        if (project == null || project.getId() == null) {
+            return;
+        }
+        UUID companyId = project.getCompanyId() != null ? project.getCompanyId() : CompanyContext.get();
+        if (companyId == null) {
+            return;
+        }
+        seedClientAssignment(project, companyId);
+    }
+
+    private void seedClientAssignment(Project project, UUID companyId) {
+        List<ProjectTeamAssignment> clientRows = assignmentRepository
+                .findByProjectIdOrderByRoleAscDisplayNameAsc(project.getId())
+                .stream()
+                .filter(a -> a.getRole() == ProjectTeamRole.CLIENT)
+                .toList();
+
+        if (project.getClientId() == null) {
+            if (!clientRows.isEmpty()) {
+                assignmentRepository.deleteAll(clientRows);
+                assignmentRepository.flush();
+            }
+            return;
+        }
+
+        validateAccountForRole(ProjectTeamRole.CLIENT, project.getClientId(), companyId);
+        Account account = accountRepository.findByIdAndCompanyUuid(project.getClientId(), companyId)
+                .orElseThrow(() -> new NotFoundException("Account not found"));
+
+        List<ProjectTeamAssignment> stale = clientRows.stream()
+                .filter(a -> !account.getId().equals(a.getAccountId()))
+                .toList();
+        if (!stale.isEmpty()) {
+            assignmentRepository.deleteAll(stale);
+            assignmentRepository.flush();
+        }
+
+        ProjectTeamAssignment match = clientRows.stream()
+                .filter(a -> account.getId().equals(a.getAccountId()))
+                .findFirst()
+                .orElse(null);
+        if (match != null) {
+            match.setCompanyId(companyId);
+            match.setDisplayName(account.getFullName());
+            match.setEmail(account.getEmail());
+            assignmentRepository.save(match);
+            return;
+        }
+
+        ProjectTeamAssignment assignment = new ProjectTeamAssignment();
+        assignment.setProjectId(project.getId());
+        assignment.setCompanyId(companyId);
+        assignment.setAccountId(account.getId());
+        assignment.setRole(ProjectTeamRole.CLIENT);
+        assignment.setDisplayName(account.getFullName());
+        assignment.setEmail(account.getEmail());
+        assignmentRepository.save(assignment);
     }
 
     private void syncLegacyProjectManager(Project project, List<ProjectTeamAssignmentItemRequest> items) {
@@ -126,6 +233,7 @@ public class ProjectTeamAssignmentService {
         boolean valid = switch (teamRole) {
             case QS_SENIOR_QS -> roles.contains(Role.QS) || roles.contains(Role.SENIOR_QS);
             case PROJECT_MANAGER -> roles.contains(Role.PROJECT_MANAGER);
+            case SITE_ENGINEER -> roles.contains(Role.SITE_ENGINEER);
             case FINANCE -> roles.contains(Role.FINANCE);
             case CLIENT -> roles.contains(Role.CLIENT);
             case SUBCONTRACTOR -> roles.contains(Role.SUBCONTRACTOR);
@@ -134,6 +242,10 @@ public class ProjectTeamAssignmentService {
             throw new BadRequestException(
                     account.getFullName() + " is not eligible for " + teamRole.displayLabel());
         }
+    }
+
+    private static String assignmentKey(ProjectTeamRole role, Long accountId) {
+        return role.name() + ":" + accountId;
     }
 
     private ProjectTeamAssignmentResponse toResponse(ProjectTeamAssignment assignment) {
