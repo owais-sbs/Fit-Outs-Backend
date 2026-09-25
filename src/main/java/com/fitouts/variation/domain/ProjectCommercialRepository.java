@@ -9,5 +9,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface ProjectCommercialRepository extends JpaRepository<ProjectCommercial, UUID> {
     Optional<ProjectCommercial> findByProjectIdAndCompanyId(Long projectId, UUID companyId);
 
+    /** Prefer this when duplicates may exist (non-unique historical rows). */
+    Optional<ProjectCommercial> findFirstByProjectIdAndCompanyIdOrderByUuidAsc(Long projectId, UUID companyId);
+
     List<ProjectCommercial> findByCompanyId(UUID companyId);
 }

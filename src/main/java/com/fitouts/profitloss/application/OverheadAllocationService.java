@@ -3,6 +3,7 @@ package com.fitouts.profitloss.application;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -83,9 +84,21 @@ public class OverheadAllocationService {
     }
 
     private OverheadRule activeRule(UUID companyId) {
-        return overheadRuleRepository
-                .findFirstByCompanyIdAndActiveTrueOrderByUpdatedAtDesc(companyId)
-                .orElse(null);
+        List<OverheadRule> rules = overheadRuleRepository
+                .findByCompanyIdAndActiveTrueOrderByUpdatedAtDesc(companyId);
+        if (rules.isEmpty()) {
+            return null;
+        }
+        // Historical duplicates: keep newest, deactivate the rest so Optional lookups stay safe.
+        OverheadRule keep = rules.get(0);
+        if (rules.size() > 1) {
+            for (int i = 1; i < rules.size(); i++) {
+                OverheadRule dup = rules.get(i);
+                dup.setActive(false);
+                overheadRuleRepository.save(dup);
+            }
+        }
+        return keep;
     }
 
     private OverheadRuleResponse toResponse(OverheadRule rule) {

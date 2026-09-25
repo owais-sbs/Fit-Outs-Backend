@@ -20,6 +20,7 @@ import org.springframework.util.StringUtils;
 
 import com.fitouts.account.domain.Account;
 import com.fitouts.account.domain.AccountRepository;
+import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.communications.domain.ChannelType;
@@ -161,12 +162,11 @@ public class CommunicationService {
         });
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<InboxItemResponse> getInbox(String filter) {
         AuthPrincipal principal = requirePrincipal();
-        UUID companyId = CompanyContext.get();
-        List<CommunicationChannel> channels = channelRepository.findMemberChannels(
-                principal.getAccountId(), companyId);
+        UUID companyId = resolveCompanyId(principal);
+        List<CommunicationChannel> channels = loadInboxChannels(principal, companyId);
         if (filter != null && !filter.isBlank() && !"ALL".equalsIgnoreCase(filter)) {
             ChannelType type = parseFilter(filter);
             channels = channels.stream().filter(c -> c.getChannelType() == type).toList();
@@ -210,6 +210,56 @@ public class CommunicationService {
                 InboxItemResponse::getLastMessageAt,
                 Comparator.nullsLast(Comparator.reverseOrder())));
         return items;
+    }
+
+    /**
+     * Prefer CompanyContext; fall back to the principal's company.
+     * A null companyId previously made {@code findMemberChannels(..., null)} return nothing.
+     */
+    private UUID resolveCompanyId(AuthPrincipal principal) {
+        UUID fromContext = CompanyContext.get();
+        if (fromContext != null) {
+            return fromContext;
+        }
+        return principal != null ? principal.getCompanyId() : null;
+    }
+
+    private List<CommunicationChannel> loadInboxChannels(AuthPrincipal principal, UUID companyId) {
+        Long accountId = principal.getAccountId();
+        if (companyId == null) {
+            return channelRepository.findMemberChannelsByAccountId(accountId);
+        }
+
+        Map<UUID, CommunicationChannel> byId = new java.util.LinkedHashMap<>();
+        channelRepository.findMemberChannels(accountId, companyId)
+                .forEach(c -> byId.put(c.getUuid(), c));
+
+        if (canViewCompanyWideInbox(principal)) {
+            // Admin / PM / Director: same company-wide inbox (all channel types).
+            channelRepository.findByCompanyIdOrderByCreatedAtDesc(companyId).forEach(c -> {
+                byId.putIfAbsent(c.getUuid(), c);
+                ensureMember(c.getUuid(), accountId);
+            });
+        } else if (portalAccess.isStaff(principal) && !portalAccess.isPureClient(principal)) {
+            // Other staff: company INTERNAL/GROUP/CLIENT only (matches assertMember).
+            channelRepository.findByCompanyIdOrderByCreatedAtDesc(companyId).stream()
+                    .filter(c -> c.getChannelType() == ChannelType.INTERNAL
+                            || c.getChannelType() == ChannelType.GROUP
+                            || c.getChannelType() == ChannelType.CLIENT)
+                    .forEach(c -> {
+                        byId.putIfAbsent(c.getUuid(), c);
+                        ensureMember(c.getUuid(), accountId);
+                    });
+        }
+        return new ArrayList<>(byId.values());
+    }
+
+    /** Roles that should see the full company communications inbox (parity with Admin). */
+    private boolean canViewCompanyWideInbox(AuthPrincipal principal) {
+        return portalAccess.hasRole(principal, Role.ADMIN)
+                || portalAccess.hasRole(principal, Role.SUPER_ADMIN)
+                || portalAccess.hasRole(principal, Role.PROJECT_MANAGER)
+                || portalAccess.hasRole(principal, Role.BUSINESS_OWNER);
     }
 
     @Transactional(readOnly = true)
@@ -296,7 +346,10 @@ public class CommunicationService {
         if (portalAccess.isPureClient(principal)) {
             throw new ForbiddenException("Clients cannot create channels");
         }
-        UUID companyId = CompanyContext.get();
+        UUID companyId = resolveCompanyId(principal);
+        if (companyId == null) {
+            throw new BadRequestException("Company context required to create a channel");
+        }
         ChannelType type = parseFilter(request.getChannelType());
         if (type != ChannelType.INTERNAL && type != ChannelType.GROUP && type != ChannelType.CLIENT) {
             throw new BadRequestException("Can only create INTERNAL, GROUP, or CLIENT channels");
@@ -573,7 +626,8 @@ public class CommunicationService {
     private CommunicationChannel getChannel(UUID uuid) {
         CommunicationChannel ch = channelRepository.findById(uuid)
                 .orElseThrow(() -> new NotFoundException("Channel not found"));
-        if (!ch.getCompanyId().equals(CompanyContext.get())) {
+        UUID companyId = resolveCompanyId(requirePrincipal());
+        if (companyId != null && ch.getCompanyId() != null && !ch.getCompanyId().equals(companyId)) {
             throw new NotFoundException("Channel not found");
         }
         return ch;
@@ -581,10 +635,16 @@ public class CommunicationService {
 
     private void assertMember(CommunicationChannel channel, Long accountId) {
         AuthPrincipal principal = requirePrincipal();
-        if (portalAccess.isStaff(principal)
+        boolean staffOpenChannel = portalAccess.isStaff(principal)
                 && (channel.getChannelType() == ChannelType.INTERNAL
                         || channel.getChannelType() == ChannelType.GROUP
-                        || channel.getChannelType() == ChannelType.CLIENT)) {
+                        || channel.getChannelType() == ChannelType.CLIENT);
+        if (staffOpenChannel || canViewCompanyWideInbox(principal)) {
+            UUID companyId = resolveCompanyId(principal);
+            if (companyId != null && channel.getCompanyId() != null
+                    && !companyId.equals(channel.getCompanyId())) {
+                throw new ForbiddenException("Not a channel member");
+            }
             ensureMember(channel.getUuid(), accountId);
             return;
         }
@@ -603,10 +663,21 @@ public class CommunicationService {
 
     private AuthPrincipal requirePrincipal() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !(auth.getPrincipal() instanceof AuthPrincipal principal)) {
+        if (auth == null || !auth.isAuthenticated()) {
             throw new BadRequestException("Authentication required");
         }
-        return principal;
+        if (auth.getPrincipal() instanceof AuthPrincipal principal) {
+            return principal;
+        }
+        // DevTools / JDBC session can deserialize AuthPrincipal under another classloader,
+        // so instanceof fails — rebuild from account email (same as CompanyContextFilter).
+        String email = auth.getName();
+        if (email != null && email.contains("@")) {
+            return accountRepository.findByEmailWithCompany(email.trim().toLowerCase())
+                    .map(AuthPrincipal::from)
+                    .orElseThrow(() -> new BadRequestException("Authentication required"));
+        }
+        throw new BadRequestException("Authentication required");
     }
 
     private ChannelType parseFilter(String filter) {
