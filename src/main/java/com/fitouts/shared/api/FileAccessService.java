@@ -25,6 +25,7 @@ import lombok.RequiredArgsConstructor;
  * project documents (and their mirrored drawing paths); staff may load any
  * file under their company prefix. Subcontractor compliance / org / worker uploads use
  * {@code sc-compliance/}, {@code sc-org/}, and {@code sc-worker/} prefixes (no company UUID folder).
+ * Cover-letter branding uses {@code cover-letter/{companyUuid}/...}.
  */
 @Service
 @RequiredArgsConstructor
@@ -43,6 +44,10 @@ public class FileAccessService {
 
         if (path.startsWith("sc-signatures/")) {
             assertCanDownloadSignature(path, principal);
+            return;
+        }
+        if (path.startsWith("cover-letter/")) {
+            assertCanDownloadCoverLetter(path);
             return;
         }
         if (path.startsWith("sc-compliance/")) {
@@ -206,6 +211,27 @@ public class FileAccessService {
         }
 
         throw new ForbiddenException("Access denied");
+    }
+
+    /**
+     * Paths: {@code cover-letter/{companyUuid}/...} (company branding + per-visit overrides).
+     * Allowed for anyone authenticated in that company context.
+     */
+    private void assertCanDownloadCoverLetter(String path) {
+        String[] parts = path.split("/");
+        if (parts.length < 2) {
+            throw new ForbiddenException("Invalid cover letter file path");
+        }
+        UUID pathCompanyId;
+        try {
+            pathCompanyId = UUID.fromString(parts[1]);
+        } catch (IllegalArgumentException e) {
+            throw new ForbiddenException("Invalid cover letter file path");
+        }
+        UUID companyId = CompanyContext.get();
+        if (companyId == null || !companyId.equals(pathCompanyId)) {
+            throw new ForbiddenException("Access denied");
+        }
     }
 
     private void assertCanDownloadSignature(String path, AuthPrincipal principal) {

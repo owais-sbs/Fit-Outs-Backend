@@ -93,7 +93,8 @@ class PnlCalculationServiceTest {
             }
             return s;
         });
-        when(snapshotRepository.findFirstByCompanyIdAndProjectIdAndPeriodYearMonthOrderByCalculatedAtDesc(eq(companyId), eq(projectId), any()))
+        when(snapshotRepository.findFirstByCompanyIdAndProjectIdAndPeriodYearMonthOrderByCalculatedAtDesc(
+                        eq(companyId), eq(projectId), any()))
                 .thenReturn(Optional.empty());
         when(snapshotRepository.findFirstByCompanyIdAndProjectIdOrderByCalculatedAtDesc(companyId, projectId))
                 .thenReturn(Optional.empty());
