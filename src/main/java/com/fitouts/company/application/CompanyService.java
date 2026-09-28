@@ -91,10 +91,11 @@ public class CompanyService {
         boolean inviteSent = clientPortalInviteService.sendStaffPortalInvite(
                 provisioned.accountId(),
                 provisioned.fullName(),
-                Role.ADMIN.displayLabel());
+                Role.ADMIN.displayLabel(),
+                true);
         if (!inviteSent) {
             log.warn(
-                    "Company {} provisioned but setup email to {} was not accepted by SMTP",
+                    "Company {} provisioned but setup email to {} could not be queued",
                     provisioned.company().getUuid(),
                     provisioned.adminEmail());
         }
