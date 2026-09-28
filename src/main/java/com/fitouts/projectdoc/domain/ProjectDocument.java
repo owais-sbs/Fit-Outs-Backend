@@ -42,6 +42,9 @@ public class ProjectDocument {
     @Column(name = "published_to_client", nullable = false)
     private boolean publishedToClient;
 
+    @Column(name = "published_to_sc", nullable = false)
+    private boolean publishedToSc;
+
     @Column(name = "uploaded_by")
     private Long uploadedBy;
 

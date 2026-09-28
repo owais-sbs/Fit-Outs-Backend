@@ -290,6 +290,8 @@ public class BoqService {
                 .boqVersion(live != null ? live.getVersion() : null)
                 .currentApprovalStep(live != null ? live.getCurrentApprovalStep() : null)
                 .currentContractValue(contractValue)
+                .startDate(project.getStartDate())
+                .createdAt(project.getCreatedAt())
                 .boqs(sorted.stream().map(this::mapPortfolioDocument).toList())
                 .build();
     }

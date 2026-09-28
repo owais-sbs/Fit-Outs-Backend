@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.fitouts.schedule.application.ScheduleRescheduleService;
 import com.fitouts.schedule.application.ScheduleTemplateService;
+import com.fitouts.schedule.application.BoqScheduleImportService;
 import com.fitouts.schedule.application.WorkCalendarService;
 import com.fitouts.shared.web.BaseController;
 
@@ -23,6 +24,7 @@ public class ScheduleTemplateController extends BaseController {
     private final ScheduleTemplateService templateService;
     private final ScheduleRescheduleService rescheduleService;
     private final WorkCalendarService workCalendarService;
+    private final BoqScheduleImportService boqScheduleImportService;
 
     @GetMapping("/api/schedule/templates")
     public Object listTemplates() {
@@ -101,6 +103,40 @@ public class ScheduleTemplateController extends BaseController {
                     projectId, request != null ? request : new SaveAsTemplateRequest()));
         } catch (Exception e) {
             return failureResponse("Failed to save schedule as template", e.getMessage());
+        }
+    }
+
+    /** Mode 3: suggest template activity matches for approved BOQ lines. */
+    @PostMapping("/api/projects/{projectId}/schedule/programme/suggest-boq-matches")
+    public Object suggestBoqMatches(@PathVariable Long projectId,
+                                    @RequestBody SuggestBoqMatchesRequest request) {
+        try {
+            return successResponse(boqScheduleImportService.suggestMatches(
+                    projectId, request != null ? request.getTemplateUuid() : null));
+        } catch (Exception e) {
+            return failureResponse("Failed to suggest BOQ matches", e.getMessage());
+        }
+    }
+
+    /** Mode 2 (BOQ) / Mode 3 (BLEND) programme preview. */
+    @PostMapping("/api/projects/{projectId}/schedule/programme/preview")
+    public Object previewProgramme(@PathVariable Long projectId,
+                                   @RequestBody ProgrammeBuildRequest request) {
+        try {
+            return successResponse(boqScheduleImportService.preview(projectId, request));
+        } catch (Exception e) {
+            return failureResponse("Failed to preview programme", e.getMessage());
+        }
+    }
+
+    /** Mode 2 (BOQ) / Mode 3 (BLEND) programme apply (replaces current schedule). */
+    @PostMapping("/api/projects/{projectId}/schedule/programme/apply")
+    public Object applyProgramme(@PathVariable Long projectId,
+                                 @RequestBody ProgrammeBuildRequest request) {
+        try {
+            return successResponse(boqScheduleImportService.apply(projectId, request));
+        } catch (Exception e) {
+            return failureResponse("Failed to apply programme", e.getMessage());
         }
     }
 }

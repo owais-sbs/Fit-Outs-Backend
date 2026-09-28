@@ -1,10 +1,14 @@
 package com.fitouts.project.application;
 
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.context.annotation.Lazy;
 import org.springframework.security.core.Authentication;
@@ -13,6 +17,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import com.fitouts.account.domain.Account;
+import com.fitouts.account.domain.AccountRepository;
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.boq.domain.BoqDocumentRepository;
@@ -20,8 +26,11 @@ import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.lead.domain.Lead;
 import com.fitouts.project.domain.Project;
 import com.fitouts.project.domain.ProjectRepository;
+import com.fitouts.project.domain.ProjectTeamAssignment;
+import com.fitouts.project.domain.ProjectTeamAssignmentRepository;
 import com.fitouts.shared.context.CompanyContext;
 import com.fitouts.shared.enums.BoqDocumentStatus;
+import com.fitouts.shared.error.BadRequestException;
 import com.fitouts.shared.error.ForbiddenException;
 import com.fitouts.shared.error.NotFoundException;
 
@@ -31,14 +40,23 @@ public class ProjectService {
     private final ProjectRepository projectRepository;
     private final CommercialLifecycleService commercialLifecycleService;
     private final BoqDocumentRepository boqDocumentRepository;
+    private final ProjectTeamAssignmentRepository teamAssignmentRepository;
+    private final ProjectTeamAssignmentService teamAssignmentService;
+    private final AccountRepository accountRepository;
 
     public ProjectService(
             ProjectRepository projectRepository,
             @Lazy CommercialLifecycleService commercialLifecycleService,
-            BoqDocumentRepository boqDocumentRepository) {
+            BoqDocumentRepository boqDocumentRepository,
+            ProjectTeamAssignmentRepository teamAssignmentRepository,
+            @Lazy ProjectTeamAssignmentService teamAssignmentService,
+            AccountRepository accountRepository) {
         this.projectRepository = projectRepository;
         this.commercialLifecycleService = commercialLifecycleService;
         this.boqDocumentRepository = boqDocumentRepository;
+        this.teamAssignmentRepository = teamAssignmentRepository;
+        this.teamAssignmentService = teamAssignmentService;
+        this.accountRepository = accountRepository;
     }
 
     @Transactional
@@ -56,12 +74,88 @@ public class ProjectService {
             request.setProgress(0);
         }
         Project saved = projectRepository.save(request);
+        if (saved.getClientId() != null) {
+            try {
+                teamAssignmentService.seedClientAssignment(saved);
+            } catch (RuntimeException ex) {
+                // Team seed is best-effort on create; sync will re-seed later.
+            }
+        }
         try {
             commercialLifecycleService.enrichProject(saved);
         } catch (RuntimeException ex) {
             // Ignore enrichment failures on create.
         }
         return saved;
+    }
+
+    /**
+     * Projects where the current staff account has any team assignment (same company).
+     * Enriches each with transient {@code clientName} for portal cards.
+     */
+    @Transactional(readOnly = true)
+    public List<Project> getAssignedToCurrentUser() {
+        AuthPrincipal principal = currentPrincipalOrNull();
+        if (principal == null) {
+            throw new BadRequestException("Authentication required");
+        }
+        if (isPureClient(principal)) {
+            throw new ForbiddenException("Staff access required");
+        }
+        UUID companyId = CompanyContext.get();
+        if (companyId == null) {
+            return List.of();
+        }
+        List<ProjectTeamAssignment> assignments =
+                teamAssignmentRepository.findByAccountIdAndCompanyId(principal.getAccountId(), companyId);
+        if (assignments.isEmpty()) {
+            return List.of();
+        }
+        Set<Long> projectIds = assignments.stream()
+                .map(ProjectTeamAssignment::getProjectId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(HashSet::new));
+        Map<Long, Project> byId = new LinkedHashMap<>();
+        for (Project project : projectRepository.findAllById(projectIds)) {
+            if (project.isDeleted()) {
+                continue;
+            }
+            if (project.getCompanyId() == null || !companyId.equals(project.getCompanyId())) {
+                continue;
+            }
+            byId.put(project.getId(), project);
+        }
+        List<Project> projects = List.copyOf(byId.values());
+        attachClientNames(projects);
+        attachApprovedBoqFlags(companyId, projects);
+        try {
+            commercialLifecycleService.enrichProjects(projects);
+        } catch (RuntimeException ex) {
+            // List must still load if enrichment fails.
+        }
+        return projects;
+    }
+
+    private void attachClientNames(List<Project> projects) {
+        if (projects == null || projects.isEmpty()) {
+            return;
+        }
+        Set<Long> clientIds = projects.stream()
+                .map(Project::getClientId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (clientIds.isEmpty()) {
+            return;
+        }
+        Map<Long, String> names = new LinkedHashMap<>();
+        for (Account account : accountRepository.findAllById(clientIds)) {
+            names.put(account.getId(), account.getFullName());
+        }
+        for (Project project : projects) {
+            if (project.getClientId() != null) {
+                project.setClientName(names.get(project.getClientId()));
+            }
+        }
     }
 
     public List<Project> getAll() {
@@ -218,7 +312,15 @@ public class ProjectService {
         if (StringUtils.hasText(lead.getNotes())) {
             project.setDescription(lead.getNotes());
         }
-        return projectRepository.save(project);
+        Project saved = projectRepository.save(project);
+        if (saved.getClientId() != null) {
+            try {
+                teamAssignmentService.seedClientAssignment(saved);
+            } catch (RuntimeException ex) {
+                // Best-effort; team sync will re-seed later.
+            }
+        }
+        return saved;
     }
 
     private AuthPrincipal currentPrincipalOrNull() {

@@ -11,4 +11,5 @@ public class ProjectDocumentRequest {
     private String filePath;
     private UUID parentDocumentUuid;
     private Boolean publishedToClient;
+    private Boolean publishedToSc;
 }

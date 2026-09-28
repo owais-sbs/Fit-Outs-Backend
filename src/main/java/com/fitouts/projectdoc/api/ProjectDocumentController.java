@@ -105,6 +105,24 @@ public class ProjectDocumentController extends BaseController {
         }
     }
 
+    @PostMapping("/api/projects/{projectId}/documents/{uuid}/publish-to-sc")
+    public Object publishToSc(@PathVariable Long projectId, @PathVariable UUID uuid) {
+        try {
+            return successResponse(projectDocumentService.publishToSc(projectId, uuid));
+        } catch (Exception e) {
+            return failureResponse("Failed to publish document to subcontractors", e.getMessage());
+        }
+    }
+
+    @PostMapping("/api/projects/{projectId}/documents/{uuid}/unpublish-from-sc")
+    public Object unpublishFromSc(@PathVariable Long projectId, @PathVariable UUID uuid) {
+        try {
+            return successResponse(projectDocumentService.unpublishFromSc(projectId, uuid));
+        } catch (Exception e) {
+            return failureResponse("Failed to unpublish document from subcontractors", e.getMessage());
+        }
+    }
+
     @GetMapping("/api/projects/{projectId}/documents/{uuid}/versions")
     public Object listVersions(@PathVariable Long projectId, @PathVariable UUID uuid) {
         try {
@@ -130,6 +148,15 @@ public class ProjectDocumentController extends BaseController {
             return successResponse(projectDocumentService.listPublished(projectId));
         } catch (Exception e) {
             return failureResponse("Failed to list published documents", e.getMessage());
+        }
+    }
+
+    @GetMapping("/api/subcontractor/projects/{projectId}/documents")
+    public Object listPublishedToSc(@PathVariable Long projectId) {
+        try {
+            return successResponse(projectDocumentService.listPublishedToSc(projectId));
+        } catch (Exception e) {
+            return failureResponse("Failed to list subcontractor documents", e.getMessage());
         }
     }
 }

@@ -33,6 +33,22 @@ public class ProjectController extends BaseController {
         }
     }
 
+    /** Projects where the current account has any team assignment. */
+    @GetMapping("/mine-assigned")
+    public Object getMineAssigned() {
+        try {
+            return successResponse(projectService.getAssignedToCurrentUser());
+        } catch (Exception e) {
+            return failureResponse("Failed to fetch assigned projects", safeClientError(e));
+        }
+    }
+
+    /** Alias of {@link #getMineAssigned()} for the Site Engineer portal. */
+    @GetMapping("/mine-site-engineer")
+    public Object getMineSiteEngineer() {
+        return getMineAssigned();
+    }
+
     @GetMapping("/{id}")
     public Object getById(@PathVariable Long id) {
         try {

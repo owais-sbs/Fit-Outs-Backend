@@ -17,9 +17,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+import com.fitouts.account.domain.AccountRepository;
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
-import com.fitouts.account.domain.AccountRepository;
 import com.fitouts.procurement.domain.StockMovementRepository;
 import com.fitouts.profitloss.application.OverheadAllocationService;
 import com.fitouts.profitloss.application.PnlCalculationService;
@@ -50,6 +50,7 @@ class PnlCalculationServiceTest {
     private ScPaymentCertificateRepository certificateRepository;
     private ProjectRepository projectRepository;
     private OverheadRuleRepository overheadRuleRepository;
+    private AccountRepository accountRepository;
     private PnlCalculationService service;
     private PnlExportService exportService;
 
@@ -61,6 +62,7 @@ class PnlCalculationServiceTest {
         certificateRepository = mock(ScPaymentCertificateRepository.class);
         projectRepository = mock(ProjectRepository.class);
         overheadRuleRepository = mock(OverheadRuleRepository.class);
+        accountRepository = mock(AccountRepository.class);
 
         OverheadAllocationService overheadAllocationService =
                 new OverheadAllocationService(overheadRuleRepository);
@@ -71,7 +73,7 @@ class PnlCalculationServiceTest {
                 certificateRepository,
                 projectRepository,
                 overheadAllocationService,
-                mock(AccountRepository.class));
+                accountRepository);
         exportService = new PnlExportService(service);
 
         CompanyContext.set(companyId);

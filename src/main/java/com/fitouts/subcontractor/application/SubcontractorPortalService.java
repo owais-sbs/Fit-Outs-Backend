@@ -28,6 +28,7 @@ import com.fitouts.shared.context.CompanyContext;
 import com.fitouts.shared.error.BadRequestException;
 import com.fitouts.shared.error.ForbiddenException;
 import com.fitouts.shared.error.NotFoundException;
+import com.fitouts.snag.application.SnagService;
 import com.fitouts.snag.domain.Snag;
 import com.fitouts.snag.domain.SnagRepository;
 import com.fitouts.subcontractor.api.ClaimRejectRequest;
@@ -102,9 +103,9 @@ public class SubcontractorPortalService {
             return List.of();
         }
         return snagRepository
-                .findByAssigneeAccountIdAndProjectIdInAndCompanyIdOrderByCreatedAtDesc(
-                        principal.getAccountId(), projectIds, companyId)
+                .findByProjectIdInAndCompanyIdOrderByCreatedAtDesc(projectIds, companyId)
                 .stream()
+                .filter(snag -> SnagService.isVisibleToSubcontractor(snag, principal.getAccountId()))
                 .map(this::toSnagResponse)
                 .toList();
     }
@@ -502,6 +503,23 @@ public class SubcontractorPortalService {
                 .stream().map(this::toInvoiceResponse).toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<ScSiteReportResponse> pendingSiteReportsForInbox(Long projectId) {
+        requireStaff();
+        UUID companyId = requireCompany();
+        // Inbox lists open work plus recently resolved/closed history (same pattern as claims).
+        List<ScSiteReportStatus> statuses = List.of(
+                ScSiteReportStatus.OPEN,
+                ScSiteReportStatus.ACKNOWLEDGED,
+                ScSiteReportStatus.RESOLVED,
+                ScSiteReportStatus.CLOSED);
+        List<ScSiteReport> rows = projectId == null
+                ? siteReportRepository.findByCompanyIdAndStatusInOrderByCreatedAtDesc(companyId, statuses)
+                : siteReportRepository.findByProjectIdAndCompanyIdAndStatusInOrderByCreatedAtDesc(
+                        projectId, companyId, statuses);
+        return rows.stream().map(this::toSiteReportResponse).toList();
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private List<SubcontractorPackage> myAppointedPackages() {
@@ -693,6 +711,7 @@ public class SubcontractorPortalService {
                 .title(snag.getTitle())
                 .description(snag.getDescription())
                 .location(snag.getLocation())
+                .photoPaths(snag.getPhotoPaths())
                 .status(snag.getStatus())
                 .severity(snag.getSeverity())
                 .dueDate(snag.getDueDate())

@@ -75,6 +75,14 @@ public class Snag {
     @Column(name = "client_visible", nullable = false)
     private boolean clientVisible;
 
+    /** When true, accounts listed in scRecipientAccountIds can see this snag in the SC portal. */
+    @Column(name = "sc_visible", nullable = false)
+    private boolean scVisible;
+
+    /** Comma-separated appointed SC account ids. */
+    @Column(name = "sc_recipient_account_ids", columnDefinition = "TEXT")
+    private String scRecipientAccountIds;
+
     @Column(name = "client_approved_at")
     private OffsetDateTime clientApprovedAt;
 

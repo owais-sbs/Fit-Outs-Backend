@@ -19,6 +19,7 @@ public class ScSnagPortalResponse {
     private String title;
     private String description;
     private String location;
+    private String photoPaths;
     private SnagStatus status;
     private SnagSeverity severity;
     private LocalDate dueDate;

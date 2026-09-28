@@ -43,4 +43,21 @@ public class ScheduleActivityResponse {
     private boolean critical;
     private Integer totalFloat;
     private Integer freeFloat;
+
+    /** Present when this bar was created from a BOQ line (Mode 2 / unmatched Mode 3). */
+    private UUID boqLineId;
+    /** Blend attachments on this activity. */
+    private int attachedBoqLineCount;
+    private java.util.List<AttachedBoqLine> attachedBoqLines;
+
+    @Data
+    @Builder
+    public static class AttachedBoqLine {
+        private UUID boqLineId;
+        private String description;
+        private String categoryCode;
+        private String categoryName;
+        private String matchSource;
+        private Integer sortOrder;
+    }
 }
