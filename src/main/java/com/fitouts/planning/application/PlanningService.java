@@ -213,13 +213,12 @@ public class PlanningService {
     }
 
     @Transactional
-    public void syncLabourAndResourceStatus(Long projectId, PlanAreaStatus areaStatus, Long updatedBy) {
+    public void syncLabourStatus(Long projectId, PlanAreaStatus areaStatus, Long updatedBy) {
         commercialLifecycleService.assertNotArchived(projectId);
         Project project = projectService.getById(projectId);
         assertCompany(project);
         ProjectPlanningStatus status = getOrCreate(project);
         UUID companyId = CompanyContext.get();
-        // Only auto-advance to IN_PROGRESS; leave READY to planning hub PUT
         if (areaStatus == PlanAreaStatus.IN_PROGRESS) {
             if (status.getLabourStatus() != PlanAreaStatus.READY
                     && status.getLabourStatus() != PlanAreaStatus.IN_PROGRESS) {
@@ -227,6 +226,25 @@ public class PlanningService {
                         str(status.getLabourStatus()), str(PlanAreaStatus.IN_PROGRESS), updatedBy));
                 status.setLabourStatus(PlanAreaStatus.IN_PROGRESS);
             }
+        } else if (areaStatus == PlanAreaStatus.NOT_STARTED) {
+            if (status.getLabourStatus() == PlanAreaStatus.IN_PROGRESS) {
+                auditRepository.save(audit(projectId, companyId, "LABOUR_STATUS",
+                        str(status.getLabourStatus()), str(PlanAreaStatus.NOT_STARTED), updatedBy));
+                status.setLabourStatus(PlanAreaStatus.NOT_STARTED);
+            }
+        }
+        status.setUpdatedBy(updatedBy);
+        repository.save(status);
+    }
+
+    @Transactional
+    public void syncResourceStatus(Long projectId, PlanAreaStatus areaStatus, Long updatedBy) {
+        commercialLifecycleService.assertNotArchived(projectId);
+        Project project = projectService.getById(projectId);
+        assertCompany(project);
+        ProjectPlanningStatus status = getOrCreate(project);
+        UUID companyId = CompanyContext.get();
+        if (areaStatus == PlanAreaStatus.IN_PROGRESS) {
             if (status.getResourceStatus() != PlanAreaStatus.READY
                     && status.getResourceStatus() != PlanAreaStatus.IN_PROGRESS) {
                 auditRepository.save(audit(projectId, companyId, "RESOURCE_STATUS",
@@ -234,11 +252,6 @@ public class PlanningService {
                 status.setResourceStatus(PlanAreaStatus.IN_PROGRESS);
             }
         } else if (areaStatus == PlanAreaStatus.NOT_STARTED) {
-            if (status.getLabourStatus() == PlanAreaStatus.IN_PROGRESS) {
-                auditRepository.save(audit(projectId, companyId, "LABOUR_STATUS",
-                        str(status.getLabourStatus()), str(PlanAreaStatus.NOT_STARTED), updatedBy));
-                status.setLabourStatus(PlanAreaStatus.NOT_STARTED);
-            }
             if (status.getResourceStatus() == PlanAreaStatus.IN_PROGRESS) {
                 auditRepository.save(audit(projectId, companyId, "RESOURCE_STATUS",
                         str(status.getResourceStatus()), str(PlanAreaStatus.NOT_STARTED), updatedBy));

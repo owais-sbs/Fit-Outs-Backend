@@ -2,9 +2,11 @@ package com.fitouts.resource.application;
 
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.security.core.Authentication;
@@ -19,13 +21,14 @@ import com.fitouts.planning.application.PlanningService;
 import com.fitouts.planning.domain.PlanAreaStatus;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
-import com.fitouts.resource.api.CrewAssignmentRequest;
-import com.fitouts.resource.api.CrewAssignmentResponse;
-import com.fitouts.resource.api.ResourceUtilisationResponse;
-import com.fitouts.resource.domain.ActivityCrewAssignment;
-import com.fitouts.resource.domain.ActivityCrewAssignmentRepository;
-import com.fitouts.resource.domain.LabourCrew;
-import com.fitouts.resource.domain.LabourCrewRepository;
+import com.fitouts.resource.api.PlantToolUtilisationResponse;
+import com.fitouts.resource.api.ResourceAssignmentRequest;
+import com.fitouts.resource.api.ResourceAssignmentResponse;
+import com.fitouts.resource.domain.ActivityResourceAssignment;
+import com.fitouts.resource.domain.ActivityResourceAssignmentRepository;
+import com.fitouts.resource.domain.ResourceKind;
+import com.fitouts.resource.domain.ResourceType;
+import com.fitouts.resource.domain.ResourceTypeRepository;
 import com.fitouts.schedule.domain.ScheduleActivity;
 import com.fitouts.schedule.domain.ScheduleActivityRepository;
 import com.fitouts.shared.context.CompanyContext;
@@ -37,17 +40,19 @@ import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
-public class CrewAssignmentService {
+public class ActivityResourceAssignmentService {
 
-    private final ActivityCrewAssignmentRepository assignmentRepository;
-    private final LabourCrewRepository labourCrewRepository;
+    private static final Set<ResourceKind> ASSIGNABLE_KINDS = EnumSet.of(ResourceKind.PLANT, ResourceKind.TOOL);
+
+    private final ActivityResourceAssignmentRepository assignmentRepository;
+    private final ResourceTypeRepository resourceTypeRepository;
     private final ScheduleActivityRepository activityRepository;
     private final ProjectService projectService;
     private final PlanningService planningService;
     private final CommercialLifecycleService commercialLifecycleService;
 
     @Transactional(readOnly = true)
-    public List<CrewAssignmentResponse> list(Long projectId) {
+    public List<ResourceAssignmentResponse> list(Long projectId) {
         requireStaff();
         Project project = requireProject(projectId);
         UUID companyId = CompanyContext.get();
@@ -58,20 +63,24 @@ public class CrewAssignmentService {
     }
 
     @Transactional
-    public CrewAssignmentResponse create(Long projectId, CrewAssignmentRequest request) {
+    public ResourceAssignmentResponse create(Long projectId, ResourceAssignmentRequest request) {
         AuthPrincipal principal = requireStaff();
         commercialLifecycleService.assertNotArchived(projectId);
         Project project = requireProject(projectId);
         UUID companyId = CompanyContext.get();
 
-        if (request.getActivityUuid() == null || request.getCrewUuid() == null) {
-            throw new BadRequestException("activityUuid and crewUuid are required");
+        if (request.getActivityUuid() == null || request.getResourceTypeUuid() == null) {
+            throw new BadRequestException("activityUuid and resourceTypeUuid are required");
         }
         if (request.getStartDate() == null || request.getEndDate() == null) {
             throw new BadRequestException("startDate and endDate are required");
         }
         if (request.getEndDate().isBefore(request.getStartDate())) {
             throw new BadRequestException("endDate must be on or after startDate");
+        }
+        int quantity = request.getQuantity() != null ? request.getQuantity() : 1;
+        if (quantity < 1) {
+            throw new BadRequestException("quantity must be at least 1");
         }
 
         ScheduleActivity activity = activityRepository
@@ -81,28 +90,33 @@ public class CrewAssignmentService {
             throw new BadRequestException("Activity does not belong to this project");
         }
 
-        LabourCrew crew = labourCrewRepository.findByUuidAndCompanyId(request.getCrewUuid(), companyId)
-                .orElseThrow(() -> new NotFoundException("Labour crew not found"));
-        if (!crew.isActive()) {
-            throw new BadRequestException("Labour crew is inactive");
+        ResourceType type = resourceTypeRepository
+                .findByUuidAndCompanyId(request.getResourceTypeUuid(), companyId)
+                .orElseThrow(() -> new NotFoundException("Resource type not found"));
+        if (!type.isActive()) {
+            throw new BadRequestException("Resource type is inactive");
+        }
+        if (!ASSIGNABLE_KINDS.contains(type.getKind())) {
+            throw new BadRequestException("Only PLANT or TOOL resource types can be assigned");
         }
 
-        List<ActivityCrewAssignment> overlaps = assignmentRepository.findOverlapping(
-                crew.getUuid(), companyId, request.getStartDate(), request.getEndDate());
+        List<ActivityResourceAssignment> overlaps = assignmentRepository.findOverlapping(
+                type.getUuid(), companyId, request.getStartDate(), request.getEndDate());
         if (!overlaps.isEmpty()) {
-            throw new BadRequestException("Crew is already assigned on overlapping dates");
+            throw new BadRequestException("Resource type is already assigned on overlapping dates");
         }
 
-        ActivityCrewAssignment assignment = new ActivityCrewAssignment();
+        ActivityResourceAssignment assignment = new ActivityResourceAssignment();
         assignment.setActivityUuid(activity.getUuid());
-        assignment.setCrewUuid(crew.getUuid());
+        assignment.setResourceTypeUuid(type.getUuid());
         assignment.setProjectId(project.getId());
         assignment.setCompanyId(companyId);
+        assignment.setQuantity(quantity);
         assignment.setStartDate(request.getStartDate());
         assignment.setEndDate(request.getEndDate());
         assignment = assignmentRepository.save(assignment);
 
-        planningService.syncLabourStatus(project.getId(), PlanAreaStatus.IN_PROGRESS, principal.getAccountId());
+        planningService.syncResourceStatus(project.getId(), PlanAreaStatus.IN_PROGRESS, principal.getAccountId());
         return toResponse(assignment);
     }
 
@@ -113,8 +127,9 @@ public class CrewAssignmentService {
         Project project = requireProject(projectId);
         UUID companyId = CompanyContext.get();
 
-        ActivityCrewAssignment assignment = assignmentRepository.findByUuidAndCompanyId(assignmentUuid, companyId)
-                .orElseThrow(() -> new NotFoundException("Crew assignment not found"));
+        ActivityResourceAssignment assignment = assignmentRepository
+                .findByUuidAndCompanyId(assignmentUuid, companyId)
+                .orElseThrow(() -> new NotFoundException("Resource assignment not found"));
         if (!assignment.getProjectId().equals(project.getId())) {
             throw new BadRequestException("Assignment does not belong to this project");
         }
@@ -122,59 +137,63 @@ public class CrewAssignmentService {
 
         long remaining = assignmentRepository.countByProjectIdAndCompanyId(project.getId(), companyId);
         if (remaining == 0) {
-            planningService.syncLabourStatus(project.getId(), PlanAreaStatus.NOT_STARTED, principal.getAccountId());
+            planningService.syncResourceStatus(project.getId(), PlanAreaStatus.NOT_STARTED, principal.getAccountId());
         }
     }
 
     @Transactional(readOnly = true)
-    public ResourceUtilisationResponse utilisation(Long projectId) {
+    public PlantToolUtilisationResponse utilisation(Long projectId) {
         requireStaff();
         Project project = requireProject(projectId);
         UUID companyId = CompanyContext.get();
 
-        List<ActivityCrewAssignment> assignments = assignmentRepository
+        List<ActivityResourceAssignment> assignments = assignmentRepository
                 .findByProjectIdAndCompanyIdOrderByStartDateAsc(project.getId(), companyId);
 
         Map<UUID, Long> days = new HashMap<>();
+        Map<UUID, Long> quantityDays = new HashMap<>();
         Map<UUID, Long> counts = new HashMap<>();
         long totalDays = 0;
 
-        for (ActivityCrewAssignment a : assignments) {
+        for (ActivityResourceAssignment a : assignments) {
             long assignedDays = ChronoUnit.DAYS.between(a.getStartDate(), a.getEndDate()) + 1;
-            totalDays += assignedDays;
-            days.merge(a.getCrewUuid(), assignedDays, Long::sum);
-            counts.merge(a.getCrewUuid(), 1L, Long::sum);
+            long qtyDays = assignedDays * a.getQuantity();
+            totalDays += qtyDays;
+            days.merge(a.getResourceTypeUuid(), assignedDays, Long::sum);
+            quantityDays.merge(a.getResourceTypeUuid(), qtyDays, Long::sum);
+            counts.merge(a.getResourceTypeUuid(), 1L, Long::sum);
         }
 
-        List<ResourceUtilisationResponse.CrewUtilisationItem> crews = new ArrayList<>();
-        for (UUID crewUuid : days.keySet()) {
-            LabourCrew crew = labourCrewRepository.findById(crewUuid).orElse(null);
-            crews.add(ResourceUtilisationResponse.CrewUtilisationItem.builder()
-                    .crewUuid(crewUuid)
-                    .crewName(crew != null ? crew.getName() : "Unknown")
-                    .headcount(crew != null ? crew.getHeadcount() : 0)
-                    .assignedDays(days.getOrDefault(crewUuid, 0L))
-                    .assignmentCount(counts.getOrDefault(crewUuid, 0L))
+        List<PlantToolUtilisationResponse.TypeUtilisationItem> resources = new ArrayList<>();
+        for (UUID typeUuid : days.keySet()) {
+            ResourceType type = resourceTypeRepository.findById(typeUuid).orElse(null);
+            resources.add(PlantToolUtilisationResponse.TypeUtilisationItem.builder()
+                    .resourceTypeUuid(typeUuid)
+                    .resourceTypeName(type != null ? type.getName() : "Unknown")
+                    .kind(type != null ? type.getKind() : null)
+                    .assignedDays(days.getOrDefault(typeUuid, 0L))
+                    .quantityDays(quantityDays.getOrDefault(typeUuid, 0L))
+                    .assignmentCount(counts.getOrDefault(typeUuid, 0L))
                     .build());
         }
 
-        return ResourceUtilisationResponse.builder()
+        return PlantToolUtilisationResponse.builder()
                 .projectId(project.getId())
-                .totalCrewDays(totalDays)
+                .totalResourceDays(totalDays)
                 .assignmentCount(assignments.size())
-                .crews(crews)
+                .resources(resources)
                 .build();
     }
 
-    private CrewAssignmentResponse toResponse(ActivityCrewAssignment a) {
-        String crewName = labourCrewRepository.findById(a.getCrewUuid())
-                .map(LabourCrew::getName)
-                .orElse(null);
-        return CrewAssignmentResponse.builder()
+    private ResourceAssignmentResponse toResponse(ActivityResourceAssignment a) {
+        ResourceType type = resourceTypeRepository.findById(a.getResourceTypeUuid()).orElse(null);
+        return ResourceAssignmentResponse.builder()
                 .uuid(a.getUuid())
                 .activityUuid(a.getActivityUuid())
-                .crewUuid(a.getCrewUuid())
-                .crewName(crewName)
+                .resourceTypeUuid(a.getResourceTypeUuid())
+                .resourceTypeName(type != null ? type.getName() : null)
+                .kind(type != null ? type.getKind() : null)
+                .quantity(a.getQuantity())
                 .projectId(a.getProjectId())
                 .startDate(a.getStartDate())
                 .endDate(a.getEndDate())

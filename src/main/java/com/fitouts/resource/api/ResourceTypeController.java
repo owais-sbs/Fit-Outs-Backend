@@ -9,9 +9,11 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.fitouts.resource.application.ResourceTypeService;
+import com.fitouts.resource.domain.ResourceKind;
 import com.fitouts.shared.web.BaseController;
 
 import lombok.RequiredArgsConstructor;
@@ -24,9 +26,9 @@ public class ResourceTypeController extends BaseController {
     private final ResourceTypeService resourceTypeService;
 
     @GetMapping
-    public Object list() {
+    public Object list(@RequestParam(required = false) ResourceKind kind) {
         try {
-            return successResponse(resourceTypeService.list());
+            return successResponse(resourceTypeService.list(kind));
         } catch (Exception e) {
             return failureResponse("Failed to list resource types", e.getMessage());
         }
