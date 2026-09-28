@@ -775,9 +775,6 @@ public class ScheduleService {
         if (isPmOrAdmin(principal)) {
             return;
         }
-        if (isSubcontractor(principal)) {
-            portalAccessService.requireExecutionAccess(principal);
-        }
         if (activity.getAssigneeAccountId() != null
                 && activity.getAssigneeAccountId().equals(principal.getAccountId())) {
             return;
@@ -785,8 +782,11 @@ public class ScheduleService {
         if (isTeamSiteEngineer(principal, activity.getProjectId())) {
             return;
         }
-        if (isSubcontractor(principal) && canSubcontractorReportOnActivity(principal, activity)) {
-            return;
+        if (isSubcontractor(principal)) {
+            portalAccessService.requireExecutionAccess(principal);
+            if (canSubcontractorReportOnActivity(principal, activity)) {
+                return;
+            }
         }
         throw new ForbiddenException("Only the assignee, project Site Engineer, or PM/Admin can post progress");
     }
