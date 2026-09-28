@@ -1,5 +1,6 @@
 package com.fitouts.subcontractor.api;
 
+import java.util.List;
 import java.util.UUID;
 
 import lombok.Builder;
@@ -15,4 +16,5 @@ public class ScPortalTeamMemberResponse {
     private final String email;
     private final String portalRole;
     private final String status;
+    private final List<String> permissions;
 }

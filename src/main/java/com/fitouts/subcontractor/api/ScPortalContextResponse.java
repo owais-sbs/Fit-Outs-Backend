@@ -1,5 +1,7 @@
 package com.fitouts.subcontractor.api;
 
+import java.util.List;
+
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import lombok.Builder;
@@ -19,4 +21,5 @@ public class ScPortalContextResponse {
     private final boolean isOrgAdmin;
 
     private final boolean canAccessDocuments;
+    private final List<String> permissions;
 }

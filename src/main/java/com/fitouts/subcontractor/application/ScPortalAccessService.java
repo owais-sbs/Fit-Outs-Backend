@@ -1,8 +1,11 @@
 package com.fitouts.subcontractor.application;
 
+import java.util.List;
+
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.shared.error.ForbiddenException;
 import com.fitouts.subcontractor.api.ScPortalContextResponse;
+import com.fitouts.subcontractor.domain.ScPortalPermissions;
 import com.fitouts.subcontractor.domain.ScPortalRole;
 import com.fitouts.subcontractor.domain.ScPortalUser;
 import com.fitouts.subcontractor.domain.ScPortalUserRepository;
@@ -52,7 +55,7 @@ public class ScPortalAccessService {
     @Transactional(readOnly = true)
     public void requireCommercialAccess(AuthPrincipal principal) {
         ScPortalUser user = requireActivePortalUser(principal);
-        if (!canAccessCommercial(user.getPortalRole())) {
+        if (!hasCommercial(user)) {
             throw new ForbiddenException("Commercial access required");
         }
     }
@@ -60,7 +63,7 @@ public class ScPortalAccessService {
     @Transactional(readOnly = true)
     public void requireExecutionAccess(AuthPrincipal principal) {
         ScPortalUser user = requireActivePortalUser(principal);
-        if (!canAccessExecution(user.getPortalRole())) {
+        if (!hasExecution(user)) {
             throw new ForbiddenException("Execution access required");
         }
     }
@@ -68,7 +71,7 @@ public class ScPortalAccessService {
     @Transactional(readOnly = true)
     public void requireTenderingAccess(AuthPrincipal principal) {
         ScPortalUser user = requireActivePortalUser(principal);
-        if (!canAccessTendering(user.getPortalRole())) {
+        if (!hasTendering(user)) {
             throw new ForbiddenException("Tendering access required");
         }
     }
@@ -76,7 +79,7 @@ public class ScPortalAccessService {
     @Transactional(readOnly = true)
     public void requireDocumentsAccess(AuthPrincipal principal) {
         ScPortalUser user = requireActivePortalUser(principal);
-        if (!canAccessDocuments(user.getPortalRole())) {
+        if (!hasDocuments(user)) {
             throw new ForbiddenException("Technical documents access required");
         }
     }
@@ -85,6 +88,7 @@ public class ScPortalAccessService {
     public ScPortalContextResponse buildPortalContext(AuthPrincipal principal) {
         ScPortalUser user = portalUserRepository.findByAccountId(principal.getAccountId()).orElse(null);
         if (user == null) {
+            List<String> all = ScPortalPermissions.defaultsForRole(ScPortalRole.SC_ADMIN);
             return ScPortalContextResponse.builder()
                     .portalRole(ScPortalRole.SC_ADMIN.name())
                     .portalUserStatus(ScPortalUserStatus.ACTIVE.name())
@@ -93,26 +97,68 @@ public class ScPortalAccessService {
                     .canAccessTendering(true)
                     .canAccessDocuments(true)
                     .isOrgAdmin(true)
+                    .permissions(all)
                     .build();
         }
         ScPortalRole role = user.getPortalRole();
+        List<String> permissions = resolvePermissions(user);
+        boolean admin = role == ScPortalRole.SC_ADMIN;
         return ScPortalContextResponse.builder()
                 .portalRole(role.name())
                 .portalUserStatus(user.getStatus().name())
-                .canAccessCommercial(canAccessCommercial(role))
-                .canAccessExecution(canAccessExecution(role))
-                .canAccessTendering(canAccessTendering(role))
-                .canAccessDocuments(canAccessDocuments(role))
-                .isOrgAdmin(role == ScPortalRole.SC_ADMIN)
+                .canAccessCommercial(admin || ScPortalPermissions.canAccessCommercial(permissions))
+                .canAccessExecution(admin || ScPortalPermissions.canAccessExecution(permissions))
+                .canAccessTendering(admin || ScPortalPermissions.canAccessTendering(permissions))
+                .canAccessDocuments(admin || ScPortalPermissions.canAccessDocuments(permissions))
+                .isOrgAdmin(admin)
+                .permissions(permissions)
                 .build();
     }
 
+    public List<String> resolvePermissions(ScPortalUser user) {
+        if (user == null) {
+            return List.of();
+        }
+        if (user.getPortalRole() == ScPortalRole.SC_ADMIN) {
+            return ScPortalPermissions.defaultsForRole(ScPortalRole.SC_ADMIN);
+        }
+        return ScPortalPermissions.resolve(user.getPortalRole(), user.getPermissionsJson(), null);
+    }
+
+    public boolean hasCommercial(ScPortalUser user) {
+        if (user.getPortalRole() == ScPortalRole.SC_ADMIN) {
+            return true;
+        }
+        return ScPortalPermissions.canAccessCommercial(resolvePermissions(user));
+    }
+
+    public boolean hasExecution(ScPortalUser user) {
+        if (user.getPortalRole() == ScPortalRole.SC_ADMIN) {
+            return true;
+        }
+        return ScPortalPermissions.canAccessExecution(resolvePermissions(user));
+    }
+
+    public boolean hasTendering(ScPortalUser user) {
+        if (user.getPortalRole() == ScPortalRole.SC_ADMIN) {
+            return true;
+        }
+        return ScPortalPermissions.canAccessTendering(resolvePermissions(user));
+    }
+
+    public boolean hasDocuments(ScPortalUser user) {
+        if (user.getPortalRole() == ScPortalRole.SC_ADMIN) {
+            return true;
+        }
+        return ScPortalPermissions.canAccessDocuments(resolvePermissions(user));
+    }
+
+    /** @deprecated Prefer permission-aware checks on ScPortalUser. */
     public boolean canAccessCommercial(ScPortalRole role) {
         return role == ScPortalRole.SC_ADMIN || role == ScPortalRole.SC_QS;
     }
 
     public boolean canAccessExecution(ScPortalRole role) {
-        // Site execution only — not QS (commercial) or Doc Controller (technical docs only).
         return role == ScPortalRole.SC_ADMIN || role == ScPortalRole.SC_SUPERVISOR;
     }
 
