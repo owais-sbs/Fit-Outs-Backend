@@ -12,6 +12,7 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
 
 import com.fitouts.checklist.domain.SiteVisit;
+import com.fitouts.checklist.domain.SiteVisitAssignment;
 import com.fitouts.checklist.domain.SiteVisitLocationDetails;
 import com.fitouts.checklist.domain.SiteVisitPropertyType;
 import com.fitouts.checklist.domain.SiteVisitStatus;
@@ -155,6 +156,7 @@ public class SiteVisitMapper {
 
         SiteVisitResponse response = SiteVisitResponse.builder()
                 .leadId(siteVisit.getLeadId())
+                .assignedToAccountId(siteVisit.getAssignedTo() != null ? siteVisit.getAssignedTo().getId() : null)
                 .employeeIds(employeeIds)
                 .employeeNames(employeeNames)
                 .scheduledDate(siteVisit.getScheduledDate())
@@ -185,13 +187,18 @@ public class SiteVisitMapper {
     }
 
     private List<Long> assignmentAccountIds(SiteVisit siteVisit) {
-        if (siteVisit.getAssignments() == null) {
-            return List.of();
+        LinkedHashSet<Long> ids = new LinkedHashSet<>();
+        if (siteVisit.getAssignedTo() != null && siteVisit.getAssignedTo().getId() != null) {
+            ids.add(siteVisit.getAssignedTo().getId());
         }
-        return siteVisit.getAssignments().stream()
-                .filter(a -> a != null && a.getEmployee() != null)
-                .map(a -> a.getEmployee().getId())
-                .toList();
+        if (siteVisit.getAssignments() != null) {
+            for (SiteVisitAssignment assignment : siteVisit.getAssignments()) {
+                if (assignment != null && assignment.getEmployee() != null && assignment.getEmployee().getId() != null) {
+                    ids.add(assignment.getEmployee().getId());
+                }
+            }
+        }
+        return List.copyOf(ids);
     }
 
     public SiteVisitLocationDetailsResponse toLocationResponse(SiteVisitLocationDetails details) {

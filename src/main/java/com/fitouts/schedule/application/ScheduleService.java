@@ -442,12 +442,11 @@ public class ScheduleService {
         activityMaterialIssueService.declareIssues(
                 activity, update.getUuid(), request.getMaterialIssues(), principal.getAccountId());
 
-        // PM validation gate: activity % updates only after approve() — except team Site Engineers
-        ProgressValidation validation = progressValidationService.createPendingForProgress(update);
-        if (isTeamSiteEngineer(principal, activity.getProjectId())) {
-            progressValidationService.applyPendingImmediate(validation, principal.getAccountId());
-        } else {
-            // UAT closeout: auto-trigger billing milestones linked to this activity
+        // PM validation gate: activity % updates only after PM/Admin approve()
+        progressValidationService.createPendingForProgress(update);
+        if (!isTeamSiteEngineer(principal, activity.getProjectId())) {
+            // Non-SE staff (assignee / SC) also wait for approval; billing evaluates on approve.
+            // UAT closeout: keep milestone probe for non-immediate paths that already applied %.
             billingService.evaluateTriggersForActivity(activity.getUuid());
         }
 
@@ -463,9 +462,21 @@ public class ScheduleService {
 
     @Transactional(readOnly = true)
     public List<ProgressUpdateResponse> listProgress(UUID activityUuid) {
-        requireActivity(activityUuid);
-        return progressRepository.findByActivityUuidOrderByReportedAtDesc(activityUuid)
-                .stream().map(this::toProgress).toList();
+        ScheduleActivity activity = requireActivity(activityUuid);
+        AuthPrincipal principal = requireAuthenticated();
+        List<ProgressUpdateResponse> all = progressRepository
+                .findByActivityUuidOrderByReportedAtDesc(activityUuid)
+                .stream()
+                .map(this::toProgress)
+                .toList();
+        if (isPureClient(principal)) {
+            // Clients only see progress (and media) after PM approval.
+            requireProject(activity.getProjectId());
+            return all.stream()
+                    .filter(u -> "APPROVED".equalsIgnoreCase(u.getValidationStatus()))
+                    .toList();
+        }
+        return all;
     }
 
     @Transactional

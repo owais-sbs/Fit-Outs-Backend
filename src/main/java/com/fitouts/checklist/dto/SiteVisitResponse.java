@@ -22,6 +22,7 @@ public class SiteVisitResponse {
 
     private UUID uuid;
     private Long leadId;
+    private Long assignedToAccountId;
     private List<Long> employeeIds;
     private List<String> employeeNames;
     private LocalDate scheduledDate;
