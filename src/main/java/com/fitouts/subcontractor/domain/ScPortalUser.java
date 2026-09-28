@@ -33,6 +33,10 @@ public class ScPortalUser {
     @Column(name = "portal_role", nullable = false, length = 32)
     private ScPortalRole portalRole;
 
+    /** Comma-separated permission keys; null means fall back to role defaults. */
+    @Column(name = "permissions_json", columnDefinition = "TEXT")
+    private String permissionsJson;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 24)
     private ScPortalUserStatus status = ScPortalUserStatus.ACTIVE;

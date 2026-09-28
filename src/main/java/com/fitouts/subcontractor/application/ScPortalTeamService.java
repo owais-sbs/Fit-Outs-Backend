@@ -21,6 +21,7 @@ import com.fitouts.subcontractor.api.ScInviteTeamMemberRequest;
 import com.fitouts.subcontractor.api.ScPortalTeamMemberResponse;
 import com.fitouts.subcontractor.api.ScUpdateTeamMemberRequest;
 import com.fitouts.subcontractor.domain.ScOrganization;
+import com.fitouts.subcontractor.domain.ScPortalPermissions;
 import com.fitouts.subcontractor.domain.ScPortalRole;
 import com.fitouts.subcontractor.domain.ScPortalUser;
 import com.fitouts.subcontractor.domain.ScPortalUserRepository;
@@ -74,6 +75,8 @@ public class ScPortalTeamService {
         portalUser.setOrganizationUuid(org.getUuid());
         portalUser.setAccountId(accountResult.clientAccountId());
         portalUser.setPortalRole(role);
+        portalUser.setPermissionsJson(ScPortalPermissions.toJson(
+                ScPortalPermissions.resolve(role, null, request.getPermissions())));
         portalUser.setStatus(ScPortalUserStatus.INVITED);
         portalUser.setInvitedByAccountId(principal.getAccountId());
         portalUserRepository.save(portalUser);
@@ -123,6 +126,8 @@ public class ScPortalTeamService {
         portalUser.setOrganizationUuid(org.getUuid());
         portalUser.setAccountId(accountResult.clientAccountId());
         portalUser.setPortalRole(role);
+        portalUser.setPermissionsJson(ScPortalPermissions.toJson(
+                ScPortalPermissions.resolve(role, null, request.getPermissions())));
         portalUser.setStatus(ScPortalUserStatus.ACTIVE);
         portalUser.setInvitedByAccountId(principal.getAccountId());
         return toResponse(portalUserRepository.save(portalUser));
@@ -147,6 +152,9 @@ public class ScPortalTeamService {
                 }
                 portalUser.setPortalRole(role);
             }
+            if (request.getPermissions() != null) {
+                portalUser.setPermissionsJson(ScPortalPermissions.toJson(request.getPermissions()));
+            }
             if (StringUtils.hasText(request.getStatus())) {
                 portalUser.setStatus(ScPortalUserStatus.valueOf(request.getStatus().trim().toUpperCase()));
             }
@@ -156,6 +164,8 @@ public class ScPortalTeamService {
 
     private ScPortalTeamMemberResponse toResponse(ScPortalUser portalUser) {
         Account account = accountRepository.findById(portalUser.getAccountId()).orElse(null);
+        List<String> permissions = ScPortalPermissions.resolve(
+                portalUser.getPortalRole(), portalUser.getPermissionsJson(), null);
         return ScPortalTeamMemberResponse.builder()
                 .uuid(portalUser.getUuid())
                 .accountId(portalUser.getAccountId())
@@ -163,6 +173,7 @@ public class ScPortalTeamService {
                 .email(account != null ? account.getEmail() : null)
                 .portalRole(portalUser.getPortalRole().name())
                 .status(portalUser.getStatus().name())
+                .permissions(permissions)
                 .build();
     }
 
