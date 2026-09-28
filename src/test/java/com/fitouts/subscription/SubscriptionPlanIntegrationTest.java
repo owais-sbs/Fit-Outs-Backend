@@ -117,7 +117,7 @@ class SubscriptionPlanIntegrationTest {
     }
 
     @Test
-    void plansCanBeCreatedWithoutLogin() throws Exception {
+    void unauthenticatedCreateIsRejected() throws Exception {
         mockMvc.perform(post("/api/subscription-plans")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -129,13 +129,19 @@ class SubscriptionPlanIntegrationTest {
                                   "priceAnnual":499.00
                                 }
                                 """))
-                .andExpect(status().isOk());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
-    void plansCanBeReadWithoutLogin() throws Exception {
-        mockMvc.perform(get("/api/subscription-plans"))
-                .andExpect(status().isOk());
+    void publicEndpointReturnsOnlyActivePlans() throws Exception {
+        repository.save(plan("Starter", true));
+        repository.save(plan("Legacy", false));
+
+        mockMvc.perform(get("/api/public/subscription-plans"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].planName").value("Starter"))
+                .andExpect(jsonPath("$.data[0].active").value(true));
     }
 
     @Test
@@ -144,7 +150,7 @@ class SubscriptionPlanIntegrationTest {
 
         assertThatThrownBy(() -> service.getAssignablePlan(inactivePlan.getUuid()))
                 .isInstanceOf(ConflictException.class)
-                .hasMessage("Inactive subscription plans cannot be assigned to new tenants");
+                .hasMessage("Inactive subscription plans cannot be assigned to new companies");
     }
 
     private SubscriptionPlan plan(String name, boolean active) {

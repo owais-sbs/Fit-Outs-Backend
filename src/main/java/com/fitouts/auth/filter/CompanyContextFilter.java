@@ -54,7 +54,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
             return principal;
         }
         String email = auth.getName();
-        if (email == null || !email.contains("@")) {
+        if (email == null || email.isBlank()) {
             return null;
         }
         return accountService.findOptionalByEmail(email).map(account -> {

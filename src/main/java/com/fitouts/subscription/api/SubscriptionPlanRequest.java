@@ -1,6 +1,8 @@
 package com.fitouts.subscription.api;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 
 import jakarta.validation.constraints.DecimalMin;
@@ -24,6 +26,9 @@ public class SubscriptionPlanRequest {
 
     @NotEmpty
     private Set<@NotBlank String> modulesIncluded;
+
+    /** Marketing feature bullets for landing page (optional). */
+    private List<@NotBlank String> features = new ArrayList<>();
 
     @NotNull
     @DecimalMin("0.00")

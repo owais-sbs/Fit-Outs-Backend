@@ -3,6 +3,7 @@ package com.fitouts.auth.application;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -19,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.fitouts.account.application.AccountService;
 import com.fitouts.account.domain.Account;
 import com.fitouts.auth.api.AuthSessionResponse;
+import com.fitouts.auth.api.ChangePasswordRequest;
 import com.fitouts.auth.api.CurrentUserResponse;
 import com.fitouts.auth.api.LoginRequest;
 import com.fitouts.auth.api.LoginResponse;
@@ -28,6 +30,10 @@ import com.fitouts.auth.domain.OtpChallenge;
 import com.fitouts.auth.domain.RememberedDevice;
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
+import com.fitouts.company.domain.Company;
+import com.fitouts.company.domain.CompanyStatus;
+import com.fitouts.employee.domain.Feature;
+import com.fitouts.shared.error.BadRequestException;
 import com.fitouts.shared.error.ForbiddenException;
 import com.fitouts.shared.error.UnauthorizedException;
 
@@ -65,6 +71,8 @@ public class AuthService {
             throw new UnauthorizedException("Invalid email or password");
         }
 
+        assertCompanyAccessAllowed(account);
+
         RememberedDevice device = deviceService.resolveDevice(account, servletRequest, servletResponse);
         // Role-based OTP check disabled
         // if (requiresOtp(account)) {
@@ -90,13 +98,30 @@ public class AuthService {
         if (!Boolean.TRUE.equals(challenge.getAccount().getIsActive())) {
             throw new UnauthorizedException("Account is inactive");
         }
+        assertCompanyAccessAllowed(challenge.getAccount());
         return authenticate(challenge.getAccount(), challenge.getDevice(), servletRequest, servletResponse);
     }
 
     @Transactional(readOnly = true)
     public CurrentUserResponse me(AuthPrincipal principal) {
         Account account = accountService.getAccountByEmail(principal.getEmail());
+        assertCompanyAccessAllowed(account);
         return toCurrentUser(account, principal);
+    }
+
+    @Transactional
+    public void changePassword(AuthPrincipal principal, ChangePasswordRequest request) {
+        Account account = accountService.getAccountByEmail(principal.getEmail());
+        if (!passwordEncoder.matches(request.getCurrentPassword(), account.getPassword())) {
+            throw new BadRequestException("Current password is incorrect");
+        }
+        if (request.getNewPassword() == null || request.getNewPassword().length() < 8) {
+            throw new BadRequestException("Password must be at least 8 characters");
+        }
+        if (passwordEncoder.matches(request.getNewPassword(), account.getPassword())) {
+            throw new BadRequestException("New password must be different from the current password");
+        }
+        account.setPassword(passwordEncoder.encode(request.getNewPassword()));
     }
 
     public List<AuthSessionResponse> getSessions(AuthPrincipal principal, HttpServletRequest request) {
@@ -186,6 +211,17 @@ public class AuthService {
                 .build();
     }
 
+    private void assertCompanyAccessAllowed(Account account) {
+        if (account.getRoles() != null && account.getRoles().contains(Role.SUPER_ADMIN)) {
+            return;
+        }
+        Company company = account.getCompany();
+        if (company == null || company.getStatus() != CompanyStatus.ACTIVE) {
+            throw new UnauthorizedException(
+                    "Company subscription is inactive. Contact the platform administrator.");
+        }
+    }
+
     // private boolean requiresOtp(Account account) {
     //     return authProperties.getOtp().isSuperAdminEnabled() && account.getRoles().contains(Role.SUPER_ADMIN);
     // }
@@ -199,6 +235,9 @@ public class AuthService {
                 : (account.getCompany() != null && account.getCompany().getCompanyName() != null
                         ? account.getCompany().getCompanyName()
                         : account.getCompanyName());
+        Set<Feature> enabledFeatures = account.getCompany() != null && account.getCompany().getEnabledFeatures() != null
+                ? Set.copyOf(account.getCompany().getEnabledFeatures())
+                : Set.of();
         return CurrentUserResponse.builder()
                 .id(account.getId())
                 .companyId(companyId)
@@ -207,6 +246,7 @@ public class AuthService {
                 .email(account.getEmail())
                 .phone(account.getPhone())
                 .roles(account.getRoles())
+                .enabledFeatures(enabledFeatures)
                 .build();
     }
 

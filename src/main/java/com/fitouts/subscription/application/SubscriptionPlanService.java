@@ -1,5 +1,6 @@
 package com.fitouts.subscription.application;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -43,6 +44,13 @@ public class SubscriptionPlanService {
     }
 
     @Transactional(readOnly = true)
+    public List<SubscriptionPlanResponse> getActivePlans() {
+        return repository.findByIsActiveTrue().stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public SubscriptionPlanResponse getByUuid(UUID uuid) {
         return toResponse(getPlan(uuid));
     }
@@ -81,6 +89,7 @@ public class SubscriptionPlanService {
         plan.setPlanName(planName);
         plan.setMaxUsers(request.getMaxUsers());
         plan.setModulesIncluded(normalizeModules(request.getModulesIncluded()));
+        plan.setFeatures(normalizeFeatures(request.getFeatures()));
         plan.setPriceMonthly(request.getPriceMonthly());
         plan.setPriceAnnual(request.getPriceAnnual());
     }
@@ -89,6 +98,19 @@ public class SubscriptionPlanService {
         Set<String> modules = new HashSet<>();
         modulesIncluded.forEach(module -> modules.add(module.trim()));
         return modules;
+    }
+
+    private List<String> normalizeFeatures(List<String> features) {
+        List<String> normalized = new ArrayList<>();
+        if (features == null) {
+            return normalized;
+        }
+        for (String feature : features) {
+            if (feature != null && !feature.isBlank()) {
+                normalized.add(feature.trim());
+            }
+        }
+        return normalized;
     }
 
     private String normalizePlanName(String planName) {
@@ -114,6 +136,7 @@ public class SubscriptionPlanService {
                 .planName(plan.getPlanName())
                 .maxUsers(plan.getMaxUsers())
                 .modulesIncluded(plan.getModulesIncluded())
+                .features(plan.getFeatures() == null ? List.of() : List.copyOf(plan.getFeatures()))
                 .priceMonthly(plan.getPriceMonthly())
                 .priceAnnual(plan.getPriceAnnual())
                 .active(plan.getIsActive())

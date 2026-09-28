@@ -1,6 +1,7 @@
 package com.fitouts.subscription.api;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -15,6 +16,7 @@ public class SubscriptionPlanResponse {
     private String planName;
     private Integer maxUsers;
     private Set<String> modulesIncluded;
+    private List<String> features;
     private BigDecimal priceMonthly;
     private BigDecimal priceAnnual;
     private Boolean active;

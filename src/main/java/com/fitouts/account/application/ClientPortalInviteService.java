@@ -137,11 +137,6 @@ public class ClientPortalInviteService {
             return;
         }
 
-        if (!Boolean.TRUE.equals(account.getIsActive())) {
-            log.debug("Password setup resend skipped for inactive account {}", account.getId());
-            return;
-        }
-
         if (account.getRoles().contains(Role.SUBCONTRACTOR)) {
             sendSubcontractorPortalInvite(account.getId(), account.getFullName());
         } else if (account.getRoles().contains(Role.CLIENT)) {

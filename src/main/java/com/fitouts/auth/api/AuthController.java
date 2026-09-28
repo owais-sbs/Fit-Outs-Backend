@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.fitouts.account.application.ClientPortalInviteService;
 import com.fitouts.auth.application.AuthService;
+import com.fitouts.auth.api.ChangePasswordRequest;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.shared.api.BaseController;
 import com.fitouts.shared.api.MessageResponse;
@@ -119,6 +120,21 @@ public class AuthController extends BaseController {
             return successResponse(authService.me(principal));
         } catch (Exception exception) {
             return failureResponse("Unable to fetch current user", exception.getMessage());
+        }
+    }
+
+    @PostMapping("/change-password")
+    public ResponseEntity<?> changePassword(
+            @Valid @RequestBody ChangePasswordRequest request,
+            @AuthenticationPrincipal AuthPrincipal principal) {
+        try {
+            if (principal == null) {
+                return failureResponse("Unable to change password", "Authentication required");
+            }
+            authService.changePassword(principal, request);
+            return successResponse(new MessageResponse("Password changed successfully"));
+        } catch (Exception exception) {
+            return failureResponse("Unable to change password", exception.getMessage());
         }
     }
 

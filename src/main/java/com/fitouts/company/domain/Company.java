@@ -3,11 +3,16 @@ package com.fitouts.company.domain;
 import java.io.Serial;
 import java.io.Serializable;
 import java.time.OffsetDateTime;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
+import com.fitouts.employee.domain.Feature;
 import com.fitouts.subscription.domain.SubscriptionPlan;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -49,9 +54,15 @@ public class Company implements Serializable {
     @Column(nullable = true, unique = true, length = 100)
     private String domainSlug;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "subscription_plan_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
+    @JoinColumn(name = "subscription_plan_id", nullable = true)
     private SubscriptionPlan subscriptionPlan;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "company_enabled_features", joinColumns = @JoinColumn(name = "company_uuid"))
+    @Enumerated(EnumType.STRING)
+    @Column(name = "feature", nullable = false)
+    private Set<Feature> enabledFeatures = new HashSet<>();
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = true)
