@@ -27,4 +27,8 @@ public interface SubscriptionPaymentRepository extends JpaRepository<Subscriptio
             ORDER BY p.createdAt DESC
             """)
     List<SubscriptionPayment> findAllDetailed();
+
+    Optional<SubscriptionPayment> findFirstByCompanyUuidAndStatusOrderByCreatedAtDesc(
+            UUID companyUuid,
+            SubscriptionPaymentStatus status);
 }

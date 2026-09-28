@@ -26,6 +26,7 @@ import lombok.RequiredArgsConstructor;
  * file under their company prefix. Subcontractor compliance / org / worker uploads use
  * {@code sc-compliance/}, {@code sc-org/}, and {@code sc-worker/} prefixes (no company UUID folder).
  * Cover-letter branding uses {@code cover-letter/{companyUuid}/...}.
+ * Company logos use {@code company/{companyUuid}/logo/...}.
  */
 @Service
 @RequiredArgsConstructor
@@ -48,6 +49,10 @@ public class FileAccessService {
         }
         if (path.startsWith("cover-letter/")) {
             assertCanDownloadCoverLetter(path);
+            return;
+        }
+        if (path.startsWith("company/")) {
+            assertCanDownloadCompanyBranding(path);
             return;
         }
         if (path.startsWith("sc-compliance/")) {
@@ -218,15 +223,27 @@ public class FileAccessService {
      * Allowed for anyone authenticated in that company context.
      */
     private void assertCanDownloadCoverLetter(String path) {
+        assertPathCompanyMatchesContext(path, "cover letter");
+    }
+
+    /**
+     * Paths: {@code company/{companyUuid}/logo/...} (tenant logo from onboarding / provision).
+     * Allowed for anyone authenticated in that company context.
+     */
+    private void assertCanDownloadCompanyBranding(String path) {
+        assertPathCompanyMatchesContext(path, "company branding");
+    }
+
+    private void assertPathCompanyMatchesContext(String path, String label) {
         String[] parts = path.split("/");
         if (parts.length < 2) {
-            throw new ForbiddenException("Invalid cover letter file path");
+            throw new ForbiddenException("Invalid " + label + " file path");
         }
         UUID pathCompanyId;
         try {
             pathCompanyId = UUID.fromString(parts[1]);
         } catch (IllegalArgumentException e) {
-            throw new ForbiddenException("Invalid cover letter file path");
+            throw new ForbiddenException("Invalid " + label + " file path");
         }
         UUID companyId = CompanyContext.get();
         if (companyId == null || !companyId.equals(pathCompanyId)) {

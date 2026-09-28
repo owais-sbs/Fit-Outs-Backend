@@ -21,6 +21,7 @@ import com.fitouts.auth.api.ChangePasswordRequest;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.shared.api.BaseController;
 import com.fitouts.shared.api.MessageResponse;
+import com.fitouts.shared.error.ApiException;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -69,6 +70,22 @@ public class AuthController extends BaseController {
         }
     }
 
+    @PostMapping("/signup")
+    public ResponseEntity<?> signup(
+            @Valid @RequestBody SignupRequest request,
+            HttpServletRequest servletRequest,
+            HttpServletResponse servletResponse) {
+
+        try {
+            AuthService.LoginResult result = authService.signup(request, servletRequest, servletResponse);
+            return successResponse(result.response());
+        } catch (ApiException exception) {
+            return failureResponse(exception.getMessage(), exception.getMessage());
+        } catch (Exception exception) {
+            return failureResponse("Unable to sign up", exception.getMessage());
+        }
+    }
+
     @PostMapping("/login")
     public ResponseEntity<?> login(
             @Valid @RequestBody LoginRequest request,
@@ -78,6 +95,9 @@ public class AuthController extends BaseController {
         try {
             AuthService.LoginResult result = authService.login(request, servletRequest, servletResponse);
             return successResponse(result.response());
+        } catch (ApiException exception) {
+            // Surface the specific reason (e.g. "Invalid email or password") as message.
+            return failureResponse(exception.getMessage(), exception.getMessage());
         } catch (Exception exception) {
             return failureResponse("Unable to login", exception.getMessage());
         }
@@ -91,6 +111,8 @@ public class AuthController extends BaseController {
 
         try {
             return successResponse(authService.verifyOtp(request, servletRequest, servletResponse));
+        } catch (ApiException exception) {
+            return failureResponse(exception.getMessage(), exception.getMessage());
         } catch (Exception exception) {
             return failureResponse("Unable to verify OTP", exception.getMessage());
         }

@@ -115,6 +115,14 @@ public class SubscriptionPaymentService {
         if (status == SubscriptionPaymentStatus.PAID) {
             company.setSubscriptionPlan(payment.getPlan());
             company.setStatus(CompanyStatus.ACTIVE);
+            if (company.getEnabledFeatures() == null || company.getEnabledFeatures().isEmpty()) {
+                company.setEnabledFeatures(
+                        new java.util.HashSet<>(com.fitouts.onboarding.application.OnboardingService.defaultEnabledFeatures()));
+            }
+            // Self-serve tenants must still complete name + logo onboarding.
+            if (!Boolean.TRUE.equals(company.getOnboardingCompleted())) {
+                company.setOnboardingCompleted(false);
+            }
         } else if (status == SubscriptionPaymentStatus.FAILED
                 || status == SubscriptionPaymentStatus.CANCELLED) {
             company.setStatus(CompanyStatus.SUSPENDED);

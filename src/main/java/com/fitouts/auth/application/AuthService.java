@@ -1,7 +1,9 @@
 package com.fitouts.auth.application;
 
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -19,23 +21,32 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.fitouts.account.application.AccountService;
 import com.fitouts.account.domain.Account;
+import com.fitouts.account.domain.AccountRepository;
 import com.fitouts.auth.api.AuthSessionResponse;
 import com.fitouts.auth.api.ChangePasswordRequest;
 import com.fitouts.auth.api.CurrentUserResponse;
 import com.fitouts.auth.api.LoginRequest;
 import com.fitouts.auth.api.LoginResponse;
+import com.fitouts.auth.api.SignupRequest;
 import com.fitouts.auth.api.VerifyOtpRequest;
 import com.fitouts.auth.config.AuthProperties;
+import com.fitouts.auth.domain.AccessPhase;
 import com.fitouts.auth.domain.OtpChallenge;
 import com.fitouts.auth.domain.RememberedDevice;
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
+import com.fitouts.checklist.mapper.SiteVisitEstimateMapper;
 import com.fitouts.company.domain.Company;
 import com.fitouts.company.domain.CompanyStatus;
+import com.fitouts.drawing.application.FileStorageService;
 import com.fitouts.employee.domain.Feature;
 import com.fitouts.shared.error.BadRequestException;
+import com.fitouts.shared.error.ConflictException;
 import com.fitouts.shared.error.ForbiddenException;
 import com.fitouts.shared.error.UnauthorizedException;
+import com.fitouts.subscription.domain.SubscriptionPayment;
+import com.fitouts.subscription.domain.SubscriptionPaymentRepository;
+import com.fitouts.subscription.domain.SubscriptionPaymentStatus;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -46,6 +57,7 @@ import lombok.RequiredArgsConstructor;
 public class AuthService {
 
     private final AccountService accountService;
+    private final AccountRepository accountRepository;
     private final DeviceService deviceService;
     private final OtpService otpService;
     private final AuthProperties authProperties;
@@ -54,6 +66,40 @@ public class AuthService {
     private final FindByIndexNameSessionRepository<? extends Session> sessionRepository;
     private final PasswordEncoder passwordEncoder;
     private final CookieService cookieService;
+    private final SubscriptionPaymentRepository subscriptionPaymentRepository;
+    private final FileStorageService fileStorageService;
+
+    @Transactional
+    public LoginResult signup(
+            SignupRequest request,
+            HttpServletRequest servletRequest,
+            HttpServletResponse servletResponse) {
+
+        String email = request.getEmail().trim().toLowerCase(Locale.ROOT);
+        String fullName = request.getFullName().trim();
+        if (fullName.isBlank()) {
+            throw new BadRequestException("Full name is required");
+        }
+        if (request.getPassword() == null || request.getPassword().length() < 8) {
+            throw new BadRequestException("Password must be at least 8 characters");
+        }
+
+        accountRepository.findByEmail(email).ifPresent(existing -> {
+            throw new ConflictException("An account with this email already exists");
+        });
+
+        Account account = new Account();
+        account.setFullName(fullName);
+        account.setEmail(email);
+        account.setPassword(passwordEncoder.encode(request.getPassword()));
+        account.setIsActive(true);
+        account.setCompany(null);
+        account.setRoles(new HashSet<>(Set.of(Role.ADMIN)));
+        account = accountRepository.save(account);
+
+        RememberedDevice device = deviceService.resolveDevice(account, servletRequest, servletResponse);
+        return new LoginResult(false, authenticate(account, device, servletRequest, servletResponse));
+    }
 
     @Transactional
     public LoginResult login(
@@ -74,17 +120,6 @@ public class AuthService {
         assertCompanyAccessAllowed(account);
 
         RememberedDevice device = deviceService.resolveDevice(account, servletRequest, servletResponse);
-        // Role-based OTP check disabled
-        // if (requiresOtp(account)) {
-        //     OtpService.GeneratedOtp generatedOtp = otpService.createChallenge(account, device);
-        //     return new LoginResult(true, LoginResponse.builder()
-        //             .status("OTP_REQUIRED")
-        //             .message("OTP verification required")
-        //             .challengeId(generatedOtp.challenge().getChallengeId())
-        //             .otp(authProperties.getOtp().isDevExposeValue() ? generatedOtp.rawOtp() : null)
-        //             .build());
-        // }
-
         return new LoginResult(false, authenticate(account, device, servletRequest, servletResponse));
     }
 
@@ -107,6 +142,18 @@ public class AuthService {
         Account account = accountService.getAccountByEmail(principal.getEmail());
         assertCompanyAccessAllowed(account);
         return toCurrentUser(account, principal);
+    }
+
+    /**
+     * Re-binds the security context after company linkage (e.g. I've paid).
+     */
+    @Transactional
+    public void refreshSession(
+            Account account,
+            HttpServletRequest request,
+            HttpServletResponse response) {
+        RememberedDevice device = deviceService.resolveDevice(account, request, response);
+        authenticate(account, device, request, response);
     }
 
     @Transactional
@@ -212,42 +259,69 @@ public class AuthService {
     }
 
     private void assertCompanyAccessAllowed(Account account) {
-        if (account.getRoles() != null && account.getRoles().contains(Role.SUPER_ADMIN)) {
-            return;
-        }
-        Company company = account.getCompany();
-        if (company == null || company.getStatus() != CompanyStatus.ACTIVE) {
+        if (!AccessPhaseResolver.isLoginAllowed(account)) {
             throw new UnauthorizedException(
                     "Company subscription is inactive. Contact the platform administrator.");
         }
     }
 
-    // private boolean requiresOtp(Account account) {
-    //     return authProperties.getOtp().isSuperAdminEnabled() && account.getRoles().contains(Role.SUPER_ADMIN);
-    // }
-
     private CurrentUserResponse toCurrentUser(Account account, AuthPrincipal principal) {
         UUID companyId = principal != null && principal.getCompanyId() != null
                 ? principal.getCompanyId()
                 : (account.getCompany() != null ? account.getCompany().getUuid() : null);
-        String companyName = principal != null && principal.getCompanyName() != null
-                ? principal.getCompanyName()
-                : (account.getCompany() != null && account.getCompany().getCompanyName() != null
-                        ? account.getCompany().getCompanyName()
-                        : account.getCompanyName());
+        // Prefer live account company when session principal is stale after payment.
+        if (account.getCompany() != null) {
+            companyId = account.getCompany().getUuid();
+        }
+        String companyName = account.getCompany() != null && account.getCompany().getCompanyName() != null
+                ? account.getCompany().getCompanyName()
+                : account.getCompanyName();
         Set<Feature> enabledFeatures = account.getCompany() != null && account.getCompany().getEnabledFeatures() != null
                 ? Set.copyOf(account.getCompany().getEnabledFeatures())
                 : Set.of();
+
+        AccessPhase accessPhase = AccessPhaseResolver.resolve(account);
+        Company company = account.getCompany();
+        CompanyStatus companyStatus = company != null ? company.getStatus() : null;
+        Boolean onboardingCompleted = company != null ? Boolean.TRUE.equals(company.getOnboardingCompleted()) : false;
+        SubscriptionPaymentStatus pendingPaymentStatus = null;
+        if (company != null) {
+            pendingPaymentStatus = subscriptionPaymentRepository
+                    .findFirstByCompanyUuidAndStatusOrderByCreatedAtDesc(
+                            company.getUuid(), SubscriptionPaymentStatus.PENDING)
+                    .map(SubscriptionPayment::getStatus)
+                    .orElse(null);
+        }
+
         return CurrentUserResponse.builder()
                 .id(account.getId())
                 .companyId(companyId)
                 .companyName(companyName)
+                .companyLogo(resolveCompanyLogoUrl(company))
                 .fullName(account.getFullName())
                 .email(account.getEmail())
                 .phone(account.getPhone())
                 .roles(account.getRoles())
                 .enabledFeatures(enabledFeatures)
+                .accessPhase(accessPhase)
+                .companyStatus(companyStatus)
+                .onboardingCompleted(onboardingCompleted)
+                .pendingPaymentStatus(pendingPaymentStatus)
                 .build();
+    }
+
+    /**
+     * Prefer CloudFront/S3 public URL when configured; otherwise same-origin {@code /api/files/...}.
+     */
+    private String resolveCompanyLogoUrl(Company company) {
+        if (company == null || company.getLogo() == null || company.getLogo().isBlank()) {
+            return null;
+        }
+        String publicUrl = fileStorageService.publicUrl(company.getLogo());
+        if (publicUrl != null && !publicUrl.isBlank()) {
+            return publicUrl;
+        }
+        return SiteVisitEstimateMapper.toFileUrl(company.getLogo());
     }
 
     public record LoginResult(boolean pendingOtp, LoginResponse response) {

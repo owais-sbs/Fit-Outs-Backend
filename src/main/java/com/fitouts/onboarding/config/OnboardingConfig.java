@@ -1,0 +1,9 @@
+package com.fitouts.onboarding.config;
+
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+@EnableConfigurationProperties(ManualBillingProperties.class)
+public class OnboardingConfig {
+}
