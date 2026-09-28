@@ -53,7 +53,8 @@ public class EmailService {
             MimeMessage mimeMessage = mailSender.createMimeMessage();
             boolean hasAttachments = message.getAttachments() != null && !message.getAttachments().isEmpty();
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, hasAttachments, "UTF-8");
-            helper.setFrom(new InternetAddress(resolveFrom()));
+            InternetAddress from = resolveFromAddress();
+            helper.setFrom(from);
             helper.setTo(message.getTo().trim());
             helper.setSubject(message.getSubject() != null ? message.getSubject() : "Fit-Outs Notification");
             helper.setText(message.getBody() != null ? message.getBody() : "", message.isHtml());
@@ -82,6 +83,9 @@ public class EmailService {
             }
 
             mailSender.send(mimeMessage);
+            // "Confirmation" is SMTP acceptance only — the relay accepted the message.
+            // There is no delivery/bounce webhook callback in this stack.
+            log.info("SMTP accepted mail to {} from {} messageId={}", message.getTo(), from.getAddress(), messageId);
             return messageId;
         } catch (Exception e) {
             log.error("Failed to send email to {}", message.getTo(), e);
@@ -102,14 +106,32 @@ public class EmailService {
         return "<" + UUID.randomUUID() + "@fitouts.onepathsolutions.com>";
     }
 
-    private String resolveFrom() {
-        if (StringUtils.hasText(configuredFrom)) {
-            return configuredFrom.trim();
+    /**
+     * Prefer {@code app.mail.from}. If that address is not the authenticated SMTP
+     * user (common with Gmail), fall back to the SMTP username so the relay accepts
+     * the message — while keeping any configured display name.
+     */
+    private InternetAddress resolveFromAddress() throws Exception {
+        String raw = StringUtils.hasText(configuredFrom)
+                ? configuredFrom.trim()
+                : (StringUtils.hasText(usernameFallback) ? usernameFallback.trim() : "noreply@fitouts.local");
+
+        InternetAddress configured = new InternetAddress(raw, true);
+        String smtpUser = StringUtils.hasText(usernameFallback) ? usernameFallback.trim() : null;
+        if (smtpUser != null
+                && smtpUser.contains("@")
+                && configured.getAddress() != null
+                && !configured.getAddress().equalsIgnoreCase(smtpUser)) {
+            log.warn(
+                    "app.mail.from ({}) differs from SMTP username ({}); using SMTP username as From to avoid relay rejection",
+                    configured.getAddress(),
+                    smtpUser);
+            return new InternetAddress(smtpUser, configured.getPersonal(), "UTF-8");
         }
-        if (StringUtils.hasText(usernameFallback)) {
-            return usernameFallback.trim();
+        if (configured.getPersonal() != null) {
+            return new InternetAddress(configured.getAddress(), configured.getPersonal(), "UTF-8");
         }
-        return "noreply@fitouts.local";
+        return configured;
     }
 
     public record EmailAttachment(String filename, byte[] data, String contentType) {}

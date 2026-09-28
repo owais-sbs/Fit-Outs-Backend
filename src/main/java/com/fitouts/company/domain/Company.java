@@ -68,6 +68,9 @@ public class Company implements Serializable {
     @Column(nullable = true)
     private CompanyStatus status = CompanyStatus.TRIAL;
 
+    @Column(name = "onboarding_completed", nullable = false)
+    private Boolean onboardingCompleted = false;
+
     @Column(nullable = true, updatable = false)
     private OffsetDateTime createdAt;
 

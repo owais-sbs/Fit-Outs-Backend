@@ -32,8 +32,20 @@ public class CompanyContextFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         try {
             AuthPrincipal principal = resolvePrincipal();
-            if (principal != null && principal.getCompanyId() != null) {
-                CompanyContext.set(principal.getCompanyId());
+            if (principal != null) {
+                // Prefer live company from DB so post-payment linkage is visible without waiting
+                // for a full re-login when the serialized principal is stale.
+                accountService.findOptionalByEmail(principal.getEmail()).ifPresentOrElse(account -> {
+                    if (account.getCompany() != null) {
+                        CompanyContext.set(account.getCompany().getUuid());
+                    } else if (principal.getCompanyId() != null) {
+                        CompanyContext.set(principal.getCompanyId());
+                    }
+                }, () -> {
+                    if (principal.getCompanyId() != null) {
+                        CompanyContext.set(principal.getCompanyId());
+                    }
+                });
             }
             filterChain.doFilter(request, response);
         } finally {

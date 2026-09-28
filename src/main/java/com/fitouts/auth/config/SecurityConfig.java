@@ -24,6 +24,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import com.fitouts.auth.filter.AccessPhaseFilter;
 import com.fitouts.auth.filter.CompanyContextFilter;
 import com.fitouts.auth.security.RestAccessDeniedHandler;
 import com.fitouts.auth.security.RestAuthenticationEntryPoint;
@@ -40,7 +41,8 @@ public class SecurityConfig {
             RestAuthenticationEntryPoint authenticationEntryPoint,
             RestAccessDeniedHandler accessDeniedHandler,
             SessionActivityFilter sessionActivityFilter,
-            CompanyContextFilter companyContextFilter) throws Exception {
+            CompanyContextFilter companyContextFilter,
+            AccessPhaseFilter accessPhaseFilter) throws Exception {
 
         http.csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
@@ -54,6 +56,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
                                 "/api/auth/login",
+                                "/api/auth/signup",
                                 "/api/auth/verify-otp",
                                 "/api/auth/password-setup/**",
                                 "/api/public/sc-registration/**",
@@ -68,7 +71,8 @@ public class SecurityConfig {
                         ).permitAll()
                         .anyRequest().authenticated())
                 .addFilterAfter(sessionActivityFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterAfter(companyContextFilter, SessionActivityFilter.class);
+                .addFilterAfter(companyContextFilter, SessionActivityFilter.class)
+                .addFilterAfter(accessPhaseFilter, CompanyContextFilter.class);
 
         return http.build();
     }

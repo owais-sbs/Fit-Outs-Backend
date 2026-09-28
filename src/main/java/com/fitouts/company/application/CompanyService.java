@@ -8,7 +8,9 @@ import java.util.UUID;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.fitouts.account.application.ClientPortalInviteService;
@@ -30,10 +32,10 @@ import com.fitouts.shared.security.TemporaryPasswordGenerator;
 import com.fitouts.subscription.application.SubscriptionPlanService;
 import com.fitouts.subscription.domain.SubscriptionPlan;
 
-import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
-@RequiredArgsConstructor
+@Slf4j
 public class CompanyService {
 
     private final CompanyRepository repository;
@@ -42,8 +44,25 @@ public class CompanyService {
     private final PasswordEncoder passwordEncoder;
     private final FileStorageService fileStorageService;
     private final ClientPortalInviteService clientPortalInviteService;
+    private final TransactionTemplate transactionTemplate;
 
-    @Transactional
+    public CompanyService(
+            CompanyRepository repository,
+            SubscriptionPlanService subscriptionPlanService,
+            AccountRepository accountRepository,
+            PasswordEncoder passwordEncoder,
+            FileStorageService fileStorageService,
+            ClientPortalInviteService clientPortalInviteService,
+            PlatformTransactionManager transactionManager) {
+        this.repository = repository;
+        this.subscriptionPlanService = subscriptionPlanService;
+        this.accountRepository = accountRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.fileStorageService = fileStorageService;
+        this.clientPortalInviteService = clientPortalInviteService;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
+    }
+
     public CompanyResponse create(CompanyCreateRequest request) {
         return provision(
                 request,
@@ -52,18 +71,45 @@ public class CompanyService {
                 null);
     }
 
-    @Transactional
+    /**
+     * Creates the company + admin account in a short transaction, then sends the
+     * invite email after commit. SMTP success is reported via {@code inviteEmailSent};
+     * mail failure no longer rolls back provisioning (matches employee/client invites).
+     */
     public CompanyResponse provision(
             CompanyCreateRequest request,
             MultipartFile logoFile,
             MultipartFile stampFile,
             MultipartFile signatureFile) {
 
+        ProvisionedAdmin provisioned = transactionTemplate.execute(status ->
+                createCompanyAndAdmin(request, logoFile, stampFile, signatureFile));
+        if (provisioned == null) {
+            throw new BadRequestException("Unable to provision company");
+        }
+
+        boolean inviteSent = clientPortalInviteService.sendStaffPortalInvite(
+                provisioned.accountId(),
+                provisioned.fullName(),
+                Role.ADMIN.displayLabel());
+        if (!inviteSent) {
+            log.warn(
+                    "Company {} provisioned but setup email to {} was not accepted by SMTP",
+                    provisioned.company().getUuid(),
+                    provisioned.adminEmail());
+        }
+
+        return toResponse(provisioned.company(), provisioned.adminEmail(), null, inviteSent);
+    }
+
+    private ProvisionedAdmin createCompanyAndAdmin(
+            CompanyCreateRequest request,
+            MultipartFile logoFile,
+            MultipartFile stampFile,
+            MultipartFile signatureFile) {
+
         String companyName = request.getCompanyName().trim();
-        String domainSlug = resolveSlug(request.getDomainSlug(), companyName);
-        repository.findByDomainSlugIgnoreCase(domainSlug).ifPresent(company -> {
-            throw new ConflictException("Company domain slug already exists");
-        });
+        String domainSlug = resolveUniqueSlug(request.getDomainSlug(), companyName);
 
         String adminEmail = request.getAdminEmail() != null
                 ? request.getAdminEmail().trim().toLowerCase(Locale.ROOT)
@@ -87,6 +133,7 @@ public class CompanyService {
         company.setStatus(CompanyStatus.ACTIVE);
         company.setSubscriptionPlan(plan);
         company.setEnabledFeatures(normalizeFeatures(request.getEnabledFeatures()));
+        company.setOnboardingCompleted(true);
 
         company = repository.save(company);
 
@@ -127,16 +174,14 @@ public class CompanyService {
         account.setRoles(new HashSet<>(Set.of(Role.ADMIN)));
         account = accountRepository.save(account);
 
-        boolean inviteSent = clientPortalInviteService.sendStaffPortalInvite(
-                account.getId(),
-                fullName,
-                Role.ADMIN.displayLabel());
-        if (!inviteSent) {
-            throw new BadRequestException(
-                    "Unable to send setup email. Check SMTP configuration and try again.");
-        }
+        return new ProvisionedAdmin(company, account.getId(), adminEmail, fullName);
+    }
 
-        return toResponse(company, adminEmail, null, true);
+    private record ProvisionedAdmin(
+            Company company,
+            Long accountId,
+            String adminEmail,
+            String fullName) {
     }
 
     @Transactional(readOnly = true)
@@ -243,6 +288,36 @@ public class CompanyService {
                 .temporaryPassword(temporaryPassword)
                 .inviteEmailSent(inviteEmailSent)
                 .build();
+    }
+
+    /**
+     * Explicit slugs must be unique. Auto-generated slugs (from company name) get
+     * a numeric suffix when the base is already taken — e.g. apex-legends-2 —
+     * so retries after a partial provision don't fail on slug alone.
+     */
+    private String resolveUniqueSlug(String requestedSlug, String companyName) {
+        String base = resolveSlug(requestedSlug, companyName);
+        boolean explicit = requestedSlug != null && !requestedSlug.isBlank();
+        if (explicit) {
+            repository.findByDomainSlugIgnoreCase(base).ifPresent(existing -> {
+                throw new ConflictException("Company domain slug already exists");
+            });
+            return base;
+        }
+        return allocateUniqueSlug(base);
+    }
+
+    private String allocateUniqueSlug(String base) {
+        String candidate = base;
+        int suffix = 2;
+        while (repository.findByDomainSlugIgnoreCase(candidate).isPresent()) {
+            candidate = base + "-" + suffix;
+            suffix++;
+            if (suffix > 1000) {
+                throw new ConflictException("Unable to allocate a unique domain slug");
+            }
+        }
+        return candidate;
     }
 
     private String resolveSlug(String requestedSlug, String companyName) {
