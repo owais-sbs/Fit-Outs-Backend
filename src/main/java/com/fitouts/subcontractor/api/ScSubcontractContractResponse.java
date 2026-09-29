@@ -2,6 +2,7 @@ package com.fitouts.subcontractor.api;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import lombok.AllArgsConstructor;
@@ -44,6 +45,9 @@ public class ScSubcontractContractResponse {
     private String adminSignerName;
     private String adminSignerTitle;
     private String adminSignatureAuditJson;
+    /** Cover Letter digital signature image URL (visible to subcontractor once admin has signed). */
+    private String adminSignatureUrl;
+    private List<ScAwardBoqLineResponse> awardedBoqLines;
     private boolean subcontractorSignatureUploaded;
     private String subcontractorSignatureUrl;
     private boolean signed;

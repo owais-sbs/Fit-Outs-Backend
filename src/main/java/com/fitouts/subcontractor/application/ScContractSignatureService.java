@@ -1,6 +1,7 @@
 package com.fitouts.subcontractor.application;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -13,6 +14,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
+import com.fitouts.boq.domain.BoqLine;
+import com.fitouts.boq.domain.BoqLineRepository;
 import com.fitouts.checklist.mapper.SiteVisitEstimateMapper;
 import com.fitouts.company.application.CoverLetterBrandingService;
 import com.fitouts.company.domain.Company;
@@ -25,8 +28,11 @@ import com.fitouts.shared.error.BadRequestException;
 import com.fitouts.shared.error.ForbiddenException;
 import com.fitouts.shared.error.NotFoundException;
 import com.fitouts.subcontractor.api.ScAdminSignContractRequest;
+import com.fitouts.subcontractor.api.ScAwardBoqLineResponse;
 import com.fitouts.subcontractor.api.ScSignContractRequest;
 import com.fitouts.subcontractor.api.ScSubcontractContractResponse;
+import com.fitouts.subcontractor.domain.ScAwardBoqLine;
+import com.fitouts.subcontractor.domain.ScAwardBoqLineRepository;
 import com.fitouts.subcontractor.domain.ScContractStatus;
 import com.fitouts.subcontractor.domain.ScOrganization;
 import com.fitouts.subcontractor.domain.ScOrganizationRepository;
@@ -35,6 +41,8 @@ import com.fitouts.subcontractor.domain.ScPackageAwardRepository;
 import com.fitouts.subcontractor.domain.ScPortalUser;
 import com.fitouts.subcontractor.domain.ScPortalUserRepository;
 import com.fitouts.subcontractor.domain.ScQuote;
+import com.fitouts.subcontractor.domain.ScQuoteLine;
+import com.fitouts.subcontractor.domain.ScQuoteLineRepository;
 import com.fitouts.subcontractor.domain.ScQuoteRepository;
 import com.fitouts.subcontractor.domain.SubcontractorPackage;
 import com.fitouts.subcontractor.domain.SubcontractorPackageRepository;
@@ -54,6 +62,9 @@ public class ScContractSignatureService {
     private final CompanyRepository companyRepository;
     private final ProjectRepository projectRepository;
     private final ScQuoteRepository quoteRepository;
+    private final ScQuoteLineRepository quoteLineRepository;
+    private final ScAwardBoqLineRepository awardBoqLineRepository;
+    private final BoqLineRepository boqLineRepository;
     private final ScPortalAccessService portalAccessService;
     private final FileStorageService fileStorageService;
     private final SubcontractPdfService pdfService;
@@ -114,9 +125,14 @@ public class ScContractSignatureService {
                 ? request.getSignerTitle().trim()
                 : "Main Contractor Admin";
 
+        ScQuote quote = award.getQuoteUuid() != null
+                ? quoteRepository.findById(award.getQuoteUuid()).orElse(null)
+                : null;
+
         // Generate Stage 1 PDF with Admin signature embedded (JCT cover-letter format)
         byte[] pdfBytes = pdfService.generateStage1AdminPdf(
-                pkg, award, org, project, signerName, signerTitle, adminSignedAt, adminSigBytesOpt.get());
+                pkg, award, org, project, signerName, signerTitle, adminSignedAt, adminSigBytesOpt.get(),
+                resolveAwardedBoqLines(award, quote));
 
         String pdfFileName = "contract_" + packageUuid + "_stage1.pdf";
         String contractFilePath = fileStorageService.storeBytes(
@@ -223,6 +239,10 @@ public class ScContractSignatureService {
                 return;
             }
             Project project = projectRepository.findById(pkg.getProjectId()).orElse(null);
+            ScQuote quote = award.getQuoteUuid() != null
+                    ? quoteRepository.findById(award.getQuoteUuid()).orElse(null)
+                    : null;
+            List<ScAwardBoqLineResponse> awardedBoqLines = resolveAwardedBoqLines(award, quote);
             byte[] pdfBytes;
             String fileName;
             if (award.getSignedAt() != null) {
@@ -241,13 +261,13 @@ public class ScContractSignatureService {
                         pkg, award, organization, project,
                         award.getAdminSignerName(), award.getAdminSignerTitle(), award.getAdminSignedAt(), adminSigBytes,
                         award.getSubcontractorSignerName(), award.getSubcontractorSignerTitle(),
-                        award.getSignedAt(), subSigBytes);
+                        award.getSignedAt(), subSigBytes, awardedBoqLines);
                 fileName = "contract_" + pkg.getUuid() + "_executed.pdf";
             } else {
                 pdfBytes = pdfService.generateStage1AdminPdf(
                         pkg, award, organization, project,
                         award.getAdminSignerName(), award.getAdminSignerTitle(),
-                        award.getAdminSignedAt(), adminSigBytes);
+                        award.getAdminSignedAt(), adminSigBytes, awardedBoqLines);
                 fileName = "contract_" + pkg.getUuid() + "_stage1.pdf";
             }
             String previous = award.getContractFilePath();
@@ -284,6 +304,14 @@ public class ScContractSignatureService {
                 ? quoteRepository.findById(award.getQuoteUuid()).orElse(null)
                 : null;
 
+        Company company = pkg.getCompanyId() != null
+                ? companyRepository.findById(pkg.getCompanyId()).orElse(null)
+                : null;
+        String adminSignatureUrl = null;
+        if (adminSigned && company != null && StringUtils.hasText(company.getSignatureImagePath())) {
+            adminSignatureUrl = SiteVisitEstimateMapper.toFileUrl(company.getSignatureImagePath());
+        }
+
         return ScSubcontractContractResponse.builder()
                 .awardUuid(award.getUuid())
                 .packageUuid(pkg.getUuid())
@@ -313,6 +341,8 @@ public class ScContractSignatureService {
                 .adminSignerName(award.getAdminSignerName())
                 .adminSignerTitle(award.getAdminSignerTitle())
                 .adminSignatureAuditJson(award.getAdminSignatureAuditJson())
+                .adminSignatureUrl(adminSignatureUrl)
+                .awardedBoqLines(resolveAwardedBoqLines(award, quote))
                 .subcontractorSignatureUploaded(subSigUploaded)
                 .subcontractorSignatureUrl(subSigUrl)
                 .signed(subSigned)
@@ -384,6 +414,10 @@ public class ScContractSignatureService {
         String subSignerName = request.getSignatureName().trim();
         String subSignerTitle = StringUtils.hasText(request.getSignerTitle()) ? request.getSignerTitle().trim() : "Subcontractor Representative";
 
+        ScQuote quote = award.getQuoteUuid() != null
+                ? quoteRepository.findById(award.getQuoteUuid()).orElse(null)
+                : null;
+
         // Generate Stage 2 PDF with BOTH Admin and Subcontractor signatures embedded
         byte[] finalPdfBytes = pdfService.generateStage2FinalPdf(
                 pkg,
@@ -397,7 +431,8 @@ public class ScContractSignatureService {
                 subSignerName,
                 subSignerTitle,
                 signedAt,
-                subSigBytesOpt.get());
+                subSigBytesOpt.get(),
+                resolveAwardedBoqLines(award, quote));
 
         String pdfFileName = "contract_" + packageUuid + "_executed.pdf";
         String finalContractFilePath = fileStorageService.storeBytes(
@@ -418,6 +453,52 @@ public class ScContractSignatureService {
 
         ScPackageAward savedAward = awardRepository.save(award);
         return toResponse(pkg, savedAward, org, portalUser);
+    }
+
+    private List<ScAwardBoqLineResponse> resolveAwardedBoqLines(ScPackageAward award, ScQuote quote) {
+        List<ScAwardBoqLineResponse> awardedLines = awardBoqLineRepository
+                .findByAwardUuidOrderBySortOrderAsc(award.getUuid())
+                .stream()
+                .map(this::toAwardBoqLineResponse)
+                .toList();
+        if (!awardedLines.isEmpty() || quote == null) {
+            return awardedLines;
+        }
+        return quoteLineRepository.findByQuoteUuidOrderByBoqLineIdAsc(quote.getUuid()).stream()
+                .map(this::toAwardBoqLineResponseFromQuote)
+                .toList();
+    }
+
+    private ScAwardBoqLineResponse toAwardBoqLineResponse(ScAwardBoqLine line) {
+        return ScAwardBoqLineResponse.builder()
+                .uuid(line.getUuid())
+                .boqLineId(line.getBoqLineId())
+                .sectionCode(line.getSectionCode())
+                .description(line.getDescription())
+                .unit(line.getUnit())
+                .quantity(line.getQuantity())
+                .rate(line.getRate())
+                .amount(line.getAmount())
+                .lineStatus(line.getLineStatus())
+                .remarks(line.getRemarks())
+                .build();
+    }
+
+    private ScAwardBoqLineResponse toAwardBoqLineResponseFromQuote(ScQuoteLine line) {
+        BoqLine boq = line.getBoqLineId() == null ? null
+                : boqLineRepository.findById(line.getBoqLineId()).orElse(null);
+        return ScAwardBoqLineResponse.builder()
+                .uuid(line.getUuid())
+                .boqLineId(line.getBoqLineId())
+                .sectionCode(boq != null ? boq.getCategoryCode() : null)
+                .description(boq != null ? boq.getDescription() : null)
+                .unit(boq != null ? boq.getUnit() : null)
+                .quantity(line.getQuantity())
+                .rate(line.getRate())
+                .amount(line.getAmount())
+                .lineStatus(line.getLineStatus() != null ? line.getLineStatus().name() : null)
+                .remarks(line.getRemarks())
+                .build();
     }
 
     private String buildAdminAuditJson(

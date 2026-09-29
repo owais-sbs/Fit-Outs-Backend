@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import com.fitouts.project.domain.Project;
+import com.fitouts.subcontractor.api.ScAwardBoqLineResponse;
 import com.fitouts.subcontractor.domain.ScOrganization;
 import com.fitouts.subcontractor.domain.ScPackageAward;
 import com.fitouts.subcontractor.domain.SubcontractorPackage;
@@ -58,10 +59,11 @@ public class SubcontractPdfService {
             String adminSignerName,
             String adminSignerTitle,
             OffsetDateTime adminSignedAt,
-            byte[] adminSignatureImageBytes) {
+            byte[] adminSignatureImageBytes,
+            List<ScAwardBoqLineResponse> awardedBoqLines) {
 
         return generatePdf(
-                pkg, award, org, project,
+                pkg, award, org, project, awardedBoqLines,
                 adminSignerName, adminSignerTitle, adminSignedAt, adminSignatureImageBytes,
                 null, null, null, null, false);
     }
@@ -78,10 +80,11 @@ public class SubcontractPdfService {
             String subSignerName,
             String subSignerTitle,
             OffsetDateTime subSignedAt,
-            byte[] subSignatureImageBytes) {
+            byte[] subSignatureImageBytes,
+            List<ScAwardBoqLineResponse> awardedBoqLines) {
 
         return generatePdf(
-                pkg, award, org, project,
+                pkg, award, org, project, awardedBoqLines,
                 adminSignerName, adminSignerTitle, adminSignedAt, adminSignatureImageBytes,
                 subSignerName, subSignerTitle, subSignedAt, subSignatureImageBytes, true);
     }
@@ -96,7 +99,8 @@ public class SubcontractPdfService {
             OffsetDateTime adminSignedAt,
             byte[] adminSignatureImageBytes) {
         return generateStage1AdminPdf(
-                pkg, award, org, null, adminSignerName, adminSignerTitle, adminSignedAt, adminSignatureImageBytes);
+                pkg, award, org, null, adminSignerName, adminSignerTitle, adminSignedAt,
+                adminSignatureImageBytes, List.of());
     }
 
     public byte[] generateStage2FinalPdf(
@@ -114,7 +118,7 @@ public class SubcontractPdfService {
         return generateStage2FinalPdf(
                 pkg, award, org, null,
                 adminSignerName, adminSignerTitle, adminSignedAt, adminSignatureImageBytes,
-                subSignerName, subSignerTitle, subSignedAt, subSignatureImageBytes);
+                subSignerName, subSignerTitle, subSignedAt, subSignatureImageBytes, List.of());
     }
 
     private byte[] generatePdf(
@@ -122,6 +126,7 @@ public class SubcontractPdfService {
             ScPackageAward award,
             ScOrganization org,
             Project project,
+            List<ScAwardBoqLineResponse> awardedBoqLines,
             String adminSignerName,
             String adminSignerTitle,
             OffsetDateTime adminSignedAt,
@@ -137,13 +142,21 @@ public class SubcontractPdfService {
         ImageDimensions adminDim = getImageDimensions(adminJpeg);
         ImageDimensions subDim = getImageDimensions(subJpeg);
 
+        List<String> boqBodies = buildBoqPageBodies(awardedBoqLines);
+        int totalPages = 1 + boqBodies.size() + 2;
+        int pageNum = 1;
+
         List<String> pages = new ArrayList<>();
-        pages.add(buildCoverPage(pkg, award, org, project, isExecuted));
-        pages.add(buildTermsPage(pkg, award));
+        pages.add(buildCoverPage(pkg, award, org, project, isExecuted, pageNum++, totalPages));
+        for (String boqBody : boqBodies) {
+            pages.add(wrapBoqPage(boqBody, pageNum++, totalPages));
+        }
+        pages.add(buildTermsPage(pkg, award, pageNum++, totalPages));
         pages.add(buildSignaturePage(
                 pkg, award, org,
                 adminSignerName, adminSignerTitle, adminSignedAt, adminJpeg != null,
-                subSignerName, subSignerTitle, subSignedAt, subJpeg != null, isExecuted));
+                subSignerName, subSignerTitle, subSignedAt, subJpeg != null, isExecuted,
+                pageNum, totalPages));
 
         return assembleMultiPagePdf(pages, adminJpeg, adminDim, subJpeg, subDim);
     }
@@ -153,7 +166,9 @@ public class SubcontractPdfService {
             ScPackageAward award,
             ScOrganization org,
             Project project,
-            boolean isExecuted) {
+            boolean isExecuted,
+            int pageNum,
+            int totalPages) {
 
         String packageName = text(pkg != null ? pkg.getName() : null, "Subcontract Package");
         String orgName = text(org != null ? org.getLegalCompanyName() : null,
@@ -247,14 +262,154 @@ public class SubcontractPdfService {
         c.append("0.122 0.227 0.204 rg BT /F1 9 Tf 40 ").append(y)
                 .append(" Td (Thank you for your business!) Tj ET\n");
 
-        // Footer
-        c.append("0.7 0.7 0.7 RG 40 40 m 555 40 l S\n");
-        c.append("0.45 0.45 0.45 rg BT /F1 7 Tf 40 28 Td (JCT Contracting  |  Subcontract Agreement  |  Page 1 of 3) Tj ET\n");
+        appendPageFooter(c, pageNum, totalPages, "JCT Contracting  |  Subcontract Agreement");
         c.append("Q\n");
         return c.toString();
     }
 
-    private String buildTermsPage(SubcontractorPackage pkg, ScPackageAward award) {
+    private List<String> buildBoqPageBodies(List<ScAwardBoqLineResponse> awardedBoqLines) {
+        if (awardedBoqLines == null || awardedBoqLines.isEmpty()) {
+            return List.of();
+        }
+        List<ScAwardBoqLineResponse> included = new ArrayList<>();
+        List<ScAwardBoqLineResponse> excluded = new ArrayList<>();
+        for (ScAwardBoqLineResponse line : awardedBoqLines) {
+            if (isIncludedBoqLine(line)) {
+                included.add(line);
+            } else {
+                excluded.add(line);
+            }
+        }
+        if (included.isEmpty() && excluded.isEmpty()) {
+            return List.of();
+        }
+
+        BigDecimal subtotal = BigDecimal.ZERO;
+        for (ScAwardBoqLineResponse line : included) {
+            if (line.getAmount() != null) {
+                subtotal = subtotal.add(line.getAmount());
+            }
+        }
+
+        final int rowsPerPage = 28;
+        List<String> bodies = new ArrayList<>();
+        int index = 0;
+        while (index < included.size()) {
+            int end = Math.min(index + rowsPerPage, included.size());
+            boolean lastIncludedPage = end >= included.size();
+            bodies.add(buildBoqPageBody(
+                    included.subList(index, end),
+                    lastIncludedPage ? excluded : List.of(),
+                    lastIncludedPage ? subtotal : null,
+                    index == 0));
+            index = end;
+        }
+        if (included.isEmpty() && !excluded.isEmpty()) {
+            bodies.add(buildBoqPageBody(List.of(), excluded, null, true));
+        }
+        return bodies;
+    }
+
+    private String buildBoqPageBody(
+            List<ScAwardBoqLineResponse> includedChunk,
+            List<ScAwardBoqLineResponse> excludedChunk,
+            BigDecimal subtotal,
+            boolean showIntro) {
+        StringBuilder c = new StringBuilder();
+        c.append("0.122 0.227 0.204 rg 0 802 595 40 re f\n");
+        c.append("1 1 1 rg BT /F2 14 Tf 40 816 Td (Agreed Priced BOQ) Tj ET\n");
+
+        float y = 770;
+        c.append("0 0 0 rg\n");
+        if (showIntro) {
+            y = drawWrapped(c,
+                    "Frozen snapshot from the winning quote. Included lines below form the priced subcontract scope.",
+                    40, y, 515, 8, 11);
+            y -= 10;
+        }
+
+        c.append("0.42 0.42 0.42 rg BT /F2 7 Tf 40 ").append(y).append(" Td (CODE) Tj ET\n");
+        c.append("BT /F2 7 Tf 88 ").append(y).append(" Td (DESCRIPTION) Tj ET\n");
+        c.append("BT /F2 7 Tf 300 ").append(y).append(" Td (UNIT) Tj ET\n");
+        c.append("BT /F2 7 Tf 335 ").append(y).append(" Td (QTY) Tj ET\n");
+        c.append("BT /F2 7 Tf 385 ").append(y).append(" Td (RATE) Tj ET\n");
+        c.append("BT /F2 7 Tf 445 ").append(y).append(" Td (AMOUNT) Tj ET\n");
+        c.append("BT /F2 7 Tf 510 ").append(y).append(" Td (STS) Tj ET\n");
+        y -= 6;
+        c.append("0.7 0.7 0.7 RG 40 ").append(y).append(" m 555 ").append(y).append(" l S\n");
+        y -= 12;
+
+        for (ScAwardBoqLineResponse line : includedChunk) {
+            if (y < 90) break;
+            y = drawBoqRow(c, y, line, false);
+        }
+
+        if (subtotal != null && y >= 90) {
+            c.append("0.969 0.961 0.949 rg 40 ").append(y - 14).append(" 515 16 re f\n");
+            c.append("0.122 0.227 0.204 rg BT /F2 8 Tf 300 ").append(y - 4)
+                    .append(" Td (Priced BOQ subtotal) Tj ET\n");
+            c.append("BT /F2 8 Tf 445 ").append(y - 4).append(" Td (AED ")
+                    .append(escapePdf(formatMoney(subtotal))).append(") Tj ET\n");
+            y -= 22;
+        }
+
+        if (!excludedChunk.isEmpty() && y >= 100) {
+            y -= 4;
+            c.append("0.42 0.42 0.42 rg BT /F2 8 Tf 40 ").append(y)
+                    .append(" Td (Excluded / not in awarded scope) Tj ET\n");
+            y -= 14;
+            for (ScAwardBoqLineResponse line : excludedChunk) {
+                if (y < 70) break;
+                y = drawBoqRow(c, y, line, true);
+            }
+        }
+        return c.toString();
+    }
+
+    private String wrapBoqPage(String body, int pageNum, int totalPages) {
+        StringBuilder c = new StringBuilder();
+        c.append("q\n");
+        c.append(body);
+        appendPageFooter(c, pageNum, totalPages, "Agreed priced BOQ  |  JCT Subcontract Agreement");
+        c.append("Q\n");
+        return c.toString();
+    }
+
+    private float drawBoqRow(StringBuilder c, float y, ScAwardBoqLineResponse line, boolean muted) {
+        String code = clip(text(line.getSectionCode(), "—"), 8);
+        String desc = clip(text(line.getDescription(), "—"), muted ? 42 : 34);
+        String unit = clip(text(line.getUnit(), "—"), 6);
+        String qty = line.getQuantity() != null ? line.getQuantity().stripTrailingZeros().toPlainString() : "—";
+        String rate = line.getRate() != null ? formatMoney(line.getRate()) : "—";
+        String amount = line.getAmount() != null ? formatMoney(line.getAmount()) : "—";
+        String status = clip(text(line.getLineStatus(), muted ? "EXCLUDED" : "QUOTED"), 8);
+
+        if (muted) {
+            c.append("0.55 0.55 0.55 rg\n");
+            c.append("BT /F1 7 Tf 40 ").append(y).append(" Td (").append(escapePdf(code)).append(") Tj ET\n");
+            c.append("BT /F1 7 Tf 88 ").append(y).append(" Td (").append(escapePdf(desc)).append(") Tj ET\n");
+            c.append("BT /F1 7 Tf 510 ").append(y).append(" Td (").append(escapePdf(status)).append(") Tj ET\n");
+        } else {
+            c.append("0.12 0.16 0.22 rg\n");
+            c.append("BT /F1 7 Tf 40 ").append(y).append(" Td (").append(escapePdf(code)).append(") Tj ET\n");
+            c.append("BT /F1 7 Tf 88 ").append(y).append(" Td (").append(escapePdf(desc)).append(") Tj ET\n");
+            c.append("BT /F1 7 Tf 300 ").append(y).append(" Td (").append(escapePdf(unit)).append(") Tj ET\n");
+            c.append("BT /F1 7 Tf 335 ").append(y).append(" Td (").append(escapePdf(qty)).append(") Tj ET\n");
+            c.append("BT /F1 7 Tf 385 ").append(y).append(" Td (").append(escapePdf(rate)).append(") Tj ET\n");
+            c.append("BT /F1 7 Tf 445 ").append(y).append(" Td (").append(escapePdf(amount)).append(") Tj ET\n");
+            c.append("BT /F1 7 Tf 510 ").append(y).append(" Td (").append(escapePdf(status)).append(") Tj ET\n");
+        }
+        c.append("0.85 0.85 0.85 RG 40 ").append(y - 4).append(" m 555 ").append(y - 4).append(" l S\n");
+        return y - 12;
+    }
+
+    private static boolean isIncludedBoqLine(ScAwardBoqLineResponse line) {
+        if (line == null) return false;
+        String status = text(line.getLineStatus(), "QUOTED").toUpperCase(Locale.ROOT);
+        return "QUOTED".equals(status) || "CLARIFICATION".equals(status) || "ALTERNATIVE".equals(status);
+    }
+
+    private String buildTermsPage(SubcontractorPackage pkg, ScPackageAward award, int pageNum, int totalPages) {
         StringBuilder c = new StringBuilder();
         c.append("q\n");
         c.append("0.122 0.227 0.204 rg 0 802 595 40 re f\n");
@@ -309,10 +464,20 @@ public class SubcontractPdfService {
             i++;
         }
 
-        c.append("0.7 0.7 0.7 RG 40 40 m 555 40 l S\n");
-        c.append("0.45 0.45 0.45 rg BT /F1 7 Tf 40 28 Td (Full JCT Terms & Conditions form part of this agreement  |  Page 2 of 3) Tj ET\n");
+        appendPageFooter(c, pageNum, totalPages, "Full JCT Terms & Conditions form part of this agreement");
         c.append("Q\n");
         return c.toString();
+    }
+
+    private void appendPageFooter(StringBuilder c, int pageNum, int totalPages, String label) {
+        c.append("0.7 0.7 0.7 RG 40 40 m 555 40 l S\n");
+        c.append("0.45 0.45 0.45 rg BT /F1 7 Tf 40 28 Td (")
+                .append(escapePdf(label))
+                .append("  |  Page ")
+                .append(pageNum)
+                .append(" of ")
+                .append(totalPages)
+                .append(") Tj ET\n");
     }
 
     private String buildSignaturePage(
@@ -327,7 +492,9 @@ public class SubcontractPdfService {
             String subSignerTitle,
             OffsetDateTime subSignedAt,
             boolean hasSubSig,
-            boolean isExecuted) {
+            boolean isExecuted,
+            int pageNum,
+            int totalPages) {
 
         String packageName = text(pkg != null ? pkg.getName() : null, "Package");
         String orgName = text(org != null ? org.getLegalCompanyName() : null, "Subcontractor");
@@ -395,8 +562,7 @@ public class SubcontractPdfService {
                         + "It should be read together with the agreed priced BOQ and package schedules shared in the portal.",
                 40, y, 515, 8, 11);
 
-        c.append("0.7 0.7 0.7 RG 40 40 m 555 40 l S\n");
-        c.append("0.45 0.45 0.45 rg BT /F1 7 Tf 40 28 Td (JCT Contracting  |  Subcontract Agreement  |  Page 3 of 3) Tj ET\n");
+        appendPageFooter(c, pageNum, totalPages, "JCT Contracting  |  Subcontract Agreement");
         c.append("Q\n");
         return c.toString();
     }
