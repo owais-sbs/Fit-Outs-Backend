@@ -1,5 +1,7 @@
 package com.fitouts.account.domain;
 
+import java.time.OffsetDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -25,4 +27,45 @@ public interface AccountRepository extends JpaRepository<Account, Long> {
 
     @Query("SELECT a FROM Account a JOIN a.roles r WHERE a.company.uuid = :companyUuid AND r = :role")
     List<Account> findAllByCompanyUuidAndRole(@Param("companyUuid") UUID companyUuid, @Param("role") Role role);
+
+    @Query("SELECT a FROM Account a JOIN FETCH a.company c JOIN a.roles r WHERE r = :role AND a.company IS NOT NULL")
+    List<Account> findAllWithRole(@Param("role") Role role);
+
+    @Query("""
+            SELECT DISTINCT a FROM Account a
+            LEFT JOIN FETCH a.company
+            WHERE :adminRole MEMBER OF a.roles
+            AND :superRole NOT MEMBER OF a.roles
+            ORDER BY a.createdAt DESC
+            """)
+    List<Account> findAllCompanyAdmins(
+            @Param("adminRole") Role adminRole,
+            @Param("superRole") Role superRole);
+
+    List<Account> findAllByPurgeAtIsNotNullAndPurgeAtAfterOrderByPurgeAtAsc(OffsetDateTime now);
+
+    List<Account> findAllByPurgeAtIsNotNullAndPurgeAtLessThanEqual(OffsetDateTime now);
+
+    @Query("""
+            SELECT DISTINCT a FROM Account a
+            LEFT JOIN FETCH a.company
+            WHERE a.deletionScheduledAt IS NOT NULL
+            AND a.purgeAt IS NOT NULL
+            AND a.purgeAt > :now
+            AND :adminRole MEMBER OF a.roles
+            AND :superRole NOT MEMBER OF a.roles
+            ORDER BY a.purgeAt ASC
+            """)
+    List<Account> findScheduledCompanyAdmins(
+            @Param("now") OffsetDateTime now,
+            @Param("adminRole") Role adminRole,
+            @Param("superRole") Role superRole);
+
+    @Query("""
+            SELECT DISTINCT a FROM Account a
+            LEFT JOIN FETCH a.company
+            WHERE LOWER(a.email) IN :emails
+            ORDER BY a.fullName
+            """)
+    List<Account> findAllByEmailInIgnoreCase(@Param("emails") Collection<String> emails);
 }

@@ -9,7 +9,9 @@ import java.util.UUID;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
 import com.fitouts.account.application.ClientPortalInviteService;
@@ -46,21 +48,39 @@ public class EmployeeService {
     private final PasswordEncoder passwordEncoder;
     private final CompanyService companyService;
     private final ClientPortalInviteService clientPortalInviteService;
+    private final TransactionTemplate transactionTemplate;
 
     public EmployeeService(EmployeeRepository employeeRepository,
                            AccountRepository accountRepository,
                            PasswordEncoder passwordEncoder,
                            CompanyService companyService,
-                           ClientPortalInviteService clientPortalInviteService) {
+                           ClientPortalInviteService clientPortalInviteService,
+                           PlatformTransactionManager transactionManager) {
         this.employeeRepository = employeeRepository;
         this.accountRepository = accountRepository;
         this.passwordEncoder = passwordEncoder;
         this.companyService = companyService;
         this.clientPortalInviteService = clientPortalInviteService;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
-    @Transactional
     public EmployeeResponse create(EmployeeCreateRequest request) {
+        CreatedEmployee created = transactionTemplate.execute(status -> createEmployeeAndAccount(request));
+        if (created == null) {
+            throw new BadRequestException("Unable to create employee");
+        }
+
+        // Queue SMTP after commit so slow Gmail relays cannot trip the 15s axios timeout.
+        boolean inviteQueued = clientPortalInviteService.sendStaffPortalInvite(
+                created.accountId(),
+                created.employee().getEmployeeName(),
+                created.role().displayLabel(),
+                true);
+
+        return toResponse(created.employee(), created.role(), inviteQueued);
+    }
+
+    private CreatedEmployee createEmployeeAndAccount(EmployeeCreateRequest request) {
         String email = request.getEmail().trim().toLowerCase();
         Role role = requireStaffRole(request.getRole());
 
@@ -112,12 +132,10 @@ public class EmployeeService {
         saved.setAccountId(savedAccount.getId());
         employeeRepository.save(saved);
 
-        boolean inviteEmailSent = clientPortalInviteService.sendStaffPortalInvite(
-                savedAccount.getId(),
-                saved.getEmployeeName(),
-                role.displayLabel());
+        return new CreatedEmployee(saved, savedAccount.getId(), role);
+    }
 
-        return toResponse(saved, role, inviteEmailSent);
+    private record CreatedEmployee(Employee employee, Long accountId, Role role) {
     }
 
     @Transactional

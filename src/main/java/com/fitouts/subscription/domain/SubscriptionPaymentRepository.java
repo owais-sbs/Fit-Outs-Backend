@@ -31,4 +31,14 @@ public interface SubscriptionPaymentRepository extends JpaRepository<Subscriptio
     Optional<SubscriptionPayment> findFirstByCompanyUuidAndStatusOrderByCreatedAtDesc(
             UUID companyUuid,
             SubscriptionPaymentStatus status);
+
+    @Query("SELECT COUNT(p) > 0 FROM SubscriptionPayment p WHERE p.company.uuid = :companyUuid")
+    boolean existsByCompanyUuid(@Param("companyUuid") UUID companyUuid);
+
+    @Query("""
+            SELECT p FROM SubscriptionPayment p
+            WHERE p.company.uuid = :companyUuid
+            ORDER BY p.createdAt DESC
+            """)
+    List<SubscriptionPayment> findAllByCompanyUuid(@Param("companyUuid") UUID companyUuid);
 }

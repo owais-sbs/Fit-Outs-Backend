@@ -62,6 +62,20 @@ public class ClientPortalInviteService {
 
     @Transactional
     public boolean sendStaffPortalInvite(Long accountId, String displayName, String roleLabel) {
+        return sendStaffPortalInvite(accountId, displayName, roleLabel, false);
+    }
+
+    /**
+     * @param asyncMail when true, issue the setup token then queue SMTP on a background
+     *                  thread so HTTP handlers (create employee / provision) do not wait
+     *                  on slow relays. {@code true} means queued, not delivery confirmed.
+     */
+    @Transactional
+    public boolean sendStaffPortalInvite(
+            Long accountId,
+            String displayName,
+            String roleLabel,
+            boolean asyncMail) {
         Map<String, Object> extras = new HashMap<>();
         extras.put("roleLabel", StringUtils.hasText(roleLabel) ? roleLabel.trim() : "team member");
         return sendPortalInvite(
@@ -69,12 +83,13 @@ public class ClientPortalInviteService {
                 displayName,
                 "staff-portal-invite",
                 "Welcome — set up your staff portal access",
-                extras);
+                extras,
+                asyncMail);
     }
 
     @Transactional
     public boolean sendPortalInvite(Long accountId, String displayName, String template, String subject) {
-        return sendPortalInvite(accountId, displayName, template, subject, Map.of());
+        return sendPortalInvite(accountId, displayName, template, subject, Map.of(), false);
     }
 
     @Transactional
@@ -84,6 +99,17 @@ public class ClientPortalInviteService {
             String template,
             String subject,
             Map<String, Object> extraVars) {
+        return sendPortalInvite(accountId, displayName, template, subject, extraVars, false);
+    }
+
+    @Transactional
+    public boolean sendPortalInvite(
+            Long accountId,
+            String displayName,
+            String template,
+            String subject,
+            Map<String, Object> extraVars,
+            boolean asyncMail) {
         Account account = accountRepository.findById(accountId)
                 .orElseThrow(() -> new NotFoundException("Account not found"));
 
@@ -105,14 +131,21 @@ public class ClientPortalInviteService {
         }
 
         String html = emailTemplateService.render(template, vars);
+        EmailMessage message = EmailMessage.builder()
+                .to(account.getEmail())
+                .subject(subject)
+                .body(html)
+                .html(true)
+                .build();
+
+        if (asyncMail) {
+            emailService.sendAsync(message);
+            log.info("Portal invite email queued to {} (account {})", account.getEmail(), accountId);
+            return true;
+        }
 
         try {
-            emailService.send(EmailMessage.builder()
-                    .to(account.getEmail())
-                    .subject(subject)
-                    .body(html)
-                    .html(true)
-                    .build());
+            emailService.send(message);
             log.info("Portal invite email sent to {} (account {})", account.getEmail(), accountId);
             return true;
         } catch (Exception e) {

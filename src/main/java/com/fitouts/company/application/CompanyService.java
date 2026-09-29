@@ -3,8 +3,10 @@ package com.fitouts.company.application;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -17,6 +19,7 @@ import com.fitouts.account.application.ClientPortalInviteService;
 import com.fitouts.account.domain.Account;
 import com.fitouts.account.domain.AccountRepository;
 import com.fitouts.auth.domain.Role;
+import com.fitouts.company.api.CompanyAdminSummary;
 import com.fitouts.company.api.CompanyCreateRequest;
 import com.fitouts.company.api.CompanyResponse;
 import com.fitouts.company.api.CompanyUpdateRequest;
@@ -91,15 +94,21 @@ public class CompanyService {
         boolean inviteSent = clientPortalInviteService.sendStaffPortalInvite(
                 provisioned.accountId(),
                 provisioned.fullName(),
-                Role.ADMIN.displayLabel());
+                Role.ADMIN.displayLabel(),
+                true);
         if (!inviteSent) {
             log.warn(
-                    "Company {} provisioned but setup email to {} was not accepted by SMTP",
+                    "Company {} provisioned but setup email to {} could not be queued",
                     provisioned.company().getUuid(),
                     provisioned.adminEmail());
         }
 
-        return toResponse(provisioned.company(), provisioned.adminEmail(), null, inviteSent);
+        return toResponse(
+                provisioned.company(),
+                provisioned.adminEmail(),
+                null,
+                inviteSent,
+                adminsForCompany(provisioned.company().getUuid()));
     }
 
     private ProvisionedAdmin createCompanyAndAdmin(
@@ -186,14 +195,20 @@ public class CompanyService {
 
     @Transactional(readOnly = true)
     public List<CompanyResponse> getAll() {
+        Map<UUID, List<CompanyAdminSummary>> adminsByCompany = loadAdminsByCompany();
         return repository.findAllWithPlan().stream()
-                .map(company -> toResponse(company, null, null, null))
+                .map(company -> toResponse(
+                        company,
+                        null,
+                        null,
+                        null,
+                        adminsByCompany.getOrDefault(company.getUuid(), List.of())))
                 .toList();
     }
 
     @Transactional(readOnly = true)
     public CompanyResponse getByUuid(UUID uuid) {
-        return toResponse(getCompany(uuid), null, null, null);
+        return toResponse(getCompany(uuid), null, null, null, adminsForCompany(uuid));
     }
 
     @Transactional
@@ -216,14 +231,14 @@ public class CompanyService {
         if (request.getStatus() != null) {
             company.setStatus(request.getStatus());
         }
-        return toResponse(repository.save(company), null, null, null);
+        return toResponse(repository.save(company), null, null, null, adminsForCompany(uuid));
     }
 
     @Transactional
     public CompanyResponse activate(UUID uuid) {
         Company company = getCompany(uuid);
         company.setStatus(CompanyStatus.ACTIVE);
-        return toResponse(repository.save(company), null, null, null);
+        return toResponse(repository.save(company), null, null, null, adminsForCompany(uuid));
     }
 
     @Transactional
@@ -233,14 +248,14 @@ public class CompanyService {
             throw new ConflictException("Terminated companies cannot be suspended");
         }
         company.setStatus(CompanyStatus.SUSPENDED);
-        return toResponse(repository.save(company), null, null, null);
+        return toResponse(repository.save(company), null, null, null, adminsForCompany(uuid));
     }
 
     @Transactional
     public CompanyResponse terminate(UUID uuid) {
         Company company = getCompany(uuid);
         company.setStatus(CompanyStatus.TERMINATED);
-        return toResponse(repository.save(company), null, null, null);
+        return toResponse(repository.save(company), null, null, null, adminsForCompany(uuid));
     }
 
     @Transactional
@@ -264,11 +279,39 @@ public class CompanyService {
         return new HashSet<>(features);
     }
 
+    private List<CompanyAdminSummary> adminsForCompany(UUID companyUuid) {
+        return accountRepository.findAllByCompanyUuidAndRole(companyUuid, Role.ADMIN).stream()
+                .map(this::toAdminSummary)
+                .toList();
+    }
+
+    private Map<UUID, List<CompanyAdminSummary>> loadAdminsByCompany() {
+        return accountRepository.findAllWithRole(Role.ADMIN).stream()
+                .filter(account -> account.getCompany() != null)
+                .collect(Collectors.groupingBy(
+                        account -> account.getCompany().getUuid(),
+                        Collectors.mapping(this::toAdminSummary, Collectors.toList())));
+    }
+
+    private CompanyAdminSummary toAdminSummary(Account account) {
+        return CompanyAdminSummary.builder()
+                .fullName(account.getFullName())
+                .email(account.getEmail())
+                .phone(account.getPhone())
+                .build();
+    }
+
     private CompanyResponse toResponse(
             Company company,
             String adminEmail,
             String temporaryPassword,
-            Boolean inviteEmailSent) {
+            Boolean inviteEmailSent,
+            List<CompanyAdminSummary> companyAdmins) {
+        List<CompanyAdminSummary> admins = companyAdmins != null ? companyAdmins : List.of();
+        String resolvedAdminEmail = adminEmail;
+        if (resolvedAdminEmail == null && !admins.isEmpty()) {
+            resolvedAdminEmail = admins.get(0).getEmail();
+        }
         SubscriptionPlan plan = company.getSubscriptionPlan();
         return CompanyResponse.builder()
                 .uuid(company.getUuid())
@@ -284,7 +327,8 @@ public class CompanyService {
                         : Set.copyOf(company.getEnabledFeatures()))
                 .status(company.getStatus())
                 .createdAt(company.getCreatedAt())
-                .adminEmail(adminEmail)
+                .adminEmail(resolvedAdminEmail)
+                .companyAdmins(admins)
                 .temporaryPassword(temporaryPassword)
                 .inviteEmailSent(inviteEmailSent)
                 .build();

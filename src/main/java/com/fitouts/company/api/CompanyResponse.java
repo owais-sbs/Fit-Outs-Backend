@@ -1,6 +1,7 @@
 package com.fitouts.company.api;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -26,6 +27,7 @@ public class CompanyResponse {
     private CompanyStatus status;
     private OffsetDateTime createdAt;
     private String adminEmail;
+    private List<CompanyAdminSummary> companyAdmins;
     private String temporaryPassword;
     private Boolean inviteEmailSent;
 }
