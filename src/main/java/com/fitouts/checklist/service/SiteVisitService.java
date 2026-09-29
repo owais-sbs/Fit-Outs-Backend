@@ -1,5 +1,9 @@
 package com.fitouts.checklist.service;
 
+import java.time.Duration;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -56,16 +60,31 @@ public class SiteVisitService {
         private final SiteVisitNotificationEmailService siteVisitNotificationEmailService;
 
     private static final String DEFAULT_CHECKLIST_NAME = "JCT Renovation Checklist";
+    private static final Duration MIN_ASSIGNEE_GAP = Duration.ofHours(3);
 
     @Transactional
     public SiteVisitResponse create(SiteVisitCreateRequest request) {
         portalAccess.requireStaff();
-        SiteVisit siteVisit = mapper.toEntity(request);
+        if (request.getEmployeeIds() == null || request.getEmployeeIds().isEmpty()) {
+            throw new BadRequestException("At least one assigned staff member is required");
+        }
+        if (request.getScheduledDate() == null || request.getScheduledTime() == null) {
+            throw new BadRequestException("Scheduled date and time are required");
+        }
 
         UUID companyId = CompanyContext.get();
         if (companyId == null) {
             throw new BadRequestException("Company context is required to schedule a site visit");
         }
+
+        assertAssigneesAvailable(
+                companyId,
+                request.getEmployeeIds(),
+                request.getScheduledDate(),
+                request.getScheduledTime(),
+                null);
+
+        SiteVisit siteVisit = mapper.toEntity(request);
         siteVisit.setCompany(companyService.getCompany(companyId));
         if (siteVisit.getChecklistTemplateUuid() == null) {
             checklistTemplateRepository
@@ -101,6 +120,67 @@ public class SiteVisitService {
         siteVisitNotificationEmailService.sendInitialNotification(refreshed.getUuid());
 
         return mapper.toResponse(refreshed);
+    }
+
+    /**
+     * Blocks assigning staff who already have another non-cancelled visit on the same date
+     * within less than 3 hours of the proposed time.
+     */
+    private void assertAssigneesAvailable(
+            UUID companyId,
+            List<Long> employeeIds,
+            LocalDate scheduledDate,
+            LocalTime scheduledTime,
+            UUID excludeVisitUuid) {
+        List<SiteVisit> sameDay = repository.findByCompanyUuidAndScheduledDateAndStatusNot(
+                companyId, scheduledDate, SiteVisitStatus.CANCELLED);
+        LocalDateTime proposed = LocalDateTime.of(scheduledDate, scheduledTime);
+
+        for (Long employeeId : employeeIds) {
+            if (employeeId == null) {
+                continue;
+            }
+            Employee employee = employeeRepository.findById(employeeId)
+                    .orElseThrow(() -> new NotFoundException("Employee not found: " + employeeId));
+            Long accountId = employee.getAccountId();
+            String name = employee.getEmployeeName() != null ? employee.getEmployeeName() : ("Staff #" + employeeId);
+
+            for (SiteVisit existing : sameDay) {
+                if (excludeVisitUuid != null && excludeVisitUuid.equals(existing.getUuid())) {
+                    continue;
+                }
+                if (!isAssigneeOnVisit(existing, accountId, employeeId)) {
+                    continue;
+                }
+                if (existing.getStatus() == SiteVisitStatus.COMPLETED
+                        || existing.getStatus() == SiteVisitStatus.CANCELLED) {
+                    continue;
+                }
+                if (existing.getScheduledTime() == null) {
+                    continue;
+                }
+                LocalDateTime existingAt = LocalDateTime.of(existing.getScheduledDate(), existing.getScheduledTime());
+                Duration gap = Duration.between(proposed, existingAt).abs();
+                if (gap.compareTo(MIN_ASSIGNEE_GAP) < 0) {
+                    throw new ConflictException(
+                            name + " already has a visit at " + existing.getScheduledTime()
+                                    + " on " + existing.getScheduledDate()
+                                    + ". Assignees need at least 3 hours between visits.");
+                }
+            }
+        }
+    }
+
+    private boolean isAssigneeOnVisit(SiteVisit visit, Long accountId, Long employeeId) {
+        if (visit.getAssignedTo() != null && Objects.equals(visit.getAssignedTo().getId(), accountId)) {
+            return true;
+        }
+        if (visit.getAssignments() == null) {
+            return false;
+        }
+        return visit.getAssignments().stream()
+                .anyMatch(a -> a != null && a.getEmployee() != null
+                        && Objects.equals(a.getEmployee().getId(), accountId));
     }
 
     @Transactional(readOnly = true)

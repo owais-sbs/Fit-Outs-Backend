@@ -9,10 +9,11 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import com.fitouts.checklist.domain.SiteVisit;
+import com.fitouts.checklist.domain.SiteVisitStatus;
 
 public interface SiteVisitRepository extends JpaRepository<SiteVisit, UUID> {
 
-    @EntityGraph(attributePaths = { "assignments", "assignments.employee", "locationDetails" })
+    @EntityGraph(attributePaths = { "assignments", "assignments.employee", "assignedTo", "locationDetails" })
     List<SiteVisit> findByCompanyUuid(UUID companyUuid);
 
     List<SiteVisit> findByAssignedToId(Long employeeId);
@@ -43,4 +44,10 @@ public interface SiteVisitRepository extends JpaRepository<SiteVisit, UUID> {
     List<SiteVisit> findByCompanyUuidAndAssigneeAccountId(
             @Param("companyId") UUID companyId,
             @Param("accountId") Long accountId);
+
+    @EntityGraph(attributePaths = { "assignments", "assignments.employee", "assignedTo", "locationDetails" })
+    List<SiteVisit> findByCompanyUuidAndScheduledDateAndStatusNot(
+            UUID companyUuid,
+            java.time.LocalDate scheduledDate,
+            SiteVisitStatus status);
 }

@@ -198,6 +198,7 @@ public class AccountService {
         Optional<Account> existingAccount = repository.findByEmail(normalizedEmail);
         if (existingAccount.isPresent()) {
             Account account = existingAccount.get();
+            assertCanReceiveSubcontractorRole(account);
             account.setIsActive(true);
             account.getRoles().add(Role.SUBCONTRACTOR);
             if (account.getCompany() == null && CompanyContext.get() != null) {
@@ -273,6 +274,7 @@ public class AccountService {
     @Transactional
     public ClientAccountConversionResult ensureSubcontractorAccount(Long accountId, String companyName) {
         Account account = getAccount(accountId);
+        assertCanReceiveSubcontractorRole(account);
         account.setIsActive(true);
         account.getRoles().add(Role.SUBCONTRACTOR);
         if (companyName != null && !companyName.isBlank()) {
@@ -280,6 +282,23 @@ public class AccountService {
         }
         Account saved = repository.save(account);
         return new ClientAccountConversionResult(false, saved.getId(), saved.getEmail(), null);
+    }
+
+    /**
+     * Staff/client portal accounts must not gain SUBCONTRACTOR — that opens a second portal on login.
+     * Pure SUBCONTRACTOR accounts (and blank-role accounts being onboarded as SC) are allowed.
+     */
+    private void assertCanReceiveSubcontractorRole(Account account) {
+        if (account.getRoles() == null || account.getRoles().isEmpty()) {
+            return;
+        }
+        boolean hasConflictingRole = account.getRoles().stream()
+                .anyMatch(role -> role != null && role != Role.SUBCONTRACTOR);
+        if (hasConflictingRole) {
+            throw new BadRequestException(
+                    "Account already belongs to another portal and cannot also be given Subcontractor access. "
+                            + "Use a dedicated subcontractor email.");
+        }
     }
 
     private Account getAccount(Long id) {
