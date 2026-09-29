@@ -109,6 +109,9 @@ public class AuthService {
 
         Account account = accountService.findOptionalByEmail(request.getEmail())
                 .orElseThrow(() -> new UnauthorizedException("Invalid email or password"));
+        if (account.getDeletionScheduledAt() != null && account.getPurgeAt() != null) {
+            throw new UnauthorizedException("Account is scheduled for deletion. Contact the platform administrator.");
+        }
         if (!Boolean.TRUE.equals(account.getIsActive())) {
             throw new UnauthorizedException("Account is inactive");
         }
@@ -130,6 +133,10 @@ public class AuthService {
             HttpServletResponse servletResponse) {
 
         OtpChallenge challenge = otpService.verify(request.getChallengeId(), request.getOtp());
+        if (challenge.getAccount().getDeletionScheduledAt() != null
+                && challenge.getAccount().getPurgeAt() != null) {
+            throw new UnauthorizedException("Account is scheduled for deletion. Contact the platform administrator.");
+        }
         if (!Boolean.TRUE.equals(challenge.getAccount().getIsActive())) {
             throw new UnauthorizedException("Account is inactive");
         }
