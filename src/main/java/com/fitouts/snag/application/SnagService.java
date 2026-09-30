@@ -1,9 +1,12 @@
 package com.fitouts.snag.application;
 
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -25,6 +28,9 @@ import com.fitouts.completion.domain.CommercialLifecycleStage;
 import com.fitouts.drawing.application.FileStorageService;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
+import com.fitouts.project.domain.ProjectTeamAssignment;
+import com.fitouts.project.domain.ProjectTeamAssignmentRepository;
+import com.fitouts.project.domain.ProjectTeamRole;
 import com.fitouts.roomcollab.domain.ProjectRoom;
 import com.fitouts.roomcollab.domain.ProjectRoomRepository;
 import com.fitouts.schedule.domain.ScheduleActivity;
@@ -64,6 +70,7 @@ public class SnagService {
     private final ScheduleActivityRepository scheduleActivityRepository;
     private final AccountRepository accountRepository;
     private final CommercialLifecycleService commercialLifecycleService;
+    private final ProjectTeamAssignmentRepository teamAssignmentRepository;
 
     @Transactional(readOnly = true)
     public List<SnagResponse> list(Long projectId) {
@@ -74,6 +81,55 @@ public class SnagService {
                 .stream()
                 .map(this::toResponse)
                 .toList();
+    }
+
+    /**
+     * Site Engineer / field staff inbox: snags assigned to me, raised by me,
+     * or on projects where I am team Site Engineer.
+     */
+    @Transactional(readOnly = true)
+    public List<SnagResponse> listMine() {
+        AuthPrincipal principal = requireStaff();
+        UUID companyId = requireCompany();
+        Long accountId = principal.getAccountId();
+
+        Map<UUID, Snag> byUuid = new LinkedHashMap<>();
+        for (Snag snag : snagRepository.findByAssigneeAccountIdAndCompanyIdOrderByCreatedAtDesc(accountId, companyId)) {
+            byUuid.put(snag.getUuid(), snag);
+        }
+        for (Snag snag : snagRepository.findByRaisedByAndCompanyIdOrderByCreatedAtDesc(accountId, companyId)) {
+            byUuid.putIfAbsent(snag.getUuid(), snag);
+        }
+
+        List<Long> seProjectIds = teamAssignmentRepository
+                .findByAccountIdAndCompanyIdAndRole(accountId, companyId, ProjectTeamRole.SITE_ENGINEER)
+                .stream()
+                .map(ProjectTeamAssignment::getProjectId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (!seProjectIds.isEmpty()) {
+            for (Snag snag : snagRepository.findByProjectIdInAndCompanyIdOrderByCreatedAtDesc(seProjectIds, companyId)) {
+                byUuid.putIfAbsent(snag.getUuid(), snag);
+            }
+        }
+
+        List<Snag> ordered = new ArrayList<>(byUuid.values());
+        ordered.sort((a, b) -> {
+            OffsetDateTime left = a.getCreatedAt();
+            OffsetDateTime right = b.getCreatedAt();
+            if (left == null && right == null) {
+                return 0;
+            }
+            if (left == null) {
+                return 1;
+            }
+            if (right == null) {
+                return -1;
+            }
+            return right.compareTo(left);
+        });
+        return ordered.stream().map(this::toResponse).toList();
     }
 
     @Transactional(readOnly = true)

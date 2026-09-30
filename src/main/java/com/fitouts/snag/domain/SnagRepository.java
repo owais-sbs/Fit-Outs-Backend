@@ -16,6 +16,8 @@ public interface SnagRepository extends JpaRepository<Snag, UUID> {
 
     List<Snag> findByAssigneeAccountIdAndCompanyIdOrderByCreatedAtDesc(Long assigneeAccountId, UUID companyId);
 
+    List<Snag> findByRaisedByAndCompanyIdOrderByCreatedAtDesc(Long raisedBy, UUID companyId);
+
     List<Snag> findByAssigneeAccountIdAndProjectIdInAndCompanyIdOrderByCreatedAtDesc(
             Long assigneeAccountId, List<Long> projectIds, UUID companyId);
 
