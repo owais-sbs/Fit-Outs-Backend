@@ -24,6 +24,10 @@ public class FlywaySharedDatabaseConfig {
      * After merging main, h-dev approvals scripts that collided on V73–V75 / V81–V83
      * were moved to V600–V605 (Humaid range). Shared RDS may still record the old numbers.
      * Remap those history rows so main's subcontractor V73–V80 can occupy that range.
+     *
+     * Subscription / feature-flag scripts briefly landed on V626 / V629, which already
+     * belonged to main (sc portal permissions / role cleanup). They were renumbered to
+     * V630 / V631; remap history if a shared DB applied the old numbers first.
      */
     private static final List<VersionRemap> HDEV_COLLISION_REMAPS = List.of(
             new VersionRemap("73", "V73__permit_trigger_types_backfill.sql",
@@ -37,7 +41,11 @@ public class FlywaySharedDatabaseConfig {
             new VersionRemap("82", "V82__approval_case_authority_manually_set.sql",
                     "604", "V604__approval_case_authority_manually_set.sql"),
             new VersionRemap("83", "V83__reopen_withdrawn_approval_cases.sql",
-                    "605", "V605__reopen_withdrawn_approval_cases.sql")
+                    "605", "V605__reopen_withdrawn_approval_cases.sql"),
+            new VersionRemap("626", "V626__subscription_payments_and_plan_features.sql",
+                    "630", "V630__subscription_payments_and_plan_features.sql"),
+            new VersionRemap("629", "V629__company_enabled_features.sql",
+                    "631", "V631__company_enabled_features.sql")
     );
 
     /**

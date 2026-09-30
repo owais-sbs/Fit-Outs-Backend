@@ -28,9 +28,11 @@ import com.fitouts.schedule.domain.ScheduleBaseline;
 import com.fitouts.schedule.domain.ScheduleBaselineActivity;
 import com.fitouts.schedule.domain.ScheduleBaselineActivityRepository;
 import com.fitouts.schedule.domain.ScheduleBaselineRepository;
+import com.fitouts.schedule.domain.SchedulePublishStatus;
 import com.fitouts.shared.context.CompanyContext;
 import com.fitouts.shared.error.BadRequestException;
 import com.fitouts.shared.error.ForbiddenException;
+import com.fitouts.shared.error.UnauthorizedException;
 
 import lombok.RequiredArgsConstructor;
 
@@ -46,12 +48,18 @@ public class ProgressReportService {
 
     @Transactional(readOnly = true)
     public ProgressReportResponse getReport(Long projectId) {
-        requireStaff();
+        AuthPrincipal principal = requireAuthenticated();
         Project project = requireProject(projectId);
         UUID companyId = CompanyContext.get();
+        boolean clientView = isPureClient(principal);
 
         List<ScheduleActivity> activities = activityRepository
                 .findByProjectIdAndCompanyIdOrderBySortOrderAscStartDateAsc(project.getId(), companyId);
+        if (clientView) {
+            activities = activities.stream()
+                    .filter(a -> a.getPublishStatus() == SchedulePublishStatus.PUBLISHED)
+                    .toList();
+        }
 
         ScheduleBaseline latestBaseline = baselineRepository
                 .findByProjectIdAndCompanyIdOrderByCreatedAtDesc(project.getId(), companyId)
@@ -103,17 +111,19 @@ public class ProgressReportService {
 
         String summary = buildSummary(project.getName(), weightedCompletion, activities.size(), delayReasons.size());
 
-        List<ProgressReportResponse.MaterialVarianceRow> materialVariance =
-                activityMaterialIssueService.projectVariance(project.getId(), companyId).stream()
-                        .map(r -> ProgressReportResponse.MaterialVarianceRow.builder()
-                                .materialId(r.materialId())
-                                .materialName(r.materialName())
-                                .plannedQty(r.plannedQty())
-                                .issuedQty(r.issuedQty())
-                                .remainingQty(r.remainingQty())
-                                .unit(r.unit())
-                                .build())
-                        .toList();
+        List<ProgressReportResponse.MaterialVarianceRow> materialVariance = List.of();
+        if (!clientView) {
+            materialVariance = activityMaterialIssueService.projectVariance(project.getId(), companyId).stream()
+                    .map(r -> ProgressReportResponse.MaterialVarianceRow.builder()
+                            .materialId(r.materialId())
+                            .materialName(r.materialName())
+                            .plannedQty(r.plannedQty())
+                            .issuedQty(r.issuedQty())
+                            .remainingQty(r.remainingQty())
+                            .unit(r.unit())
+                            .build())
+                    .toList();
+        }
 
         return ProgressReportResponse.builder()
                 .projectId(project.getId())
@@ -151,14 +161,21 @@ public class ProgressReportService {
         return project;
     }
 
-    private AuthPrincipal requireStaff() {
+    private AuthPrincipal requireAuthenticated() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !(auth.getPrincipal() instanceof AuthPrincipal principal)) {
-            throw new BadRequestException("Authentication required");
-        }
-        if (principal.getRoles() != null && principal.getRoles().stream().allMatch(r -> r == Role.CLIENT)) {
-            throw new ForbiddenException("Staff access required");
+            throw new UnauthorizedException("Authentication required");
         }
         return principal;
+    }
+
+    private boolean isPureClient(AuthPrincipal principal) {
+        if (principal == null || principal.getRoles() == null) {
+            return false;
+        }
+        if (!principal.getRoles().contains(Role.CLIENT)) {
+            return false;
+        }
+        return principal.getRoles().stream().allMatch(r -> r == Role.CLIENT);
     }
 }

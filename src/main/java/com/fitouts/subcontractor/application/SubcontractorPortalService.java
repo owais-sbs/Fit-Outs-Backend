@@ -264,9 +264,12 @@ public class SubcontractorPortalService {
         return toSiteReportResponse(siteReportRepository.save(row));
     }
 
+    /**
+     * Acknowledge is allowed on archived projects so PMs can clear the Validation Inbox.
+     * Creating new site reports remains blocked via {@link #createSiteReport}.
+     */
     @Transactional
     public ScSiteReportResponse acknowledgeSiteReport(Long projectId, UUID uuid) {
-        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requireStaff();
         requireProject(projectId);
         ScSiteReport row = requireSiteReport(uuid, projectId);
@@ -276,9 +279,12 @@ public class SubcontractorPortalService {
         return toSiteReportResponse(siteReportRepository.save(row));
     }
 
+    /**
+     * Resolve is allowed on archived projects so PMs can clear the Validation Inbox.
+     * Creating new site reports remains blocked via {@link #createSiteReport}.
+     */
     @Transactional
     public ScSiteReportResponse resolveSiteReport(Long projectId, UUID uuid, String resolutionNotes) {
-        commercialLifecycleService.assertNotArchived(projectId);
         AuthPrincipal principal = requireStaff();
         requireProject(projectId);
         ScSiteReport row = requireSiteReport(uuid, projectId);
