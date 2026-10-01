@@ -71,4 +71,13 @@ public class MaterialPlanController extends BaseController {
             return failureResponse("Failed to reserve materials", e.getMessage());
         }
     }
+
+    @PostMapping("/unreserve")
+    public Object unreserve(@PathVariable Long projectId) {
+        try {
+            return successResponse(materialPlanService.unreserve(projectId));
+        } catch (Exception e) {
+            return failureResponse("Failed to unreserve materials", e.getMessage());
+        }
+    }
 }

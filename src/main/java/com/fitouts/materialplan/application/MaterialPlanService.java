@@ -31,6 +31,8 @@ import com.fitouts.boq.domain.BoqLineRepository;
 import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.materialplan.api.MaterialPlanLineRequest;
 import com.fitouts.materialplan.api.MaterialPlanLineResponse;
+import com.fitouts.materialplan.api.MaterialPlanPackageRequest;
+import com.fitouts.materialplan.api.MaterialPlanPackageResponse;
 import com.fitouts.materialplan.api.MaterialPlanResponse;
 import com.fitouts.materialplan.api.MaterialPlanUpdateRequest;
 import com.fitouts.materialplan.api.MaterialPlanWorkItemSectionResponse;
@@ -38,6 +40,8 @@ import com.fitouts.materialplan.domain.MaterialPlanStatus;
 import com.fitouts.materialplan.domain.ProjectMaterialPlan;
 import com.fitouts.materialplan.domain.ProjectMaterialPlanLine;
 import com.fitouts.materialplan.domain.ProjectMaterialPlanLineRepository;
+import com.fitouts.materialplan.domain.ProjectMaterialPlanPackage;
+import com.fitouts.materialplan.domain.ProjectMaterialPlanPackageRepository;
 import com.fitouts.materialplan.domain.ProjectMaterialPlanRepository;
 import com.fitouts.planning.application.PlanningService;
 import com.fitouts.planning.domain.PlanAreaStatus;
@@ -64,6 +68,7 @@ public class MaterialPlanService {
 
     private final ProjectMaterialPlanRepository planRepository;
     private final ProjectMaterialPlanLineRepository lineRepository;
+    private final ProjectMaterialPlanPackageRepository packageRepository;
     private final ProjectService projectService;
     private final PlanningService planningService;
     private final BoqDocumentRepository boqDocumentRepository;
@@ -99,7 +104,9 @@ public class MaterialPlanService {
                     return planRepository.save(created);
                 });
 
+        releaseLineReservations(plan.getUuid());
         lineRepository.deleteByPlanUuid(plan.getUuid());
+        packageRepository.deleteByPlanUuid(plan.getUuid());
 
         List<String> warnings = new ArrayList<>();
         BoqDocument approvedBoq = findLatestApprovedBoq(project.getId(), companyId);
@@ -143,16 +150,64 @@ public class MaterialPlanService {
                     return planRepository.save(created);
                 });
 
+        MaterialPlanStatus previousStatus = plan.getStatus();
+        MaterialPlanStatus nextStatus = request.getStatus() != null ? request.getStatus() : previousStatus;
+
+        if (previousStatus == MaterialPlanStatus.READY && nextStatus == MaterialPlanStatus.DRAFT) {
+            releaseLineReservations(plan.getUuid());
+        }
+
         if (request.getStatus() != null) {
             plan.setStatus(request.getStatus());
         }
 
+        Set<UUID> validPackageIds = new HashSet<>();
+        if (request.getPackages() != null) {
+            // Lines reference packages — clear lines first if they are also being replaced
+            if (request.getLines() != null) {
+                lineRepository.deleteByPlanUuid(plan.getUuid());
+            } else {
+                // Detach package refs from existing lines before deleting packages
+                List<ProjectMaterialPlanLine> existing = lineRepository.findByPlanUuidOrderBySortOrderAsc(plan.getUuid());
+                for (ProjectMaterialPlanLine line : existing) {
+                    line.setPackageUuid(null);
+                }
+                lineRepository.saveAll(existing);
+            }
+            packageRepository.deleteByPlanUuid(plan.getUuid());
+            List<ProjectMaterialPlanPackage> packages = new ArrayList<>();
+            int pkgOrder = 0;
+            for (MaterialPlanPackageRequest pr : request.getPackages()) {
+                if (!StringUtils.hasText(pr.getName())) {
+                    throw new BadRequestException("Package name is required");
+                }
+                ProjectMaterialPlanPackage pkg = new ProjectMaterialPlanPackage();
+                UUID pkgId = pr.getId() != null ? pr.getId() : UUID.randomUUID();
+                pkg.setUuid(pkgId);
+                pkg.setPlanUuid(plan.getUuid());
+                pkg.setName(pr.getName().trim());
+                pkg.setSortOrder(pr.getSortOrder() != null ? pr.getSortOrder() : pkgOrder);
+                packages.add(pkg);
+                validPackageIds.add(pkgId);
+                pkgOrder++;
+            }
+            if (!packages.isEmpty()) {
+                packageRepository.saveAll(packages);
+            }
+        } else {
+            packageRepository.findByPlanUuidOrderBySortOrderAsc(plan.getUuid())
+                    .forEach(p -> validPackageIds.add(p.getUuid()));
+        }
+
         if (request.getLines() != null) {
-            lineRepository.deleteByPlanUuid(plan.getUuid());
+            if (request.getPackages() == null) {
+                lineRepository.deleteByPlanUuid(plan.getUuid());
+            }
             List<ProjectMaterialPlanLine> lines = new ArrayList<>();
             int order = 0;
             for (MaterialPlanLineRequest lr : request.getLines()) {
-                lines.add(toLineEntity(plan.getUuid(), lr, order++, companyId));
+                ProjectMaterialPlanLine line = toLineEntity(plan.getUuid(), lr, order++, companyId, validPackageIds);
+                lines.add(line);
             }
             if (!lines.isEmpty()) {
                 lineRepository.saveAll(lines);
@@ -191,6 +246,22 @@ public class MaterialPlanService {
             line.setReservedQty(planned);
         }
         lineRepository.saveAll(lines);
+        plan.setUpdatedBy(principal.getAccountId());
+        planRepository.save(plan);
+        return toResponse(plan, List.of());
+    }
+
+    @Transactional
+    public MaterialPlanResponse unreserve(Long projectId) {
+        AuthPrincipal principal = requireStaff();
+        commercialLifecycleService.assertNotArchived(projectId);
+        Project project = requireProject(projectId);
+        UUID companyId = CompanyContext.get();
+
+        ProjectMaterialPlan plan = planRepository.findByProjectIdAndCompanyId(project.getId(), companyId)
+                .orElseThrow(() -> new BadRequestException("Material plan not found — generate or create lines first"));
+
+        releaseLineReservations(plan.getUuid());
         plan.setUpdatedBy(principal.getAccountId());
         planRepository.save(plan);
         return toResponse(plan, List.of());
@@ -650,7 +721,12 @@ public class MaterialPlanService {
                 .orElse(null);
     }
 
-    private ProjectMaterialPlanLine toLineEntity(UUID planUuid, MaterialPlanLineRequest lr, int defaultOrder, UUID companyId) {
+    private ProjectMaterialPlanLine toLineEntity(
+            UUID planUuid,
+            MaterialPlanLineRequest lr,
+            int defaultOrder,
+            UUID companyId,
+            Set<UUID> validPackageIds) {
         if (!StringUtils.hasText(lr.getMaterialName())) {
             throw new BadRequestException("materialName is required for each line");
         }
@@ -671,7 +747,27 @@ public class MaterialPlanService {
         line.setNotes(lr.getNotes());
         line.setSubstituteReason(trimToNull(lr.getSubstituteReason()));
         line.setSortOrder(lr.getSortOrder() != null ? lr.getSortOrder() : defaultOrder);
+        if (lr.getPackageId() != null) {
+            if (validPackageIds == null || !validPackageIds.contains(lr.getPackageId())) {
+                throw new BadRequestException("Line references unknown package: " + lr.getPackageId());
+            }
+            line.setPackageUuid(lr.getPackageId());
+        }
         return line;
+    }
+
+    private void releaseLineReservations(UUID planUuid) {
+        List<ProjectMaterialPlanLine> lines = lineRepository.findByPlanUuidOrderBySortOrderAsc(planUuid);
+        for (ProjectMaterialPlanLine line : lines) {
+            BigDecimal reserved = line.getReservedQty() != null ? line.getReservedQty() : BigDecimal.ZERO;
+            if (reserved.compareTo(BigDecimal.ZERO) > 0 && line.getMaterialId() != null) {
+                stockService.decreaseReserved(line.getMaterialId(), reserved);
+            }
+            line.setReservedQty(BigDecimal.ZERO);
+        }
+        if (!lines.isEmpty()) {
+            lineRepository.saveAll(lines);
+        }
     }
 
     private BigDecimal resolveStockSnapshot(UUID companyId, UUID materialId, BigDecimal fallback) {
@@ -710,6 +806,14 @@ public class MaterialPlanService {
                 .stream()
                 .map(this::toLineResponse)
                 .toList();
+        List<MaterialPlanPackageResponse> packages = packageRepository.findByPlanUuidOrderBySortOrderAsc(plan.getUuid())
+                .stream()
+                .map(pkg -> MaterialPlanPackageResponse.builder()
+                        .id(pkg.getUuid())
+                        .name(pkg.getName())
+                        .sortOrder(pkg.getSortOrder())
+                        .build())
+                .toList();
         List<MaterialPlanWorkItemSectionResponse> sections = buildSections(
                 plan.getProjectId(), plan.getCompanyId(), plan.getGeneratedFromBoqId(), lines);
         return MaterialPlanResponse.builder()
@@ -721,6 +825,7 @@ public class MaterialPlanService {
                 .updatedBy(plan.getUpdatedBy())
                 .updatedAt(plan.getUpdatedAt())
                 .lines(lines)
+                .packages(packages)
                 .sections(sections)
                 .warnings(warnings != null ? warnings : List.of())
                 .build();
@@ -740,6 +845,7 @@ public class MaterialPlanService {
                 .notes(line.getNotes())
                 .substituteReason(line.getSubstituteReason())
                 .sortOrder(line.getSortOrder())
+                .packageId(line.getPackageUuid())
                 .build();
     }
 
@@ -757,6 +863,7 @@ public class MaterialPlanService {
                 .updatedBy(null)
                 .updatedAt(null)
                 .lines(List.of())
+                .packages(List.of())
                 .sections(sections)
                 .warnings(List.of())
                 .build();
