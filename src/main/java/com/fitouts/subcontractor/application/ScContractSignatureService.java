@@ -34,8 +34,12 @@ import com.fitouts.subcontractor.api.ScSubcontractContractResponse;
 import com.fitouts.subcontractor.domain.ScAwardBoqLine;
 import com.fitouts.subcontractor.domain.ScAwardBoqLineRepository;
 import com.fitouts.subcontractor.domain.ScContractStatus;
+import com.fitouts.subcontractor.domain.ScFreeIssueMaterial;
+import com.fitouts.subcontractor.domain.ScFreeIssueMaterialRepository;
 import com.fitouts.subcontractor.domain.ScOrganization;
 import com.fitouts.subcontractor.domain.ScOrganizationRepository;
+import com.fitouts.subcontractor.domain.ScPackageAttendance;
+import com.fitouts.subcontractor.domain.ScPackageAttendanceRepository;
 import com.fitouts.subcontractor.domain.ScPackageAward;
 import com.fitouts.subcontractor.domain.ScPackageAwardRepository;
 import com.fitouts.subcontractor.domain.ScPortalUser;
@@ -65,6 +69,8 @@ public class ScContractSignatureService {
     private final ScQuoteLineRepository quoteLineRepository;
     private final ScAwardBoqLineRepository awardBoqLineRepository;
     private final BoqLineRepository boqLineRepository;
+    private final ScFreeIssueMaterialRepository freeIssueMaterialRepository;
+    private final ScPackageAttendanceRepository packageAttendanceRepository;
     private final ScPortalAccessService portalAccessService;
     private final FileStorageService fileStorageService;
     private final SubcontractPdfService pdfService;
@@ -132,7 +138,10 @@ public class ScContractSignatureService {
         // Generate Stage 1 PDF with Admin signature embedded (JCT cover-letter format)
         byte[] pdfBytes = pdfService.generateStage1AdminPdf(
                 pkg, award, org, project, signerName, signerTitle, adminSignedAt, adminSigBytesOpt.get(),
-                resolveAwardedBoqLines(award, quote));
+                resolveAwardedBoqLines(award, quote),
+                loadFreeIssue(pkg),
+                loadAttendance(pkg),
+                quote != null ? quote.getExclusionsText() : null);
 
         String pdfFileName = "contract_" + packageUuid + "_stage1.pdf";
         String contractFilePath = fileStorageService.storeBytes(
@@ -243,6 +252,9 @@ public class ScContractSignatureService {
                     ? quoteRepository.findById(award.getQuoteUuid()).orElse(null)
                     : null;
             List<ScAwardBoqLineResponse> awardedBoqLines = resolveAwardedBoqLines(award, quote);
+            List<ScFreeIssueMaterial> freeIssue = loadFreeIssue(pkg);
+            List<ScPackageAttendance> attendance = loadAttendance(pkg);
+            String exclusions = quote != null ? quote.getExclusionsText() : null;
             byte[] pdfBytes;
             String fileName;
             if (award.getSignedAt() != null) {
@@ -261,13 +273,14 @@ public class ScContractSignatureService {
                         pkg, award, organization, project,
                         award.getAdminSignerName(), award.getAdminSignerTitle(), award.getAdminSignedAt(), adminSigBytes,
                         award.getSubcontractorSignerName(), award.getSubcontractorSignerTitle(),
-                        award.getSignedAt(), subSigBytes, awardedBoqLines);
+                        award.getSignedAt(), subSigBytes, awardedBoqLines, freeIssue, attendance, exclusions);
                 fileName = "contract_" + pkg.getUuid() + "_executed.pdf";
             } else {
                 pdfBytes = pdfService.generateStage1AdminPdf(
                         pkg, award, organization, project,
                         award.getAdminSignerName(), award.getAdminSignerTitle(),
-                        award.getAdminSignedAt(), adminSigBytes, awardedBoqLines);
+                        award.getAdminSignedAt(), adminSigBytes, awardedBoqLines,
+                        freeIssue, attendance, exclusions);
                 fileName = "contract_" + pkg.getUuid() + "_stage1.pdf";
             }
             String previous = award.getContractFilePath();
@@ -432,7 +445,10 @@ public class ScContractSignatureService {
                 subSignerTitle,
                 signedAt,
                 subSigBytesOpt.get(),
-                resolveAwardedBoqLines(award, quote));
+                resolveAwardedBoqLines(award, quote),
+                loadFreeIssue(pkg),
+                loadAttendance(pkg),
+                quote != null ? quote.getExclusionsText() : null);
 
         String pdfFileName = "contract_" + packageUuid + "_executed.pdf";
         String finalContractFilePath = fileStorageService.storeBytes(
@@ -467,6 +483,22 @@ public class ScContractSignatureService {
         return quoteLineRepository.findByQuoteUuidOrderByBoqLineIdAsc(quote.getUuid()).stream()
                 .map(this::toAwardBoqLineResponseFromQuote)
                 .toList();
+    }
+
+    private List<ScFreeIssueMaterial> loadFreeIssue(SubcontractorPackage pkg) {
+        if (pkg == null || pkg.getUuid() == null || pkg.getCompanyId() == null) {
+            return List.of();
+        }
+        return freeIssueMaterialRepository.findByPackageUuidAndCompanyIdOrderBySortOrderAsc(
+                pkg.getUuid(), pkg.getCompanyId());
+    }
+
+    private List<ScPackageAttendance> loadAttendance(SubcontractorPackage pkg) {
+        if (pkg == null || pkg.getUuid() == null || pkg.getCompanyId() == null) {
+            return List.of();
+        }
+        return packageAttendanceRepository.findByPackageUuidAndCompanyIdOrderBySortOrderAsc(
+                pkg.getUuid(), pkg.getCompanyId());
     }
 
     private ScAwardBoqLineResponse toAwardBoqLineResponse(ScAwardBoqLine line) {
