@@ -19,4 +19,6 @@ public class MaterialPlanLineRequest {
     private String notes;
     private String substituteReason;
     private Integer sortOrder;
+    /** References MaterialPlanPackageRequest.id / package response id. */
+    private UUID packageId;
 }

@@ -10,4 +10,5 @@ import lombok.Data;
 public class MaterialPlanUpdateRequest {
     private MaterialPlanStatus status;
     private List<MaterialPlanLineRequest> lines;
+    private List<MaterialPlanPackageRequest> packages;
 }

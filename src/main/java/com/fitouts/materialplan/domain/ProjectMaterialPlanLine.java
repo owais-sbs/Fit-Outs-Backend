@@ -55,6 +55,9 @@ public class ProjectMaterialPlanLine {
     @Column(name = "sort_order", nullable = false)
     private int sortOrder;
 
+    @Column(name = "package_uuid")
+    private UUID packageUuid;
+
     @PrePersist
     void onCreate() {
         if (uuid == null) uuid = UUID.randomUUID();
