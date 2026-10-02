@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.fitouts.account.application.ClientPortalInviteService;
 import com.fitouts.auth.application.AuthService;
+import com.fitouts.auth.application.PasswordResetService;
 import com.fitouts.auth.api.ChangePasswordRequest;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.shared.api.BaseController;
@@ -36,6 +37,20 @@ public class AuthController extends BaseController {
 
     private final AuthService authService;
     private final ClientPortalInviteService clientPortalInviteService;
+    private final PasswordResetService passwordResetService;
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<?> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        passwordResetService.requestReset(request.getEmail());
+        return successResponse(new MessageResponse(
+                "If an account exists for that email, a password reset link has been sent."));
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<?> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        passwordResetService.resetPassword(request.getToken(), request.getNewPassword());
+        return successResponse(new MessageResponse("Password updated successfully. You can now sign in."));
+    }
 
     @PostMapping("/password-setup/request")
     public ResponseEntity<?> requestPasswordSetup(@Valid @RequestBody RequestPasswordSetupRequest request) {
