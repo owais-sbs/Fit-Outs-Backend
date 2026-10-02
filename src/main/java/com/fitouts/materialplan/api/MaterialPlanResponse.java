@@ -20,6 +20,7 @@ public class MaterialPlanResponse {
     private Long updatedBy;
     private OffsetDateTime updatedAt;
     private List<MaterialPlanLineResponse> lines;
+    private List<MaterialPlanPackageResponse> packages;
     private List<MaterialPlanWorkItemSectionResponse> sections;
     private List<String> warnings;
 }

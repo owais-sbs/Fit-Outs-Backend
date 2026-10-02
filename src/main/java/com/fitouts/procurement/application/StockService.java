@@ -152,6 +152,24 @@ public class StockService {
         materialStockRepository.save(stock);
     }
 
+    /**
+     * Release soft-hold: decrease reserved quantity (clamped at zero; does not change on-hand).
+     */
+    public void decreaseReserved(UUID materialId, BigDecimal delta) {
+        if (materialId == null || delta == null || delta.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        Material material = materialService.find(materialId);
+        MaterialStock stock = getOrCreateStock(material);
+        BigDecimal current = stock.getQuantityReserved() != null ? stock.getQuantityReserved() : BigDecimal.ZERO;
+        BigDecimal next = current.subtract(delta);
+        if (next.compareTo(BigDecimal.ZERO) < 0) {
+            next = BigDecimal.ZERO;
+        }
+        stock.setQuantityReserved(next);
+        materialStockRepository.save(stock);
+    }
+
     private StockMovement saveMovement(Material material, StockMovementType type, BigDecimal quantity,
             BigDecimal unitCost, BigDecimal totalCost, Project project,
             String referenceNo, String notes, LocalDateTime movementDate) {

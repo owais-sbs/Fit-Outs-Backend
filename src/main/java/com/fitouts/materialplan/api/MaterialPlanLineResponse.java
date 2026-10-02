@@ -22,4 +22,5 @@ public class MaterialPlanLineResponse {
     private String notes;
     private String substituteReason;
     private int sortOrder;
+    private UUID packageId;
 }

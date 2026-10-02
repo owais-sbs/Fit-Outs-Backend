@@ -855,26 +855,43 @@ public class SubcontractorPortalService {
     }
 
     private void assertBankReadyForPayment(AuthPrincipal principal) {
-        ScCompanyProfile profile = profileRepository
-                .findByAdminAccountIdAndCompanyId(principal.getAccountId(), requireCompany())
-                .orElse(null);
-        if (profile == null || profile.getOrganizationUuid() == null) {
-            throw new BadRequestException("Company profile and bank details are required before invoicing.");
+        // Resolve org via portal user (any commercial role), not only legacy adminAccountId profile.
+        UUID organizationUuid = null;
+        try {
+            organizationUuid = portalAccessService.requireActivePortalUser(principal).getOrganizationUuid();
+        } catch (Exception ignored) {
+            // fall through to legacy profile lookup
         }
-        bankDetailRepository.findByOrganizationUuid(profile.getOrganizationUuid()).ifPresentOrElse(bank -> {
+        if (organizationUuid == null) {
+            ScCompanyProfile profile = profileRepository
+                    .findByAdminAccountIdAndCompanyId(principal.getAccountId(), requireCompany())
+                    .orElse(null);
+            organizationUuid = profile != null ? profile.getOrganizationUuid() : null;
+        }
+        if (organizationUuid == null) {
+            throw new BadRequestException(
+                    "Company profile and bank details are required before invoicing. "
+                            + "Open Organization → Financial terms & bank, enter IBAN, and Save bank.");
+        }
+        bankDetailRepository.findByOrganizationUuid(organizationUuid).ifPresentOrElse(bank -> {
             if (bank.getIban() == null || bank.getIban().isBlank()) {
-                throw new BadRequestException("Bank IBAN must be recorded before submitting invoices.");
+                throw new BadRequestException(
+                        "Bank IBAN must be recorded before submitting invoices. "
+                                + "Open Organization → Financial terms & bank, enter IBAN, click Save bank, then retry.");
             }
             if (bank.getBankLetterFilePath() == null || bank.getBankLetterFilePath().isBlank()) {
-                throw new BadRequestException("Bank confirmation letter must be uploaded before submitting invoices.");
+                throw new BadRequestException(
+                        "Bank confirmation letter must be uploaded before submitting invoices "
+                                + "(Organization → Financial terms & bank).");
             }
-            if (bank.getVerificationStatus() != ScBankVerificationStatus.VERIFIED
-                    && bank.getVerificationStatus() != ScBankVerificationStatus.PENDING
-                    && bank.getVerificationStatus() != ScBankVerificationStatus.CHANGE_PENDING) {
-                throw new BadRequestException("Bank details must be verified before submitting invoices.");
+            if (bank.getVerificationStatus() == ScBankVerificationStatus.REJECTED) {
+                throw new BadRequestException(
+                        "Bank details were rejected. Update IBAN/letter on Organization → Financial terms & bank, then ask JCT to re-verify.");
             }
         }, () -> {
-            throw new BadRequestException("Bank details must be recorded before submitting invoices.");
+            throw new BadRequestException(
+                    "Bank details must be recorded before submitting invoices. "
+                            + "Open Organization → Financial terms & bank, enter IBAN, and Save bank.");
         });
     }
 

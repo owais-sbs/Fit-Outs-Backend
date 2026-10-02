@@ -25,6 +25,15 @@ public class SnagController extends BaseController {
 
     private final SnagService snagService;
 
+    @GetMapping("/api/snags/mine")
+    public Object listMine() {
+        try {
+            return successResponse(snagService.listMine());
+        } catch (Exception e) {
+            return failureResponse("Failed to list my snags", e.getMessage());
+        }
+    }
+
     @GetMapping("/api/projects/{projectId}/snags")
     public Object list(@PathVariable Long projectId) {
         try {
