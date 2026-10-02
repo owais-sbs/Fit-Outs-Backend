@@ -246,11 +246,19 @@ public class ClientPortalInviteService {
     }
 
     private String normalizePublicUrl() {
-        return stripTrailingSlash(publicUrl, "http://localhost:3000");
+        return stripTrailingSlash(firstUrl(publicUrl), "http://localhost:3000");
     }
 
     private String normalizeLoginUrl() {
-        return stripTrailingSlash(loginUrl, "https://fitouts.onepathsolutions.com");
+        return stripTrailingSlash(firstUrl(loginUrl), "https://fitouts.onepathsolutions.com");
+    }
+
+    /** Email links need a single origin; ignore accidental comma-lists (CORS-style). */
+    private static String firstUrl(String value) {
+        if (!StringUtils.hasText(value)) {
+            return value;
+        }
+        return value.split(",")[0].trim();
     }
 
     private static String stripTrailingSlash(String value, String fallback) {
