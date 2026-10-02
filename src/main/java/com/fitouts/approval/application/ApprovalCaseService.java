@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -18,6 +19,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fitouts.account.domain.Account;
@@ -38,6 +40,7 @@ import com.fitouts.approval.api.CaseStatusPatchRequest;
 import com.fitouts.approval.api.CaseSubmissionRequest;
 import com.fitouts.approval.api.CaseSubmissionResponse;
 import com.fitouts.approval.api.ChecklistAttachRequest;
+import com.fitouts.approval.api.CompanyComplianceRequest;
 import com.fitouts.approval.api.PackAssemblyResponse;
 import com.fitouts.approval.api.ProjectScopeToggles;
 import com.fitouts.approval.api.ResolvedCaseView;
@@ -70,6 +73,7 @@ import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.notification.application.NotificationService;
 import com.fitouts.completion.application.CommercialLifecycleService;
+import com.fitouts.drawing.application.FileStorageService;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
 import com.fitouts.project.domain.ProjectRepository;
@@ -125,6 +129,7 @@ public class ApprovalCaseService {
     private final ApprovalPermitAuthorityRoleRepository permitAuthorityRoleRepository;
     private final ApprovalAuthorityRepository approvalAuthorityRepository;
     private final CommercialLifecycleService commercialLifecycleService;
+    private final FileStorageService fileStorageService;
 
 
     // Resolve and generate
@@ -1155,12 +1160,18 @@ public class ApprovalCaseService {
         CaseChecklistItem item = checklistRepository.findByUuidAndCaseUuid(itemUuid, caseUuid)
                 .orElseThrow(() -> new NotFoundException("Checklist item not found"));
 
+        boolean pathChanged = false;
+        boolean expiryChanged = false;
         if (request != null) {
             if (request.getFilePath() != null) {
                 item.setFilePath(SeedValueParser.trimToNull(request.getFilePath()));
                 item.setSource("UPLOADED");
+                pathChanged = true;
             }
-            if (request.getExpiryDate() != null) item.setExpiryDate(request.getExpiryDate());
+            if (request.getExpiryDate() != null) {
+                item.setExpiryDate(request.getExpiryDate());
+                expiryChanged = true;
+            }
             if ("NOT_APPLICABLE".equalsIgnoreCase(request.getStatus())) {
                 item.setStatus("NOT_APPLICABLE");
             } else {
@@ -1169,8 +1180,83 @@ public class ApprovalCaseService {
             }
         }
         checklistRepository.save(item);
-        syncPreparationStatus(approvalCase, principal);
+        if (pathChanged || expiryChanged) {
+            propagateDocumentAcrossProject(approvalCase, item, companyId, principal);
+        } else {
+            syncPreparationStatus(approvalCase, principal);
+        }
         return get(caseUuid);
+    }
+
+    @Transactional
+    public ApprovalCaseDetailResponse uploadChecklistItem(UUID caseUuid, UUID itemUuid,
+                                                          MultipartFile file, LocalDate expiryDate) {
+        AuthPrincipal principal = requireStaff();
+        UUID companyId = requireCompany();
+        ApprovalCase approvalCase = requireCase(caseUuid, companyId);
+        commercialLifecycleService.assertNotArchived(approvalCase.getProjectId());
+        CaseChecklistItem item = checklistRepository.findByUuidAndCaseUuid(itemUuid, caseUuid)
+                .orElseThrow(() -> new NotFoundException("Checklist item not found"));
+        if (file == null || file.isEmpty()) {
+            throw new BadRequestException("file is required");
+        }
+
+        String relativePath = fileStorageService.store(
+                file, companyId, approvalCase.getProjectId(), "approvals");
+        item.setFilePath(relativePath);
+        item.setSource("UPLOADED");
+        if (expiryDate != null) {
+            item.setExpiryDate(expiryDate);
+        }
+        if ("NOT_APPLICABLE".equals(item.getStatus())) {
+            item.setStatus("MISSING");
+        }
+        item.refreshStatus();
+        checklistRepository.save(item);
+
+        propagateDocumentAcrossProject(approvalCase, item, companyId, principal);
+        return get(caseUuid);
+    }
+
+    /**
+     * Copies filePath + expiryDate onto every other checklist row on this project with the same
+     * document type code (replace), and upserts company compliance for future reuse.
+     */
+    private void propagateDocumentAcrossProject(ApprovalCase sourceCase, CaseChecklistItem sourceItem,
+                                                UUID companyId, AuthPrincipal principal) {
+        String code = sourceItem.getDocumentTypeCode();
+        if (!StringUtils.hasText(code) || !StringUtils.hasText(sourceItem.getFilePath())) {
+            syncPreparationStatus(sourceCase, principal);
+            return;
+        }
+
+        List<CaseChecklistItem> siblings = checklistRepository.findByProjectCompanyAndDocumentTypeCode(
+                sourceCase.getProjectId(), companyId, code);
+        Set<UUID> affectedCaseUuids = new HashSet<>();
+        for (CaseChecklistItem sibling : siblings) {
+            sibling.setFilePath(sourceItem.getFilePath());
+            sibling.setExpiryDate(sourceItem.getExpiryDate());
+            sibling.setSource("UPLOADED");
+            if (!"WAIVED".equals(sibling.getStatus()) && !"NOT_APPLICABLE".equals(sibling.getStatus())) {
+                sibling.refreshStatus();
+            }
+            affectedCaseUuids.add(sibling.getCaseUuid());
+        }
+        checklistRepository.saveAll(siblings);
+
+        CompanyComplianceRequest compliance = new CompanyComplianceRequest();
+        compliance.setDocumentTypeCode(code);
+        compliance.setFilePath(sourceItem.getFilePath());
+        compliance.setExpiryDate(sourceItem.getExpiryDate());
+        libraryService.upsertCompanyCompliance(compliance);
+
+        for (UUID affectedCaseUuid : affectedCaseUuids) {
+            ApprovalCase affected = caseRepository.findByUuidAndCompanyId(affectedCaseUuid, companyId)
+                    .orElse(null);
+            if (affected != null) {
+                syncPreparationStatus(affected, principal);
+            }
+        }
     }
 
     /**

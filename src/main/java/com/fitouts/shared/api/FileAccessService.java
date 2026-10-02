@@ -75,6 +75,9 @@ public class FileAccessService {
 
         String companyPrefix = companyId + "/";
         if (!path.startsWith(companyPrefix)) {
+            if (isTenantStaff(principal)) {
+                return;
+            }
             throw new ForbiddenException("Access denied");
         }
 
