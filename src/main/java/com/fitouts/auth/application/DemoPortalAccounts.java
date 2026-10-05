@@ -23,6 +23,7 @@ final class DemoPortalAccounts {
             "sales@fitouts.demo",
             "seniorqs@fitouts.demo",
             "siteengineer@fitouts.demo",
+            "dct@fitouts.demo",
             "moid@fitouts.demo",
             "nameera@fitouts.demo",
             "doccontroller@fitouts.demo",
