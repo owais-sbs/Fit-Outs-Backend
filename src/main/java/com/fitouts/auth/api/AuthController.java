@@ -118,6 +118,26 @@ public class AuthController extends BaseController {
         }
     }
 
+    @PostMapping("/demo-portal-switch")
+    public ResponseEntity<?> switchDemoPortal(
+            @Valid @RequestBody DemoPortalSwitchRequest request,
+            HttpServletRequest servletRequest,
+            HttpServletResponse servletResponse) {
+
+        try {
+            AuthPrincipal principal = currentPrincipal();
+            if (principal == null) {
+                return failureResponse("Unable to switch portal", "Authentication required");
+            }
+            return successResponse(authService.switchDemoPortal(
+                    principal, request.getEmail(), servletRequest, servletResponse));
+        } catch (ApiException exception) {
+            return failureResponse(exception.getMessage(), exception.getMessage());
+        } catch (Exception exception) {
+            return failureResponse("Unable to switch portal", exception.getMessage());
+        }
+    }
+
     @PostMapping("/verify-otp")
     public ResponseEntity<?> verifyOtp(
             @Valid @RequestBody VerifyOtpRequest request,

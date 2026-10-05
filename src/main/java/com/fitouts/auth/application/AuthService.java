@@ -126,6 +126,42 @@ public class AuthService {
         return new LoginResult(false, authenticate(account, device, servletRequest, servletResponse));
     }
 
+    /**
+     * Demo-only: re-authenticates the browser as another whitelisted account in the
+     * Puma tenant so portal differences can be shown without juggling passwords.
+     */
+    @Transactional
+    public LoginResponse switchDemoPortal(
+            AuthPrincipal principal,
+            String targetEmail,
+            HttpServletRequest servletRequest,
+            HttpServletResponse servletResponse) {
+
+        String normalizedTarget = targetEmail == null ? "" : targetEmail.trim().toLowerCase(Locale.ROOT);
+        if (!DemoPortalAccounts.isAllowed(normalizedTarget)) {
+            throw new ForbiddenException("Account is not available for demo portal switching");
+        }
+
+        Account current = accountService.getAccountByEmail(principal.getEmail());
+        if (!DemoPortalAccounts.isAllowed(current.getEmail())
+                || !DemoPortalAccounts.isDemoTenant(current.getCompany())) {
+            throw new ForbiddenException("Demo portal switching is not enabled for this account");
+        }
+
+        Account target = accountService.findOptionalByEmail(normalizedTarget)
+                .orElseThrow(() -> new ForbiddenException("Account is not available for demo portal switching"));
+        if (!DemoPortalAccounts.isDemoTenant(target.getCompany())) {
+            throw new ForbiddenException("Account is not available for demo portal switching");
+        }
+        if (!Boolean.TRUE.equals(target.getIsActive())) {
+            throw new ForbiddenException("Account is inactive");
+        }
+        assertCompanyAccessAllowed(target);
+
+        RememberedDevice device = deviceService.resolveDevice(target, servletRequest, servletResponse);
+        return authenticate(target, device, servletRequest, servletResponse);
+    }
+
     @Transactional
     public LoginResponse verifyOtp(
             VerifyOtpRequest request,
