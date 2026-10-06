@@ -41,6 +41,9 @@ public class ActivityProgressUpdate {
     @Column(name = "delay_reason", length = 64)
     private String delayReason;
 
+    @Column(name = "delay_working_days")
+    private Integer delayWorkingDays;
+
     @Column(name = "photo_paths")
     private String photoPaths;
 

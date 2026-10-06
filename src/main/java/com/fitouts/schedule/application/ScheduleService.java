@@ -431,7 +431,18 @@ public class ScheduleService {
         update.setPercentComplete(pct);
         update.setNotes(request.getNotes());
         update.setLabourHours(request.getLabourHours());
-        if (StringUtils.hasText(request.getDelayReason())) {
+        Integer delayDays = request.getDelayWorkingDays();
+        if (delayDays != null) {
+            if (delayDays < 1) {
+                throw new BadRequestException("Delay must be at least 1 working day");
+            }
+            if (!StringUtils.hasText(request.getDelayReason())) {
+                throw new BadRequestException("Delay reason is required when a delay is reported");
+            }
+            // Reason stays on the progress row until PM approval moves the programme.
+            update.setDelayWorkingDays(delayDays);
+            update.setDelayReason(request.getDelayReason().trim());
+        } else if (StringUtils.hasText(request.getDelayReason())) {
             update.setDelayReason(request.getDelayReason().trim());
             activity.setDelayReason(request.getDelayReason().trim());
             activityRepository.save(activity);
@@ -1000,6 +1011,7 @@ public class ScheduleService {
                 .notes(u.getNotes())
                 .labourHours(u.getLabourHours())
                 .delayReason(u.getDelayReason())
+                .delayWorkingDays(u.getDelayWorkingDays())
                 .reportedBy(u.getReportedBy())
                 .reportedAt(u.getReportedAt())
                 .photoPaths(u.getPhotoPaths())

@@ -260,6 +260,8 @@ public class ValidationInboxService {
                 .activityName(activity != null ? activity.getName() : null)
                 .percentComplete(progress != null ? progress.getPercentComplete() : null)
                 .progressNotes(progress != null ? progress.getNotes() : null)
+                .delayReason(progress != null ? progress.getDelayReason() : null)
+                .delayWorkingDays(progress != null ? progress.getDelayWorkingDays() : null)
                 .reportedByName(reporter != null ? displayName(reporter) : null)
                 .reportedAt(progress != null ? progress.getReportedAt() : null)
                 .photoPaths(progress != null ? progress.getPhotoPaths() : null)

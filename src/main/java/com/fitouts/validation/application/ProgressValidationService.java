@@ -10,17 +10,23 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import com.fitouts.account.domain.Account;
+import com.fitouts.account.domain.AccountRepository;
 import com.fitouts.billing.application.BillingService;
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.completion.application.CommercialLifecycleService;
+import com.fitouts.notification.application.NotificationService;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
 import com.fitouts.schedule.domain.ActivityProgressUpdate;
 import com.fitouts.schedule.domain.ActivityProgressUpdateRepository;
 import com.fitouts.schedule.domain.ScheduleActivity;
 import com.fitouts.schedule.domain.ScheduleActivityRepository;
+import com.fitouts.schedule.api.RescheduleRequest;
+import com.fitouts.schedule.api.RescheduleResponse;
 import com.fitouts.schedule.application.ActivityMaterialIssueService;
+import com.fitouts.schedule.application.ScheduleRescheduleService;
 import com.fitouts.shared.context.CompanyContext;
 import com.fitouts.shared.error.BadRequestException;
 import com.fitouts.shared.error.ForbiddenException;
@@ -32,9 +38,11 @@ import com.fitouts.validation.domain.ProgressValidationRepository;
 import com.fitouts.validation.domain.ProgressValidationStatus;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ProgressValidationService {
 
     private final ProgressValidationRepository validationRepository;
@@ -43,7 +51,10 @@ public class ProgressValidationService {
     private final ProjectService projectService;
     private final BillingService billingService;
     private final ActivityMaterialIssueService activityMaterialIssueService;
+    private final ScheduleRescheduleService rescheduleService;
     private final CommercialLifecycleService commercialLifecycleService;
+    private final AccountRepository accountRepository;
+    private final NotificationService notificationService;
 
     @Transactional
     public ProgressValidation createPendingForProgress(ActivityProgressUpdate update) {
@@ -59,7 +70,40 @@ public class ProgressValidationService {
         validation.setProjectId(update.getProjectId());
         validation.setCompanyId(update.getCompanyId());
         validation.setStatus(ProgressValidationStatus.PENDING);
-        return validationRepository.save(validation);
+        ProgressValidation saved = validationRepository.save(validation);
+        notifyPendingApprover(saved);
+        return saved;
+    }
+
+    /** Tells the PMs that site progress is sitting in their validation inbox. */
+    private void notifyPendingApprover(ProgressValidation validation) {
+        if (validation.getCompanyId() == null) {
+            return;
+        }
+        try {
+            String activityName = activityRepository
+                    .findByUuidAndCompanyId(validation.getActivityUuid(), validation.getCompanyId())
+                    .map(ScheduleActivity::getName)
+                    .orElse("An activity");
+            for (Account pm : accountRepository
+                    .findAllByCompanyUuidAndRole(validation.getCompanyId(), Role.PROJECT_MANAGER)) {
+                notificationService.raise(new NotificationService.Alert(
+                        validation.getCompanyId(),
+                        pm.getId(),
+                        "PROGRESS_VALIDATION_PENDING",
+                        "INFO",
+                        "Progress awaiting validation",
+                        activityName + " has new progress waiting for your approval.",
+                        "/project-manager/validation/inbox",
+                        "PROGRESS_VALIDATION",
+                        validation.getUuid(),
+                        "progress-pending:" + validation.getUuid() + ":" + pm.getId(),
+                        true));
+            }
+        } catch (RuntimeException e) {
+            log.warn("Could not alert PMs for progress validation {}: {}",
+                    validation.getUuid(), e.getMessage());
+        }
     }
 
     @Transactional
@@ -140,6 +184,21 @@ public class ProgressValidationService {
 
         // Post stock first; insufficient stock throws and rolls back the whole approve
         activityMaterialIssueService.postDeclaredToStock(progress.getUuid());
+
+        Integer delayDays = progress.getDelayWorkingDays();
+        if (delayDays != null && delayDays > 0) {
+            int current = activity.getDurationWorkingDays() != null ? activity.getDurationWorkingDays() : 0;
+            RescheduleRequest rescheduleRequest = new RescheduleRequest();
+            rescheduleRequest.setActivityUuid(activity.getUuid());
+            rescheduleRequest.setDurationWorkingDays(current + delayDays);
+            RescheduleResponse result = rescheduleService.reschedule(activity.getProjectId(), rescheduleRequest);
+            if (result.getRefusals() != null && !result.getRefusals().isEmpty()) {
+                throw new BadRequestException(String.join(" ", result.getRefusals()));
+            }
+            if (StringUtils.hasText(progress.getDelayReason())) {
+                activity.setDelayReason(progress.getDelayReason().trim());
+            }
+        }
 
         activity.setPercentComplete(progress.getPercentComplete());
         activityRepository.save(activity);

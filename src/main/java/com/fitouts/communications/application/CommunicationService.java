@@ -72,6 +72,7 @@ public class CommunicationService {
     private final PortalAccessHelper portalAccess;
     private final CommunicationEmailNotificationService emailNotificationService;
     private final CommercialLifecycleService commercialLifecycleService;
+    private final ProjectChatService projectChatService;
 
     /** Full backfill — call rarely (admin/manual), never on every inbox read. */
     @Transactional
@@ -227,7 +228,13 @@ public class CommunicationService {
     private List<CommunicationChannel> loadInboxChannels(AuthPrincipal principal, UUID companyId) {
         Long accountId = principal.getAccountId();
         if (companyId == null) {
-            return channelRepository.findMemberChannelsByAccountId(accountId);
+            List<CommunicationChannel> channels = channelRepository.findMemberChannelsByAccountId(accountId);
+            if (portalAccess.hasRole(principal, Role.SUPER_ADMIN)) {
+                return channels.stream()
+                        .filter(c -> !isProjectChatChannel(c.getChannelType()))
+                        .toList();
+            }
+            return channels;
         }
 
         Map<UUID, CommunicationChannel> byId = new java.util.LinkedHashMap<>();
@@ -236,7 +243,11 @@ public class CommunicationService {
 
         if (canViewCompanyWideInbox(principal)) {
             // Admin / PM / Director: same company-wide inbox (all channel types).
+            // Project groups stay membership-based so viewing them does not join the chat.
             channelRepository.findByCompanyIdOrderByCreatedAtDesc(companyId).forEach(c -> {
+                if (isProjectChatChannel(c.getChannelType())) {
+                    return;
+                }
                 byId.putIfAbsent(c.getUuid(), c);
                 ensureMember(c.getUuid(), accountId);
             });
@@ -251,7 +262,14 @@ public class CommunicationService {
                         ensureMember(c.getUuid(), accountId);
                     });
         }
+        if (portalAccess.hasRole(principal, Role.SUPER_ADMIN)) {
+            byId.entrySet().removeIf(e -> isProjectChatChannel(e.getValue().getChannelType()));
+        }
         return new ArrayList<>(byId.values());
+    }
+
+    private boolean isProjectChatChannel(ChannelType type) {
+        return type == ChannelType.PROJECT_GROUP || type == ChannelType.PROJECT_DIRECT;
     }
 
     /** Roles that should see the full company communications inbox (parity with Admin). */
@@ -280,7 +298,11 @@ public class CommunicationService {
         }
 
         CommunicationChannel channel = getChannel(channelUuid);
-        assertMember(channel, principal.getAccountId());
+        if (isProjectChatChannel(channel.getChannelType())) {
+            projectChatService.assertCanRead(channel, principal);
+        } else {
+            assertMember(channel, principal.getAccountId());
+        }
 
         if (channel.getChannelType() == ChannelType.PROJECT_ROOM && channel.getProjectRoomId() != null) {
             List<RoomMessage> msgs = roomMessageRepository
@@ -312,7 +334,11 @@ public class CommunicationService {
         }
         CommunicationChannel channel = getChannel(channelUuid);
         AuthPrincipal principal = requirePrincipal();
-        assertMember(channel, principal.getAccountId());
+        if (isProjectChatChannel(channel.getChannelType())) {
+            projectChatService.assertCanSend(channel, principal);
+        } else {
+            assertMember(channel, principal.getAccountId());
+        }
         if (channel.getProjectId() != null) {
             commercialLifecycleService.assertNotArchived(channel.getProjectId());
         }
@@ -372,6 +398,17 @@ public class CommunicationService {
     @Transactional
     public void markRead(UUID channelUuid) {
         AuthPrincipal principal = requirePrincipal();
+        var projectGroup = channelRepository.findById(channelUuid)
+                .filter(ch -> isProjectChatChannel(ch.getChannelType()));
+        if (projectGroup.isPresent()) {
+            projectChatService.assertCanRead(projectGroup.get(), principal);
+            memberRepository.findById(new com.fitouts.communications.domain.CommunicationChannelMemberId(
+                    channelUuid, principal.getAccountId())).ifPresent(existing -> {
+                        existing.setLastReadAt(OffsetDateTime.now());
+                        memberRepository.save(existing);
+                    });
+            return;
+        }
         CommunicationChannelMember member = memberRepository
                 .findById(new com.fitouts.communications.domain.CommunicationChannelMemberId(
                         channelUuid, principal.getAccountId()))
@@ -506,6 +543,8 @@ public class CommunicationService {
             case PROJECT_ROOM -> "Project room";
             case ROOM_TASK -> "Task";
             case EMAIL -> "Email";
+            case PROJECT_GROUP -> "Project group";
+            case PROJECT_DIRECT -> "Direct chat";
         };
     }
 
@@ -635,6 +674,10 @@ public class CommunicationService {
 
     private void assertMember(CommunicationChannel channel, Long accountId) {
         AuthPrincipal principal = requirePrincipal();
+        if (isProjectChatChannel(channel.getChannelType())) {
+            projectChatService.assertCanRead(channel, principal);
+            return;
+        }
         boolean staffOpenChannel = portalAccess.isStaff(principal)
                 && (channel.getChannelType() == ChannelType.INTERNAL
                         || channel.getChannelType() == ChannelType.GROUP

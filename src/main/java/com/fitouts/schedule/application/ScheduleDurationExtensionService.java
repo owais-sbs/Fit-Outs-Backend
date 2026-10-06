@@ -21,6 +21,7 @@ import com.fitouts.account.domain.AccountRepository;
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.completion.application.CommercialLifecycleService;
+import com.fitouts.notification.application.NotificationService;
 import com.fitouts.project.domain.Project;
 import com.fitouts.project.domain.ProjectRepository;
 import com.fitouts.project.domain.ProjectTeamAssignmentRepository;
@@ -53,6 +54,7 @@ public class ScheduleDurationExtensionService {
     private final AccountRepository accountRepository;
     private final ScheduleRescheduleService rescheduleService;
     private final CommercialLifecycleService commercialLifecycleService;
+    private final NotificationService notificationService;
 
     @Transactional
     public DurationExtensionResponse create(UUID activityUuid, DurationExtensionCreateRequest request) {
@@ -105,7 +107,28 @@ public class ScheduleDurationExtensionService {
         ext.setDelayReasonText(reasonText);
         ext.setStatus(ScheduleDurationExtensionStatus.PENDING);
 
-        return toResponse(extensionRepository.save(ext), activity, null, null);
+        ScheduleDurationExtension saved = extensionRepository.save(ext);
+        notifyPendingApprover(saved, activity);
+        return toResponse(saved, activity, null, null);
+    }
+
+    /** Mails the PMs who decide duration extensions. One request can only be pending once. */
+    private void notifyPendingApprover(ScheduleDurationExtension ext, ScheduleActivity activity) {
+        for (Account pm : accountRepository.findAllByCompanyUuidAndRole(ext.getCompanyId(), Role.PROJECT_MANAGER)) {
+            notificationService.raise(new NotificationService.Alert(
+                    ext.getCompanyId(),
+                    pm.getId(),
+                    "DURATION_EXTENSION_PENDING",
+                    "INFO",
+                    "Duration extension awaiting approval",
+                    activity.getName() + ": " + ext.getCurrentDurationWorkingDays() + " to "
+                            + ext.getRequestedDurationWorkingDays() + " working days.",
+                    "/project-manager/schedule/duration-extensions",
+                    "DURATION_EXTENSION",
+                    ext.getUuid(),
+                    "duration-extension-pending:" + ext.getUuid() + ":" + pm.getId(),
+                    true));
+        }
     }
 
     @Transactional(readOnly = true)

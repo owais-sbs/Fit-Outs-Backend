@@ -43,6 +43,9 @@ public class CommunicationChannel {
     @Column(name = "room_task_id")
     private UUID roomTaskId;
 
+    @Column(name = "includes_client", nullable = false)
+    private boolean includesClient;
+
     @Column(name = "created_by", nullable = false)
     private Long createdBy;
 

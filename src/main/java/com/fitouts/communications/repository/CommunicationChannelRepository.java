@@ -33,6 +33,9 @@ public interface CommunicationChannelRepository extends JpaRepository<Communicat
 
     List<CommunicationChannel> findByRoomTaskIdOrderByCreatedAtAsc(UUID roomTaskId);
 
+    List<CommunicationChannel> findByProjectIdAndCompanyIdAndChannelTypeOrderByCreatedAtAsc(
+            Long projectId, UUID companyId, ChannelType channelType);
+
     @Query("""
             SELECT c FROM CommunicationChannel c, CommunicationChannelMember m
             WHERE m.channelUuid = c.uuid AND m.accountId = :accountId

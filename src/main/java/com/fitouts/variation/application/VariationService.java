@@ -150,7 +150,7 @@ public class VariationService implements CommercialApprovalCompletionHandler {
                     "Variation returned: " + vr.getCrNumber(),
                     comment != null ? comment : "Internal review rejected",
                     "/admin/projects/" + vr.getProjectId() + "/variations/" + vr.getUuid(),
-                    "vr-rejected:" + vr.getUuid() + ":" + System.currentTimeMillis());
+                    "vr-rejected:" + vr.getUuid() + ":" + System.currentTimeMillis(), false);
         }
     }
 
@@ -234,7 +234,7 @@ public class VariationService implements CommercialApprovalCompletionHandler {
         if (byClient) {
             notifyPms(vr, "VARIATION_TRIAGE", "Client variation needs triage",
                     vr.getCrNumber() + ": " + vr.getTitle(),
-                    "/admin/variations/inbox");
+                    "/admin/variations/inbox", true);
         }
         return toResponse(vr, project, true);
     }
@@ -451,7 +451,7 @@ public class VariationService implements CommercialApprovalCompletionHandler {
                     "Client rejected: " + vr.getCrNumber(),
                     request.getComment().trim(),
                     "/admin/projects/" + projectId + "/variations/" + vr.getUuid(),
-                    "vr-client-reject:" + vr.getUuid() + ":" + System.currentTimeMillis());
+                    "vr-client-reject:" + vr.getUuid() + ":" + System.currentTimeMillis(), false);
         }
         return toResponse(vr, project, true);
     }
@@ -851,38 +851,46 @@ public class VariationService implements CommercialApprovalCompletionHandler {
                 + "/attachments/" + attachment.getUuid();
     }
 
+    /**
+     * The client is the approver once a variation is issued, so this one mails. The issue
+     * timestamp is in the dedupe key: a revised variation re-issued to the same client is a
+     * fresh wait, not a repeat of the first one.
+     */
     private void notifyClient(VariationRequest vr, String category, String title, String body, String link) {
         Project project = projectService.getById(vr.getProjectId());
         if (project.getClientId() != null) {
+            String issue = vr.getIssuedAt() != null ? vr.getIssuedAt().toString() : "initial";
             raiseAlert(vr, project.getClientId(), category, "INFO", title, body, link,
-                    "vr-client:" + vr.getUuid() + ":" + category);
+                    "vr-client:" + vr.getUuid() + ":" + category + ":" + issue, true);
         }
     }
 
-    private void notifyPms(VariationRequest vr, String category, String title, String body, String link) {
+    private void notifyPms(VariationRequest vr, String category, String title, String body, String link,
+                           boolean alsoEmail) {
         for (Account a : accountRepository.findAllByCompanyUuidAndRole(vr.getCompanyId(), Role.PROJECT_MANAGER)) {
             raiseAlert(vr, a.getId(), category, "INFO", title, body, link,
-                    "vr-pm:" + vr.getUuid() + ":" + a.getId());
+                    "vr-pm:" + vr.getUuid() + ":" + a.getId(), alsoEmail);
         }
         for (Account a : accountRepository.findAllByCompanyUuidAndRole(vr.getCompanyId(), Role.ADMIN)) {
             raiseAlert(vr, a.getId(), category, "INFO", title, body, link,
-                    "vr-admin:" + vr.getUuid() + ":" + a.getId());
+                    "vr-admin:" + vr.getUuid() + ":" + a.getId(), alsoEmail);
         }
     }
 
     private void notifyStaff(VariationRequest vr, String category, String title, String body, String link) {
         if (vr.getSubmittedBy() != null) {
             raiseAlert(vr, vr.getSubmittedBy(), category, "INFO", title, body, link,
-                    "vr-staff:" + vr.getUuid() + ":" + category);
+                    "vr-staff:" + vr.getUuid() + ":" + category, false);
         }
-        notifyPms(vr, category, title, body, link);
+        notifyPms(vr, category, title, body, link, false);
     }
 
     private void raiseAlert(VariationRequest vr, Long accountId, String category, String severity,
-                            String title, String body, String link, String dedupeKey) {
+                            String title, String body, String link, String dedupeKey,
+                            boolean alsoEmail) {
         notificationService.raise(new NotificationService.Alert(
                 vr.getCompanyId(), accountId, category, severity, title, body, link,
-                "VARIATION", vr.getUuid(), dedupeKey, false));
+                "VARIATION", vr.getUuid(), dedupeKey, alsoEmail));
     }
 
     private VariationRequest requireVariation(UUID uuid, Long projectId) {

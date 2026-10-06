@@ -28,6 +28,8 @@ public class ProgressValidationResponse {
     private String activityName;
     private Integer percentComplete;
     private String progressNotes;
+    private String delayReason;
+    private Integer delayWorkingDays;
     private String reportedByName;
     private OffsetDateTime reportedAt;
     private String photoPaths;

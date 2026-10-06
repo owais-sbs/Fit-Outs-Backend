@@ -20,6 +20,8 @@ import org.springframework.web.multipart.MultipartFile;
 import com.fitouts.account.application.ClientAccountConversionResult;
 import com.fitouts.account.application.ClientPortalInviteService;
 import com.fitouts.account.application.AccountService;
+import com.fitouts.account.domain.Account;
+import com.fitouts.account.domain.AccountRepository;
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.boq.domain.BoqDocument;
@@ -27,6 +29,7 @@ import com.fitouts.boq.domain.BoqDocumentRepository;
 import com.fitouts.boq.domain.BoqLine;
 import com.fitouts.boq.domain.BoqLineRepository;
 import com.fitouts.drawing.application.FileStorageService;
+import com.fitouts.notification.application.NotificationService;
 import com.fitouts.planning.application.PlanningService;
 import com.fitouts.planning.domain.PlanAreaStatus;
 import com.fitouts.project.application.ProjectService;
@@ -88,7 +91,9 @@ import com.fitouts.subcontractor.domain.ScPortalUserRepository;
 import com.fitouts.completion.application.CommercialLifecycleService;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class SubcontractorService {
@@ -120,6 +125,8 @@ public class SubcontractorService {
     private final ScCompanyProfileRepository profileRepository;
     private final ScOrganizationRepository organizationRepository;
     private final CommercialLifecycleService commercialLifecycleService;
+    private final AccountRepository accountRepository;
+    private final NotificationService notificationService;
 
     @Transactional(readOnly = true)
     public List<SubcontractorPackageResponse> listPackages(Long projectId) {
@@ -595,7 +602,39 @@ public class SubcontractorService {
         claim.setDecidedBy(null);
         claim.setDecidedAt(null);
         claim.setReason(null);
-        return toClaimResponse(claimRepository.save(claim));
+        SubcontractorClaim submitted = claimRepository.save(claim);
+        notifyClaimPending(submitted, pkg);
+        return toClaimResponse(submitted);
+    }
+
+    /**
+     * Tells the PMs a progress claim is waiting on them. Resubmission moves
+     * {@code submittedAt}, so a claim returned and sent again alerts afresh.
+     */
+    private void notifyClaimPending(SubcontractorClaim claim, SubcontractorPackage pkg) {
+        try {
+            String packageName = pkg != null && StringUtils.hasText(pkg.getName())
+                    ? pkg.getName()
+                    : "A package";
+            String submission = claim.getSubmittedAt() != null ? claim.getSubmittedAt().toString() : "initial";
+            for (Account pm : accountRepository
+                    .findAllByCompanyUuidAndRole(claim.getCompanyId(), Role.PROJECT_MANAGER)) {
+                notificationService.raise(new NotificationService.Alert(
+                        claim.getCompanyId(),
+                        pm.getId(),
+                        "SC_CLAIM_PENDING",
+                        "INFO",
+                        "Progress claim awaiting approval",
+                        packageName + " has a progress claim waiting for your approval.",
+                        "/project-manager/validation/inbox",
+                        "SC_CLAIM",
+                        claim.getUuid(),
+                        "sc-claim-pending:" + claim.getUuid() + ":" + submission + ":" + pm.getId(),
+                        true));
+            }
+        } catch (RuntimeException e) {
+            log.warn("Could not alert PMs for claim {}: {}", claim.getUuid(), e.getMessage());
+        }
     }
 
     @Transactional
