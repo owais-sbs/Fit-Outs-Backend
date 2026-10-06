@@ -1,7 +1,10 @@
 package com.fitouts.approvalconfig.api;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -10,8 +13,11 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
+import com.fitouts.approval.application.CompanyDocumentMasterService;
 import com.fitouts.approvalconfig.application.ApprovalCatalogService;
 import com.fitouts.shared.api.BaseController;
 
@@ -23,6 +29,7 @@ import lombok.RequiredArgsConstructor;
 public class ApprovalCatalogController extends BaseController {
 
     private final ApprovalCatalogService catalogService;
+    private final CompanyDocumentMasterService documentMasterService;
 
     @GetMapping("/approvals-catalog")
     public ResponseEntity<?> loadCatalog() {
@@ -134,6 +141,35 @@ public class ApprovalCatalogController extends BaseController {
             return successResponse("Document type updated", catalogService.updateDocumentType(id, request));
         } catch (Exception e) {
             return failureResponse("Failed to update document type", e.getMessage());
+        }
+    }
+
+    @PutMapping("/document-types/{id}/register")
+    public ResponseEntity<?> saveDocumentRegister(@PathVariable UUID id,
+                                                  @RequestBody com.fitouts.approval.api.CompanyComplianceRequest request) {
+        try {
+            return successResponse("Document register saved",
+                    documentMasterService.saveRegister(
+                            id,
+                            request != null ? request.getExpiryDate() : null,
+                            request != null ? request.getIssueDate() : null,
+                            request != null ? request.getReferenceNo() : null));
+        } catch (Exception e) {
+            return failureResponse("Failed to save document register", e.getMessage());
+        }
+    }
+
+    @PostMapping(value = "/document-types/{id}/file", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> uploadDocumentFile(@PathVariable UUID id,
+                                                @RequestParam("file") MultipartFile file,
+                                                @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate expiryDate,
+                                                @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate issueDate,
+                                                @RequestParam(required = false) String referenceNo) {
+        try {
+            return successResponse("Document file saved",
+                    documentMasterService.upload(id, file, expiryDate, issueDate, referenceNo));
+        } catch (Exception e) {
+            return failureResponse("Failed to save document file", e.getMessage());
         }
     }
 

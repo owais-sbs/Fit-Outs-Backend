@@ -24,5 +24,12 @@ public interface CaseChecklistItemRepository extends JpaRepository<CaseChecklist
             @Param("companyId") UUID companyId,
             @Param("documentTypeCode") String documentTypeCode);
 
+    @Query("SELECT i FROM CaseChecklistItem i, ApprovalCase c "
+            + "WHERE i.caseUuid = c.uuid AND c.companyId = :companyId "
+            + "AND upper(i.documentTypeCode) = upper(:documentTypeCode)")
+    List<CaseChecklistItem> findByCompanyAndDocumentTypeCode(
+            @Param("companyId") UUID companyId,
+            @Param("documentTypeCode") String documentTypeCode);
+
     void deleteByCaseUuid(UUID caseUuid);
 }

@@ -130,6 +130,7 @@ public class ApprovalCaseService {
     private final ApprovalAuthorityRepository approvalAuthorityRepository;
     private final CommercialLifecycleService commercialLifecycleService;
     private final FileStorageService fileStorageService;
+    private final CompanyDocumentMasterService documentMasterService;
 
 
     // Resolve and generate
@@ -329,6 +330,7 @@ public class ApprovalCaseService {
                 : defaultChecklistFor(approvalCase.getPermitTypeCode());
 
         int order = 0;
+        List<CaseChecklistItem> created = new ArrayList<>();
         for (String code : codes) {
             CaseChecklistItem item = new CaseChecklistItem();
             item.setCaseUuid(approvalCase.getUuid());
@@ -339,7 +341,9 @@ public class ApprovalCaseService {
             item.setStatus("MISSING");
             item.setSortOrder(order++);
             checklistRepository.save(item);
+            created.add(item);
         }
+        documentMasterService.applyHeldFiles(approvalCase.getCompanyId(), created);
     }
 
     /**
@@ -720,20 +724,22 @@ public class ApprovalCaseService {
         return toResponses(cases, companyId);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public ApprovalCaseDetailResponse get(UUID caseUuid) {
         requireStaff();
         UUID companyId = requireCompany();
-        ApprovalCase approvalCase = requireCase(caseUuid, companyId);
         List<CaseChecklistItem> checklist = checklistRepository
                 .findByCaseUuidOrderBySortOrderAscDocumentTypeCodeAsc(caseUuid);
+        documentMasterService.applyHeldFiles(companyId, checklist);
+        ApprovalCase approvalCase = requireCase(caseUuid, companyId);
         Map<String, DocumentType> documentTypes = libraryService.documentTypeIndex(companyId);
+        Map<String, String> configCategories = documentMasterService.categoriesByCode(companyId);
 
         return ApprovalCaseDetailResponse.builder()
                 .header(toResponse(approvalCase, checklist, companyId,
                         nameMap(approvalCase.getProjectId(), projectName(approvalCase.getProjectId())),
                         nameMap(approvalCase.getAssignedToAccountId(), accountName(approvalCase.getAssignedToAccountId()))))
-                .checklist(checklist.stream().map(i -> toChecklistItem(i, documentTypes)).toList())
+                .checklist(checklist.stream().map(i -> toChecklistItem(i, documentTypes, configCategories)).toList())
                 .submissions(submissionRepository.findByCaseUuidOrderByVersionAsc(caseUuid)
                         .stream().map(this::toSubmission).toList())
                 .comments(commentRepository.findByCaseUuidOrderByRaisedDateAsc(caseUuid)
@@ -1219,8 +1225,9 @@ public class ApprovalCaseService {
     }
 
     /**
-     * Copies filePath + expiryDate onto every other checklist row on this project with the same
-     * document type code (replace), and upserts company compliance for future reuse.
+     * Copies filePath + expiryDate onto other checklist rows on this project with the same
+     * document type code. Company and insurance files stay on the company register: a permit
+     * upload is kept for this project and does not replace the master copy.
      */
     private void propagateDocumentAcrossProject(ApprovalCase sourceCase, CaseChecklistItem sourceItem,
                                                 UUID companyId, AuthPrincipal principal) {
@@ -1244,11 +1251,15 @@ public class ApprovalCaseService {
         }
         checklistRepository.saveAll(siblings);
 
-        CompanyComplianceRequest compliance = new CompanyComplianceRequest();
-        compliance.setDocumentTypeCode(code);
-        compliance.setFilePath(sourceItem.getFilePath());
-        compliance.setExpiryDate(sourceItem.getExpiryDate());
-        libraryService.upsertCompanyCompliance(compliance);
+        String normalized = code.trim().toUpperCase(Locale.ROOT);
+        String category = documentMasterService.categoriesByCode(companyId).get(normalized);
+        if (!CompanyDocumentMasterService.companyHeld(category)) {
+            CompanyComplianceRequest compliance = new CompanyComplianceRequest();
+            compliance.setDocumentTypeCode(code);
+            compliance.setFilePath(sourceItem.getFilePath());
+            compliance.setExpiryDate(sourceItem.getExpiryDate());
+            libraryService.upsertCompanyCompliance(compliance);
+        }
 
         for (UUID affectedCaseUuid : affectedCaseUuids) {
             ApprovalCase affected = caseRepository.findByUuidAndCompanyId(affectedCaseUuid, companyId)
@@ -1834,14 +1845,20 @@ public class ApprovalCaseService {
                 .build();
     }
 
-    private CaseChecklistItemResponse toChecklistItem(CaseChecklistItem item, Map<String, DocumentType> types) {
+    private CaseChecklistItemResponse toChecklistItem(CaseChecklistItem item, Map<String, DocumentType> types,
+                                                       Map<String, String> configCategories) {
         item.refreshStatus();
         DocumentType type = types.get(item.getDocumentTypeCode());
+        String code = item.getDocumentTypeCode() == null
+                ? ""
+                : item.getDocumentTypeCode().trim().toUpperCase(Locale.ROOT);
+        String category = configCategories != null ? configCategories.get(code) : null;
+        if (category == null && type != null) category = type.getCategory();
         return CaseChecklistItemResponse.builder()
                 .uuid(item.getUuid())
                 .documentTypeCode(item.getDocumentTypeCode())
                 .documentTypeName(item.getDocumentTypeName())
-                .category(type != null ? type.getCategory() : null)
+                .category(category)
                 .required(item.isRequired())
                 .status(item.getStatus())
                 .filePath(item.getFilePath())
