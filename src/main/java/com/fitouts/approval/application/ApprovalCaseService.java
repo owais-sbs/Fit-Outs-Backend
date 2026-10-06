@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -18,6 +19,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fitouts.account.domain.Account;
@@ -38,6 +40,7 @@ import com.fitouts.approval.api.CaseStatusPatchRequest;
 import com.fitouts.approval.api.CaseSubmissionRequest;
 import com.fitouts.approval.api.CaseSubmissionResponse;
 import com.fitouts.approval.api.ChecklistAttachRequest;
+import com.fitouts.approval.api.CompanyComplianceRequest;
 import com.fitouts.approval.api.PackAssemblyResponse;
 import com.fitouts.approval.api.ProjectScopeToggles;
 import com.fitouts.approval.api.ResolvedCaseView;
@@ -70,6 +73,7 @@ import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.notification.application.NotificationService;
 import com.fitouts.completion.application.CommercialLifecycleService;
+import com.fitouts.drawing.application.FileStorageService;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
 import com.fitouts.project.domain.ProjectRepository;
@@ -125,6 +129,8 @@ public class ApprovalCaseService {
     private final ApprovalPermitAuthorityRoleRepository permitAuthorityRoleRepository;
     private final ApprovalAuthorityRepository approvalAuthorityRepository;
     private final CommercialLifecycleService commercialLifecycleService;
+    private final FileStorageService fileStorageService;
+    private final CompanyDocumentMasterService documentMasterService;
 
 
     // Resolve and generate
@@ -324,6 +330,7 @@ public class ApprovalCaseService {
                 : defaultChecklistFor(approvalCase.getPermitTypeCode());
 
         int order = 0;
+        List<CaseChecklistItem> created = new ArrayList<>();
         for (String code : codes) {
             CaseChecklistItem item = new CaseChecklistItem();
             item.setCaseUuid(approvalCase.getUuid());
@@ -334,7 +341,9 @@ public class ApprovalCaseService {
             item.setStatus("MISSING");
             item.setSortOrder(order++);
             checklistRepository.save(item);
+            created.add(item);
         }
+        documentMasterService.applyHeldFiles(approvalCase.getCompanyId(), created);
     }
 
     /**
@@ -715,20 +724,22 @@ public class ApprovalCaseService {
         return toResponses(cases, companyId);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public ApprovalCaseDetailResponse get(UUID caseUuid) {
         requireStaff();
         UUID companyId = requireCompany();
-        ApprovalCase approvalCase = requireCase(caseUuid, companyId);
         List<CaseChecklistItem> checklist = checklistRepository
                 .findByCaseUuidOrderBySortOrderAscDocumentTypeCodeAsc(caseUuid);
+        documentMasterService.applyHeldFiles(companyId, checklist);
+        ApprovalCase approvalCase = requireCase(caseUuid, companyId);
         Map<String, DocumentType> documentTypes = libraryService.documentTypeIndex(companyId);
+        Map<String, String> configCategories = documentMasterService.categoriesByCode(companyId);
 
         return ApprovalCaseDetailResponse.builder()
                 .header(toResponse(approvalCase, checklist, companyId,
                         nameMap(approvalCase.getProjectId(), projectName(approvalCase.getProjectId())),
                         nameMap(approvalCase.getAssignedToAccountId(), accountName(approvalCase.getAssignedToAccountId()))))
-                .checklist(checklist.stream().map(i -> toChecklistItem(i, documentTypes)).toList())
+                .checklist(checklist.stream().map(i -> toChecklistItem(i, documentTypes, configCategories)).toList())
                 .submissions(submissionRepository.findByCaseUuidOrderByVersionAsc(caseUuid)
                         .stream().map(this::toSubmission).toList())
                 .comments(commentRepository.findByCaseUuidOrderByRaisedDateAsc(caseUuid)
@@ -1155,12 +1166,18 @@ public class ApprovalCaseService {
         CaseChecklistItem item = checklistRepository.findByUuidAndCaseUuid(itemUuid, caseUuid)
                 .orElseThrow(() -> new NotFoundException("Checklist item not found"));
 
+        boolean pathChanged = false;
+        boolean expiryChanged = false;
         if (request != null) {
             if (request.getFilePath() != null) {
                 item.setFilePath(SeedValueParser.trimToNull(request.getFilePath()));
                 item.setSource("UPLOADED");
+                pathChanged = true;
             }
-            if (request.getExpiryDate() != null) item.setExpiryDate(request.getExpiryDate());
+            if (request.getExpiryDate() != null) {
+                item.setExpiryDate(request.getExpiryDate());
+                expiryChanged = true;
+            }
             if ("NOT_APPLICABLE".equalsIgnoreCase(request.getStatus())) {
                 item.setStatus("NOT_APPLICABLE");
             } else {
@@ -1169,8 +1186,88 @@ public class ApprovalCaseService {
             }
         }
         checklistRepository.save(item);
-        syncPreparationStatus(approvalCase, principal);
+        if (pathChanged || expiryChanged) {
+            propagateDocumentAcrossProject(approvalCase, item, companyId, principal);
+        } else {
+            syncPreparationStatus(approvalCase, principal);
+        }
         return get(caseUuid);
+    }
+
+    @Transactional
+    public ApprovalCaseDetailResponse uploadChecklistItem(UUID caseUuid, UUID itemUuid,
+                                                          MultipartFile file, LocalDate expiryDate) {
+        AuthPrincipal principal = requireStaff();
+        UUID companyId = requireCompany();
+        ApprovalCase approvalCase = requireCase(caseUuid, companyId);
+        commercialLifecycleService.assertNotArchived(approvalCase.getProjectId());
+        CaseChecklistItem item = checklistRepository.findByUuidAndCaseUuid(itemUuid, caseUuid)
+                .orElseThrow(() -> new NotFoundException("Checklist item not found"));
+        if (file == null || file.isEmpty()) {
+            throw new BadRequestException("file is required");
+        }
+
+        String relativePath = fileStorageService.store(
+                file, companyId, approvalCase.getProjectId(), "approvals");
+        item.setFilePath(relativePath);
+        item.setSource("UPLOADED");
+        if (expiryDate != null) {
+            item.setExpiryDate(expiryDate);
+        }
+        if ("NOT_APPLICABLE".equals(item.getStatus())) {
+            item.setStatus("MISSING");
+        }
+        item.refreshStatus();
+        checklistRepository.save(item);
+
+        propagateDocumentAcrossProject(approvalCase, item, companyId, principal);
+        return get(caseUuid);
+    }
+
+    /**
+     * Copies filePath + expiryDate onto other checklist rows on this project with the same
+     * document type code. Company and insurance files stay on the company register: a permit
+     * upload is kept for this project and does not replace the master copy.
+     */
+    private void propagateDocumentAcrossProject(ApprovalCase sourceCase, CaseChecklistItem sourceItem,
+                                                UUID companyId, AuthPrincipal principal) {
+        String code = sourceItem.getDocumentTypeCode();
+        if (!StringUtils.hasText(code) || !StringUtils.hasText(sourceItem.getFilePath())) {
+            syncPreparationStatus(sourceCase, principal);
+            return;
+        }
+
+        List<CaseChecklistItem> siblings = checklistRepository.findByProjectCompanyAndDocumentTypeCode(
+                sourceCase.getProjectId(), companyId, code);
+        Set<UUID> affectedCaseUuids = new HashSet<>();
+        for (CaseChecklistItem sibling : siblings) {
+            sibling.setFilePath(sourceItem.getFilePath());
+            sibling.setExpiryDate(sourceItem.getExpiryDate());
+            sibling.setSource("UPLOADED");
+            if (!"WAIVED".equals(sibling.getStatus()) && !"NOT_APPLICABLE".equals(sibling.getStatus())) {
+                sibling.refreshStatus();
+            }
+            affectedCaseUuids.add(sibling.getCaseUuid());
+        }
+        checklistRepository.saveAll(siblings);
+
+        String normalized = code.trim().toUpperCase(Locale.ROOT);
+        String category = documentMasterService.categoriesByCode(companyId).get(normalized);
+        if (!CompanyDocumentMasterService.companyHeld(category)) {
+            CompanyComplianceRequest compliance = new CompanyComplianceRequest();
+            compliance.setDocumentTypeCode(code);
+            compliance.setFilePath(sourceItem.getFilePath());
+            compliance.setExpiryDate(sourceItem.getExpiryDate());
+            libraryService.upsertCompanyCompliance(compliance);
+        }
+
+        for (UUID affectedCaseUuid : affectedCaseUuids) {
+            ApprovalCase affected = caseRepository.findByUuidAndCompanyId(affectedCaseUuid, companyId)
+                    .orElse(null);
+            if (affected != null) {
+                syncPreparationStatus(affected, principal);
+            }
+        }
     }
 
     /**
@@ -1748,14 +1845,20 @@ public class ApprovalCaseService {
                 .build();
     }
 
-    private CaseChecklistItemResponse toChecklistItem(CaseChecklistItem item, Map<String, DocumentType> types) {
+    private CaseChecklistItemResponse toChecklistItem(CaseChecklistItem item, Map<String, DocumentType> types,
+                                                       Map<String, String> configCategories) {
         item.refreshStatus();
         DocumentType type = types.get(item.getDocumentTypeCode());
+        String code = item.getDocumentTypeCode() == null
+                ? ""
+                : item.getDocumentTypeCode().trim().toUpperCase(Locale.ROOT);
+        String category = configCategories != null ? configCategories.get(code) : null;
+        if (category == null && type != null) category = type.getCategory();
         return CaseChecklistItemResponse.builder()
                 .uuid(item.getUuid())
                 .documentTypeCode(item.getDocumentTypeCode())
                 .documentTypeName(item.getDocumentTypeName())
-                .category(type != null ? type.getCategory() : null)
+                .category(category)
                 .required(item.isRequired())
                 .status(item.getStatus())
                 .filePath(item.getFilePath())

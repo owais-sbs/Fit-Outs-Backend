@@ -45,7 +45,9 @@ public class FlywaySharedDatabaseConfig {
             new VersionRemap("626", "V626__subscription_payments_and_plan_features.sql",
                     "630", "V630__subscription_payments_and_plan_features.sql"),
             new VersionRemap("629", "V629__company_enabled_features.sql",
-                    "631", "V631__company_enabled_features.sql")
+                    "631", "V631__company_enabled_features.sql"),
+            new VersionRemap("637", "V637__password_reset_tokens.sql",
+                    "638", "V638__password_reset_tokens.sql")
     );
 
     /**
