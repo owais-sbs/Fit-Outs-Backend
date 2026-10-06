@@ -17,11 +17,14 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.fitouts.account.domain.Account;
+import com.fitouts.account.domain.AccountRepository;
 import com.fitouts.auth.domain.Role;
 import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.boq.domain.BoqLine;
 import com.fitouts.boq.domain.BoqLineRepository;
 import com.fitouts.drawing.application.FileStorageService;
+import com.fitouts.notification.application.NotificationService;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
 import com.fitouts.shared.context.CompanyContext;
@@ -86,6 +89,8 @@ public class SubcontractorPortalService {
     private final ScCompanyProfileRepository profileRepository;
     private final SnagRepository snagRepository;
     private final CommercialLifecycleService commercialLifecycleService;
+    private final AccountRepository accountRepository;
+    private final NotificationService notificationService;
 
     // ── Snags ────────────────────────────────────────────────────────────────
 
@@ -164,7 +169,13 @@ public class SubcontractorPortalService {
         row.setDecidedBy(null);
         row.setDecidedAt(null);
         row.setReason(null);
-        return toVariationResponse(variationRepository.save(row));
+        ScVariationRequest submitted = variationRepository.save(row);
+        notifyPms(submitted.getCompanyId(), "SC_VARIATION_PENDING",
+                "Subcontractor variation awaiting approval",
+                submitted.getTitle() + " is waiting for your approval.",
+                "SC_VARIATION", submitted.getUuid(),
+                "sc-variation-pending:" + submitted.getUuid() + ":" + submitted.getSubmittedAt());
+        return toVariationResponse(submitted);
     }
 
     @Transactional
@@ -261,7 +272,13 @@ public class SubcontractorPortalService {
         row.setUnit(trimToNull(body.getUnit()));
         row.setStatus(ScSiteReportStatus.OPEN);
         row.setRaisedBy(principal.getAccountId());
-        return toSiteReportResponse(siteReportRepository.save(row));
+        ScSiteReport saved = siteReportRepository.save(row);
+        notifyPms(saved.getCompanyId(), "SC_SITE_REPORT_PENDING",
+                "Site report awaiting acknowledgement",
+                saved.getTitle() + " is waiting for your acknowledgement.",
+                "SC_SITE_REPORT", saved.getUuid(),
+                "sc-site-report-pending:" + saved.getUuid());
+        return toSiteReportResponse(saved);
     }
 
     /**
@@ -391,7 +408,16 @@ public class SubcontractorPortalService {
         row.setDecidedBy(null);
         row.setDecidedAt(null);
         row.setReason(null);
-        return toInvoiceResponse(invoiceRepository.save(row));
+        ScInvoice submitted = invoiceRepository.save(row);
+        String invoiceLabel = StringUtils.hasText(submitted.getInvoiceNumber())
+                ? "Invoice " + submitted.getInvoiceNumber()
+                : "An invoice";
+        notifyPms(submitted.getCompanyId(), "SC_INVOICE_PENDING",
+                "Subcontractor invoice awaiting approval",
+                invoiceLabel + " for " + submitted.getAmount() + " is waiting for your approval.",
+                "SC_INVOICE", submitted.getUuid(),
+                "sc-invoice-pending:" + submitted.getUuid() + ":" + submitted.getSubmittedAt());
+        return toInvoiceResponse(submitted);
     }
 
     @Transactional
@@ -723,6 +749,31 @@ public class SubcontractorPortalService {
                 .dueDate(snag.getDueDate())
                 .createdAt(snag.getCreatedAt())
                 .build();
+    }
+
+    /**
+     * Mails the PMs who clear these from the validation inbox. Submission timestamps are part of
+     * the caller's dedupe key, so a rejected item sent again alerts afresh.
+     */
+    private void notifyPms(UUID companyId, String category, String title, String body,
+                           String sourceType, UUID sourceUuid, String dedupeKey) {
+        if (companyId == null) {
+            return;
+        }
+        for (Account pm : accountRepository.findAllByCompanyUuidAndRole(companyId, Role.PROJECT_MANAGER)) {
+            notificationService.raise(new NotificationService.Alert(
+                    companyId,
+                    pm.getId(),
+                    category,
+                    "INFO",
+                    title,
+                    body,
+                    "/project-manager/validation/inbox",
+                    sourceType,
+                    sourceUuid,
+                    dedupeKey + ":" + pm.getId(),
+                    true));
+        }
     }
 
     private SubcontractorPackage requireAppointedPackage(AuthPrincipal principal, UUID packageUuid) {

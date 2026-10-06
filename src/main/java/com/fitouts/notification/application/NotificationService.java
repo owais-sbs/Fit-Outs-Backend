@@ -3,6 +3,7 @@ package com.fitouts.notification.application;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -38,6 +39,9 @@ public class NotificationService {
     private final InAppNotificationRepository notificationRepository;
     private final AccountRepository accountRepository;
     private final EmailService emailService;
+
+    @Value("${app.public-url:http://localhost:3000}")
+    private String publicUrl;
 
     /** Builder-free entry point for the common case. */
     public record Alert(
@@ -93,12 +97,35 @@ public class NotificationService {
             emailService.sendAsync(EmailMessage.builder()
                     .to(account.getEmail())
                     .subject(alert.title())
-                    .body(alert.body() != null ? alert.body() : alert.title())
+                    .body(emailBody(alert))
                     .html(false)
                     .build());
         } catch (Exception e) {
             log.warn("Could not email notification \"{}\": {}", alert.title(), e.getMessage());
         }
+    }
+
+    /**
+     * The in-app alert carries its destination in {@code linkPath}, which means nothing in a
+     * mail client. Spell the link out so an approver can act straight from the email.
+     */
+    private String emailBody(Alert alert) {
+        String body = alert.body() != null ? alert.body() : alert.title();
+        if (alert.linkPath() == null || alert.linkPath().isBlank()) {
+            return body;
+        }
+        return body + "\n\n" + baseUrl() + alert.linkPath();
+    }
+
+    /** Email links need a single origin; ignore accidental comma-lists (CORS-style). */
+    private String baseUrl() {
+        String url = publicUrl == null || publicUrl.isBlank()
+                ? "http://localhost:3000"
+                : publicUrl.split(",")[0].trim();
+        while (url.endsWith("/")) {
+            url = url.substring(0, url.length() - 1);
+        }
+        return url;
     }
 
     @Transactional(readOnly = true)

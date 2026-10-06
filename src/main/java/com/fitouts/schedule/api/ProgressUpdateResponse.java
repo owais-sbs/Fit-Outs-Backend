@@ -17,6 +17,7 @@ public class ProgressUpdateResponse {
     private String notes;
     private BigDecimal labourHours;
     private String delayReason;
+    private Integer delayWorkingDays;
     private Long reportedBy;
     private OffsetDateTime reportedAt;
 

@@ -154,18 +154,24 @@ public class BoqApprovalService {
         return boqService.getById(boqId);
     }
 
+    /**
+     * Tells the next approver it is their turn, by email as well as in-app. The submission
+     * timestamp is in the dedupe key so a rejected-then-resubmitted BOQ mails again instead of
+     * being swallowed as a repeat of the first wait.
+     */
     private void notifyBoqPending(BoqDocument doc, BoqDocumentStatus status) {
         String projectName = projectName(doc);
         String title = "BOQ awaiting approval: " + projectName;
         String body = "Version " + doc.getVersion() + " is pending "
                 + status.name().toLowerCase().replace('_', ' ') + ".";
         String link = inboxLinkForStatus(status);
+        String submission = doc.getSubmittedAt() != null ? doc.getSubmittedAt().toString() : "initial";
 
         if (status == BoqDocumentStatus.PENDING_CLIENT) {
             Long clientId = doc.getProject() != null ? doc.getProject().getClientId() : null;
             if (clientId != null) {
                 raiseBoqAlert(doc, clientId, "BOQ_PENDING", "INFO", title, body, link,
-                        "boq-pending:" + doc.getId() + ":" + status);
+                        "boq-pending:" + doc.getId() + ":" + status + ":" + submission, true);
             }
             return;
         }
@@ -176,7 +182,8 @@ public class BoqApprovalService {
         }
         for (Account account : accountRepository.findAllByCompanyUuidAndRole(doc.getCompanyId(), role)) {
             raiseBoqAlert(doc, account.getId(), "BOQ_PENDING", "INFO", title, body, link,
-                    "boq-pending:" + doc.getId() + ":" + status + ":" + account.getId());
+                    "boq-pending:" + doc.getId() + ":" + status + ":" + submission + ":" + account.getId(),
+                    true);
         }
     }
 
@@ -187,13 +194,13 @@ public class BoqApprovalService {
         String link = "/admin/boq/" + doc.getId();
         if (doc.getSubmittedBy() != null) {
             raiseBoqAlert(doc, doc.getSubmittedBy(), "BOQ_APPROVED", "INFO", title, body, link,
-                    "boq-approved:" + doc.getId() + ":submitter");
+                    "boq-approved:" + doc.getId() + ":submitter", false);
         }
         Long clientId = doc.getProject() != null ? doc.getProject().getClientId() : null;
         if (clientId != null && !Objects.equals(clientId, doc.getSubmittedBy())) {
             raiseBoqAlert(doc, clientId, "BOQ_APPROVED", "INFO", title, body,
                     "/client/boq/" + doc.getId(),
-                    "boq-approved:" + doc.getId() + ":client");
+                    "boq-approved:" + doc.getId() + ":client", false);
         }
     }
 
@@ -206,11 +213,12 @@ public class BoqApprovalService {
                 "BOQ returned: " + projectName,
                 comments,
                 "/admin/boq/" + doc.getId(),
-                "boq-rejected:" + doc.getId() + ":" + System.currentTimeMillis());
+                "boq-rejected:" + doc.getId() + ":" + System.currentTimeMillis(), false);
     }
 
     private void raiseBoqAlert(BoqDocument doc, Long accountId, String category, String severity,
-                               String title, String body, String link, String dedupeKey) {
+                               String title, String body, String link, String dedupeKey,
+                               boolean alsoEmail) {
         notificationService.raise(new NotificationService.Alert(
                 doc.getCompanyId(),
                 accountId,
@@ -222,7 +230,7 @@ public class BoqApprovalService {
                 "BOQ",
                 doc.getId(),
                 dedupeKey,
-                false));
+                alsoEmail));
     }
 
     private static String projectName(BoqDocument doc) {

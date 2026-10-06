@@ -32,6 +32,7 @@ import com.fitouts.boq.domain.BoqLineRepository;
 import com.fitouts.communications.application.CommunicationEmailNotificationService;
 import com.fitouts.communications.application.CommunicationService;
 import com.fitouts.drawing.application.FileStorageService;
+import com.fitouts.notification.application.NotificationService;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
 import com.fitouts.roomcollab.api.*;
@@ -63,6 +64,7 @@ public class RoomCollabService {
     private final CommunicationService communicationService;
     private final CommunicationEmailNotificationService emailNotificationService;
     private final CommercialLifecycleService commercialLifecycleService;
+    private final NotificationService notificationService;
 
     public List<ProjectRoomResponse> listRooms(Long projectId) {
         Project project = requireProjectAccess(projectId);
@@ -305,7 +307,37 @@ public class RoomCollabService {
         link.setLinkedTaskId(taskId);
         roomMessageRepository.save(link);
 
+        notifyClientAwaitingApproval(task, projectId);
+
         return mapTask(task, true);
+    }
+
+    /**
+     * Mails the client whose approval the task now waits on. The revision count is in the dedupe
+     * key so each resubmission after requested changes alerts again.
+     */
+    private void notifyClientAwaitingApproval(RoomTask task, Long projectId) {
+        Long clientId;
+        try {
+            clientId = projectService.getById(projectId).getClientId();
+        } catch (RuntimeException e) {
+            return;
+        }
+        if (clientId == null) {
+            return;
+        }
+        notificationService.raise(new NotificationService.Alert(
+                task.getCompanyId(),
+                clientId,
+                "ROOM_TASK_PENDING_CLIENT",
+                "INFO",
+                "Task awaiting your approval",
+                task.getTitle() + " has been sent for your approval.",
+                "/client/projects/" + projectId + "/room-tasks/" + task.getUuid(),
+                "ROOM_TASK",
+                task.getUuid(),
+                "room-task-pending:" + task.getUuid() + ":" + task.getRevisionCount(),
+                true));
     }
 
     public RoomTaskResponse requestChanges(Long projectId, UUID taskId, ChangeRequestBody body) {

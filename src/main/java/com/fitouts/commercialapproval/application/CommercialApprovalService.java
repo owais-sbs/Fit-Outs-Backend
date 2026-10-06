@@ -541,7 +541,8 @@ public class CommercialApprovalService {
                         "Approval overdue",
                         "A commercial approval task is past its SLA.",
                         "/admin/variations/inbox",
-                        "cam-reminder:" + task.getUuid());
+                        "cam-reminder:" + task.getUuid(),
+                        false);
                 task.setReminderSentAt(now);
                 taskRepository.save(task);
                 raised++;
@@ -552,11 +553,13 @@ public class CommercialApprovalService {
                 Role escalateTo = step != null && step.getEscalateToRole() != null
                         ? step.getEscalateToRole()
                         : Role.BUSINESS_OWNER;
+                // The escalation is now waiting on someone new, so it mails like any first turn.
                 notifyRole(run, escalateTo, "VARIATION_APPROVAL_ESCALATION", "CRITICAL",
                         "Approval escalated",
                         "Commercial approval task escalated after SLA breach.",
                         "/admin/variations/inbox",
-                        "cam-escalation:" + task.getUuid());
+                        "cam-escalation:" + task.getUuid(),
+                        true);
                 task.setEscalatedAt(now);
                 taskRepository.save(task);
                 appendEvent(run, "ESCALATED", null, "IN_PROGRESS", null, run.getAmount(),
@@ -589,12 +592,14 @@ public class CommercialApprovalService {
                     "Commercial approval required",
                     run.getEventType() + " awaiting " + task.getRole() + " approval.",
                     "/admin/variations/inbox",
-                    "cam-pending:" + task.getUuid());
+                    "cam-pending:" + task.getUuid(),
+                    true);
         }
     }
 
     private void notifyRole(CommercialApprovalRun run, Role role, String category, String severity,
-                            String title, String body, String link, String dedupeKey) {
+                            String title, String body, String link, String dedupeKey,
+                            boolean alsoEmail) {
         for (Account account : accountRepository.findAllByCompanyUuidAndRole(run.getCompanyId(), role)) {
             notificationService.raise(new NotificationService.Alert(
                     run.getCompanyId(),
@@ -607,7 +612,7 @@ public class CommercialApprovalService {
                     "COMMERCIAL_APPROVAL",
                     run.getUuid(),
                     dedupeKey + ":" + account.getId(),
-                    false));
+                    alsoEmail));
         }
     }
 

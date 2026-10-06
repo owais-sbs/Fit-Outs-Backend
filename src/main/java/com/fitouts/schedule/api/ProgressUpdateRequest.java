@@ -11,6 +11,8 @@ public class ProgressUpdateRequest {
     private String notes;
     private BigDecimal labourHours;
     private String delayReason;
+    /** Extra working days to add to the activity when this update is approved. */
+    private Integer delayWorkingDays;
     /** Optional materials used on this progress update. */
     private List<MaterialIssueRequest> materialIssues;
 }

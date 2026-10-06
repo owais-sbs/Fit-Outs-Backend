@@ -6,5 +6,7 @@ public enum ChannelType {
     GROUP,
     PROJECT_ROOM,
     ROOM_TASK,
-    EMAIL
+    EMAIL,
+    PROJECT_GROUP,
+    PROJECT_DIRECT
 }

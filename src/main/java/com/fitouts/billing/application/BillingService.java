@@ -40,6 +40,7 @@ import com.fitouts.billing.domain.BillingStatus;
 import com.fitouts.billing.domain.PaymentRequest;
 import com.fitouts.billing.domain.PaymentRequestRepository;
 import com.fitouts.completion.application.CommercialLifecycleService;
+import com.fitouts.notification.application.NotificationService;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
 import com.fitouts.schedule.domain.ScheduleActivity;
@@ -50,9 +51,11 @@ import com.fitouts.shared.error.ForbiddenException;
 import com.fitouts.shared.error.NotFoundException;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class BillingService {
 
     private final BillingMilestoneRepository milestoneRepository;
@@ -63,6 +66,7 @@ public class BillingService {
     private final BillingPaymentEmailService billingPaymentEmailService;
     private final AccountRepository accountRepository;
     private final CommercialLifecycleService commercialLifecycleService;
+    private final NotificationService notificationService;
     private final Set<UUID> activeReminderProcessing = ConcurrentHashMap.newKeySet();
 
     @Transactional(readOnly = true)
@@ -291,6 +295,7 @@ public class BillingService {
         milestone.setStatus(BillingStatus.PENDING_PM);
         milestoneRepository.save(milestone);
         recordEvent(pr, "SUBMITTED", "FINANCE", principal.getAccountId(), pr.getNotes());
+        notifyApprover(pr, milestone);
 
         return toPaymentResponse(pr, milestone);
     }
@@ -332,6 +337,7 @@ public class BillingService {
         milestoneRepository.save(milestone);
         PaymentRequest saved = paymentRequestRepository.save(pr);
         recordEvent(saved, "SUBMITTED", "FINANCE", principal.getAccountId(), saved.getNotes());
+        notifyApprover(saved, milestone);
         return toPaymentResponse(saved, milestone);
     }
 
@@ -417,6 +423,7 @@ public class BillingService {
         pr.setDecidedAt(OffsetDateTime.now());
         paymentRequestRepository.save(pr);
         milestoneRepository.save(milestone);
+        notifyApprover(pr, milestone);
         return toPaymentResponse(pr, milestone);
     }
 
@@ -687,6 +694,7 @@ public class BillingService {
             milestone.setStatus(BillingStatus.PENDING_PM);
             milestoneRepository.save(milestone);
             recordEvent(pr, "SUBMITTED", "FINANCE", null, pr.getNotes());
+            notifyApprover(pr, milestone);
         }
     }
 
@@ -802,6 +810,55 @@ public class BillingService {
                 .clientEmail(clientEmail)
                 .approvalLog(List.of())
                 .build();
+    }
+
+    /**
+     * Mails whoever the payment request now waits on. The decision timestamp is in the dedupe
+     * key so a request rejected back to Finance and resubmitted alerts the PM again.
+     */
+    private void notifyApprover(PaymentRequest pr, BillingMilestone milestone) {
+        Role role;
+        String link;
+        if (pr.getStatus() == BillingStatus.PENDING_PM) {
+            role = Role.PROJECT_MANAGER;
+            link = "/project-manager/billing/inbox";
+        } else if (pr.getStatus() == BillingStatus.PENDING_DIRECTOR) {
+            role = Role.BUSINESS_OWNER;
+            link = "/business-owner/billing/inbox";
+        } else {
+            return;
+        }
+
+        try {
+            String milestoneName = milestone != null && StringUtils.hasText(milestone.getName())
+                    ? milestone.getName()
+                    : "Billing milestone";
+            String projectName;
+            try {
+                projectName = projectService.getById(pr.getProjectId()).getName();
+            } catch (RuntimeException e) {
+                projectName = "Project";
+            }
+            String decision = pr.getDecidedAt() != null ? pr.getDecidedAt().toString() : "initial";
+
+            for (Account account : accountRepository.findAllByCompanyUuidAndRole(pr.getCompanyId(), role)) {
+                notificationService.raise(new NotificationService.Alert(
+                        pr.getCompanyId(),
+                        account.getId(),
+                        "BILLING_PENDING",
+                        "INFO",
+                        "Billing milestone awaiting approval: " + projectName,
+                        milestoneName + " for " + pr.getAmount() + " is pending your approval.",
+                        link,
+                        "PAYMENT_REQUEST",
+                        pr.getUuid(),
+                        "billing-pending:" + pr.getUuid() + ":" + pr.getStatus() + ":" + decision
+                                + ":" + account.getId(),
+                        true));
+            }
+        } catch (RuntimeException e) {
+            log.warn("Could not alert {} for payment request {}: {}", role, pr.getUuid(), e.getMessage());
+        }
     }
 
     private void recordEvent(PaymentRequest pr, String action, String step, Long actorId, String comments) {

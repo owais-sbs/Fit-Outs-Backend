@@ -26,6 +26,7 @@ import com.fitouts.auth.security.AuthPrincipal;
 import com.fitouts.completion.application.CommercialLifecycleService;
 import com.fitouts.completion.domain.CommercialLifecycleStage;
 import com.fitouts.drawing.application.FileStorageService;
+import com.fitouts.notification.application.NotificationService;
 import com.fitouts.project.application.ProjectService;
 import com.fitouts.project.domain.Project;
 import com.fitouts.project.domain.ProjectTeamAssignment;
@@ -71,6 +72,7 @@ public class SnagService {
     private final AccountRepository accountRepository;
     private final CommercialLifecycleService commercialLifecycleService;
     private final ProjectTeamAssignmentRepository teamAssignmentRepository;
+    private final NotificationService notificationService;
 
     @Transactional(readOnly = true)
     public List<SnagResponse> list(Long projectId) {
@@ -241,11 +243,17 @@ public class SnagService {
         if (request.getCategory() != null) {
             snag.setCategory(request.getCategory());
         }
+        boolean statusChanged = false;
         if (request.getStatus() != null && request.getStatus() != snag.getStatus()) {
             assertTransition(snag.getStatus(), request.getStatus());
             snag.setStatus(request.getStatus());
+            statusChanged = true;
         }
-        return toResponse(snagRepository.save(snag));
+        Snag saved = snagRepository.save(snag);
+        if (statusChanged) {
+            notifyClientIfAwaitingInspection(saved);
+        }
+        return toResponse(saved);
     }
 
     @Transactional
@@ -257,11 +265,50 @@ public class SnagService {
             throw new BadRequestException("status is required");
         }
         Snag snag = requireSnag(uuid, projectId);
+        boolean statusChanged = false;
         if (request.getStatus() != snag.getStatus()) {
             assertTransition(snag.getStatus(), request.getStatus());
             snag.setStatus(request.getStatus());
+            statusChanged = true;
         }
-        return toResponse(snagRepository.save(snag));
+        Snag saved = snagRepository.save(snag);
+        if (statusChanged) {
+            notifyClientIfAwaitingInspection(saved);
+        }
+        return toResponse(saved);
+    }
+
+    /**
+     * A client-visible snag at inspection stage is waiting on the client to close it, so mail
+     * them. The status is in the dedupe key: a snag bounced back and readied again alerts afresh.
+     */
+    private void notifyClientIfAwaitingInspection(Snag snag) {
+        if (!snag.isClientVisible()
+                || (snag.getStatus() != SnagStatus.READY_FOR_INSPECTION
+                        && snag.getStatus() != SnagStatus.RESOLVED)) {
+            return;
+        }
+        Long clientId;
+        try {
+            clientId = projectService.getById(snag.getProjectId()).getClientId();
+        } catch (RuntimeException e) {
+            return;
+        }
+        if (clientId == null) {
+            return;
+        }
+        notificationService.raise(new NotificationService.Alert(
+                snag.getCompanyId(),
+                clientId,
+                "SNAG_PENDING_CLIENT",
+                "INFO",
+                "Snag awaiting your approval",
+                snag.getTitle() + " is ready for your inspection.",
+                "/client/snags",
+                "SNAG",
+                snag.getUuid(),
+                "snag-pending-client:" + snag.getUuid() + ":" + snag.getStatus(),
+                true));
     }
 
     @Transactional
