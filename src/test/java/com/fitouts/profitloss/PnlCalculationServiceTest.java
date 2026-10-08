@@ -161,7 +161,7 @@ class PnlCalculationServiceTest {
                 .thenReturn(List.of());
 
         String csv = exportService.companyCsv(null);
-        assertThat(csv).contains("period,projectId,projectName");
+        assertThat(csv).contains("period,periodFrom,periodTo,projectId,projectName");
         assertThat(csv).contains("Tower Fit-Out");
     }
 

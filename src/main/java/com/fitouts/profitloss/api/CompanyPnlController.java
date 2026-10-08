@@ -73,9 +73,13 @@ public class CompanyPnlController extends BaseController {
     }
 
     @GetMapping("/api/projects/{projectId}/pnl")
-    public Object projectPnl(@PathVariable Long projectId) {
+    public Object projectPnl(
+            @PathVariable Long projectId,
+            @RequestParam(required = false) String yearMonth,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to) {
         try {
-            return successResponse(pnlCalculationService.getProjectPnl(projectId));
+            return successResponse(pnlCalculationService.getProjectPnl(projectId, yearMonth, from, to));
         } catch (Exception e) {
             return failureResponse("Failed to load project P&L", e.getMessage());
         }
@@ -84,16 +88,19 @@ public class CompanyPnlController extends BaseController {
     @GetMapping("/api/projects/{projectId}/pnl/export")
     public ResponseEntity<?> exportProject(
             @PathVariable Long projectId,
-            @RequestParam(defaultValue = "csv") String format) {
+            @RequestParam(defaultValue = "csv") String format,
+            @RequestParam(required = false) String yearMonth,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to) {
         try {
             if ("pdf".equalsIgnoreCase(format)) {
-                byte[] pdf = pnlExportService.projectPdf(projectId);
+                byte[] pdf = pnlExportService.projectPdf(projectId, yearMonth, from, to);
                 return ResponseEntity.ok()
                         .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"project-" + projectId + "-pnl.pdf\"")
                         .contentType(MediaType.APPLICATION_PDF)
                         .body(pdf);
             }
-            String csv = pnlExportService.projectCsv(projectId);
+            String csv = pnlExportService.projectCsv(projectId, yearMonth, from, to);
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"project-" + projectId + "-pnl.csv\"")
                     .contentType(MediaType.parseMediaType("text/csv"))

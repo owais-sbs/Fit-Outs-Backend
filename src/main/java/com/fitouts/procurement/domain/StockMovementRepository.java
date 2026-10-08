@@ -1,6 +1,7 @@
 package com.fitouts.procurement.domain;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -26,4 +27,19 @@ public interface StockMovementRepository extends JpaRepository<StockMovement, UU
             @Param("companyId") UUID companyId,
             @Param("projectId") Long projectId,
             @Param("movementType") StockMovementType movementType);
+
+    @Query("""
+            SELECT COALESCE(SUM(m.totalCost), 0) FROM StockMovement m
+            WHERE m.company.uuid = :companyId
+              AND m.project.id = :projectId
+              AND m.movementType = :movementType
+              AND m.movementDate >= :fromInclusive
+              AND m.movementDate < :toExclusive
+            """)
+    BigDecimal sumTotalCostByProjectAndTypeBetween(
+            @Param("companyId") UUID companyId,
+            @Param("projectId") Long projectId,
+            @Param("movementType") StockMovementType movementType,
+            @Param("fromInclusive") LocalDateTime fromInclusive,
+            @Param("toExclusive") LocalDateTime toExclusive);
 }

@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -50,9 +51,11 @@ import com.fitouts.snag.domain.SnagSeverity;
 import com.fitouts.snag.domain.SnagStatus;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class SnagService {
 
     private static final Set<SnagStatus> OPEN_TO = EnumSet.of(
@@ -207,6 +210,8 @@ public class SnagService {
         if (request == null) {
             return toResponse(snag);
         }
+        SnagStatus previousStatus = snag.getStatus();
+        boolean wasClientVisible = snag.isClientVisible();
         if (StringUtils.hasText(request.getTitle())) {
             snag.setTitle(request.getTitle().trim());
         }
@@ -253,6 +258,7 @@ public class SnagService {
         if (statusChanged) {
             notifyClientIfAwaitingInspection(saved);
         }
+        maybeNotifyClientOfClosure(saved, previousStatus, wasClientVisible);
         return toResponse(saved);
     }
 
@@ -265,6 +271,8 @@ public class SnagService {
             throw new BadRequestException("status is required");
         }
         Snag snag = requireSnag(uuid, projectId);
+        SnagStatus previousStatus = snag.getStatus();
+        boolean wasClientVisible = snag.isClientVisible();
         boolean statusChanged = false;
         if (request.getStatus() != snag.getStatus()) {
             assertTransition(snag.getStatus(), request.getStatus());
@@ -275,6 +283,7 @@ public class SnagService {
         if (statusChanged) {
             notifyClientIfAwaitingInspection(saved);
         }
+        maybeNotifyClientOfClosure(saved, previousStatus, wasClientVisible);
         return toResponse(saved);
     }
 
@@ -433,6 +442,69 @@ public class SnagService {
         };
         if (!allowed.contains(to)) {
             throw new BadRequestException("Invalid status transition from " + from + " to " + to);
+        }
+    }
+
+    /**
+     * When staff close a client-visible snag (or share a closed snag with the client),
+     * send an in-app alert and email so the client is informed.
+     */
+    private void maybeNotifyClientOfClosure(Snag snag, SnagStatus previousStatus, boolean wasClientVisible) {
+        if (snag == null || snag.getStatus() != SnagStatus.CLOSED || !snag.isClientVisible()) {
+            return;
+        }
+        boolean justClosed = previousStatus != SnagStatus.CLOSED;
+        boolean justSharedWithClient = !wasClientVisible;
+        if (!justClosed && !justSharedWithClient) {
+            return;
+        }
+        notifyClientSnagClosed(snag);
+    }
+
+    private void notifyClientSnagClosed(Snag snag) {
+        Project project;
+        try {
+            project = projectService.getById(snag.getProjectId());
+        } catch (Exception e) {
+            log.warn("Could not load project {} for snag closed email: {}", snag.getProjectId(), e.getMessage());
+            return;
+        }
+        String projectName = StringUtils.hasText(project.getName()) ? project.getName().trim() : "your project";
+        String snagTitle = StringUtils.hasText(snag.getTitle()) ? snag.getTitle().trim() : "Snag";
+        String title = "Snag closed — " + snagTitle;
+        String body = "The snag \"" + snagTitle + "\" on " + projectName + " has been marked closed.";
+        String link = "/client/snags";
+
+        Set<Long> recipientIds = new LinkedHashSet<>();
+        if (project.getClientId() != null) {
+            recipientIds.add(project.getClientId());
+        }
+        if (project.getCompanyId() != null) {
+            teamAssignmentRepository
+                    .findByProjectIdAndCompanyIdOrderByRoleAscDisplayNameAsc(project.getId(), project.getCompanyId())
+                    .stream()
+                    .filter(a -> a.getRole() == ProjectTeamRole.CLIENT && a.getAccountId() != null)
+                    .forEach(a -> recipientIds.add(a.getAccountId()));
+        }
+        if (recipientIds.isEmpty()) {
+            log.info("No client accounts for project {} — snag closed email skipped (snag {})",
+                    project.getId(), snag.getUuid());
+            return;
+        }
+
+        for (Long accountId : recipientIds) {
+            notificationService.raise(new NotificationService.Alert(
+                    snag.getCompanyId(),
+                    accountId,
+                    "SNAG_CLOSED",
+                    "INFO",
+                    title,
+                    body,
+                    link,
+                    "SNAG",
+                    snag.getUuid(),
+                    "snag-closed:" + snag.getUuid() + ":" + accountId,
+                    true));
         }
     }
 

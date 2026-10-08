@@ -40,7 +40,7 @@ public class PnlExportService {
     public String companyCsv(String yearMonth) {
         CompanyPnlResponse pnl = pnlCalculationService.getCompanyPnl(yearMonth);
         StringBuilder sb = new StringBuilder();
-        sb.append("period,projectId,projectName,contractValue,materialCost,labourCost,scCertifiedCost,")
+        sb.append("period,periodFrom,periodTo,projectId,projectName,contractValue,materialCost,labourCost,scCertifiedCost,")
                 .append("variationCost,overheadAllocated,totalCost,margin,marginPercent,")
                 .append("originalContractValue,originalEstimatedCost,marginVsOriginalEstimate\n");
         for (ProjectPnlResponse row : pnl.getProjects()) {
@@ -50,9 +50,13 @@ public class PnlExportService {
     }
 
     public String projectCsv(Long projectId) {
-        ProjectPnlResponse row = pnlCalculationService.getProjectPnl(projectId);
+        return projectCsv(projectId, null, null, null);
+    }
+
+    public String projectCsv(Long projectId, String yearMonth, String from, String to) {
+        ProjectPnlResponse row = pnlCalculationService.getProjectPnl(projectId, yearMonth, from, to);
         StringBuilder sb = new StringBuilder();
-        sb.append("period,projectId,projectName,contractValue,materialCost,labourCost,scCertifiedCost,")
+        sb.append("period,periodFrom,periodTo,projectId,projectName,contractValue,materialCost,labourCost,scCertifiedCost,")
                 .append("variationCost,overheadAllocated,totalCost,margin,marginPercent,")
                 .append("originalContractValue,originalEstimatedCost,marginVsOriginalEstimate\n");
         appendRow(sb, row);
@@ -65,7 +69,11 @@ public class PnlExportService {
     }
 
     public byte[] projectPdf(Long projectId) {
-        ProjectPnlResponse row = pnlCalculationService.getProjectPnl(projectId);
+        return projectPdf(projectId, null, null, null);
+    }
+
+    public byte[] projectPdf(Long projectId, String yearMonth, String from, String to) {
+        ProjectPnlResponse row = pnlCalculationService.getProjectPnl(projectId, yearMonth, from, to);
         CompanyPnlResponse wrap = CompanyPnlResponse.builder()
                 .periodYearMonth(row.getPeriodYearMonth())
                 .contractValue(row.getContractValue())
@@ -88,6 +96,8 @@ public class PnlExportService {
 
     private void appendRow(StringBuilder sb, ProjectPnlResponse row) {
         sb.append(csv(row.getPeriodYearMonth())).append(',')
+                .append(csv(row.getPeriodFrom())).append(',')
+                .append(csv(row.getPeriodTo())).append(',')
                 .append(row.getProjectId()).append(',')
                 .append(csv(row.getProjectName())).append(',')
                 .append(num(row.getContractValue())).append(',')

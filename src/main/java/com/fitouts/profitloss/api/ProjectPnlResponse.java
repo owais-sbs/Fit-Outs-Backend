@@ -14,6 +14,10 @@ public class ProjectPnlResponse {
     private Long projectId;
     private String projectName;
     private String periodYearMonth;
+    /** Inclusive start when costs are filtered to a day or date range (ISO-8601 date). */
+    private String periodFrom;
+    /** Inclusive end when costs are filtered to a day or date range (ISO-8601 date). */
+    private String periodTo;
     private BigDecimal contractValue;
     private BigDecimal materialCost;
     private BigDecimal labourCost;

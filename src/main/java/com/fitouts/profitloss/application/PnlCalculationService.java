@@ -2,9 +2,13 @@ package com.fitouts.profitloss.application;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
@@ -160,13 +164,36 @@ public class PnlCalculationService {
 
     @Transactional
     public ProjectPnlResponse getProjectPnl(Long projectId) {
+        return getProjectPnl(projectId, null, null, null);
+    }
+
+    /**
+     * Project P&amp;L for a month snapshot, or live costs filtered to a day / date range.
+     *
+     * <p>Pass {@code yearMonth} (YYYY-MM) for month view (same snapshot model as company P&amp;L).
+     * Pass {@code from}/{@code to} (YYYY-MM-DD) for day or duration — materials and SC costs are
+     * filtered to that inclusive window; contract / variation / overhead use current commercial.
+     */
+    @Transactional
+    public ProjectPnlResponse getProjectPnl(Long projectId, String yearMonth, String from, String to) {
         requirePnlReader();
         UUID companyId = requireCompany();
         Project project = requireProject(projectId, companyId);
-        ProjectPnlSnapshot snapshot = snapshotRepository
-                .findFirstByCompanyIdAndProjectIdOrderByCalculatedAtDesc(companyId, projectId)
-                .orElseGet(() -> recalculate(projectId, companyId));
-        return toProjectResponse(snapshot, project.getName());
+
+        LocalDateRange range = parseOptionalDateRange(from, to);
+        if (range != null) {
+            return computeLive(project, companyId, range);
+        }
+
+        String period = normalizePeriod(yearMonth);
+        if (period.equals(currentPeriod())) {
+            return toProjectResponse(recalculate(projectId, companyId), project.getName());
+        }
+        return snapshotRepository
+                .findFirstByCompanyIdAndProjectIdAndPeriodYearMonthOrderByCalculatedAtDesc(
+                        companyId, projectId, period)
+                .map(s -> toProjectResponse(s, project.getName()))
+                .orElseGet(() -> emptyPeriodResponse(project, period));
     }
 
     @Transactional
@@ -210,6 +237,8 @@ public class PnlCalculationService {
                 .projectId(s.getProjectId())
                 .projectName(projectName)
                 .periodYearMonth(s.getPeriodYearMonth())
+                .periodFrom(null)
+                .periodTo(null)
                 .contractValue(s.getContractValue())
                 .materialCost(s.getMaterialCost())
                 .labourCost(s.getLabourCost())
@@ -224,6 +253,142 @@ public class PnlCalculationService {
                 .marginVsOriginalEstimate(s.getMarginVsOriginalEstimate())
                 .calculatedAt(s.getCalculatedAt())
                 .build();
+    }
+
+    private ProjectPnlResponse emptyPeriodResponse(Project project, String period) {
+        BigDecimal zero = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        return ProjectPnlResponse.builder()
+                .projectId(project.getId())
+                .projectName(project.getName())
+                .periodYearMonth(period)
+                .contractValue(zero)
+                .materialCost(zero)
+                .labourCost(zero)
+                .scCertifiedCost(zero)
+                .variationCost(zero)
+                .overheadAllocated(zero)
+                .totalCost(zero)
+                .margin(zero)
+                .marginPercent(null)
+                .calculatedAt(null)
+                .build();
+    }
+
+    private ProjectPnlResponse computeLive(Project project, UUID companyId, LocalDateRange range) {
+        Long projectId = project.getId();
+        ProjectCommercial commercial = commercialRepository
+                .findFirstByProjectIdAndCompanyIdOrderByUuidAsc(projectId, companyId)
+                .orElse(null);
+
+        BigDecimal contractValue = commercial != null && commercial.getCurrentContractValue() != null
+                ? commercial.getCurrentContractValue()
+                : BigDecimal.ZERO;
+        BigDecimal variationCost = commercial != null && commercial.getCurrentCost() != null
+                ? commercial.getCurrentCost()
+                : BigDecimal.ZERO;
+        BigDecimal originalContract = commercial != null ? commercial.getOriginalContractValue() : null;
+        BigDecimal originalCost = commercial != null ? commercial.getOriginalCost() : null;
+
+        LocalDateTime fromInclusive = range.from().atStartOfDay();
+        LocalDateTime toExclusive = range.to().plusDays(1).atStartOfDay();
+        BigDecimal materialCost = nullSafe(stockMovementRepository.sumTotalCostByProjectAndTypeBetween(
+                companyId, projectId, StockMovementType.ISSUE, fromInclusive, toExclusive));
+
+        BigDecimal scCertifiedCost = certificateRepository
+                .findByProjectIdAndCompanyIdOrderByCreatedAtDesc(projectId, companyId)
+                .stream()
+                .filter(c -> c.getStatus() != null && SC_COST_STATUSES.contains(c.getStatus()))
+                .filter(c -> certificateInRange(c, range.from(), range.to()))
+                .map(ScPaymentCertificate::getCertifiedValue)
+                .map(PnlCalculationService::nullSafe)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal labourCost = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal overhead = overheadAllocationService.allocate(companyId, contractValue);
+
+        BigDecimal totalCost = materialCost
+                .add(labourCost)
+                .add(scCertifiedCost)
+                .add(variationCost)
+                .add(overhead)
+                .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal margin = contractValue.subtract(totalCost).setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal marginVsOriginal = null;
+        if (originalContract != null && originalCost != null) {
+            BigDecimal originalMargin = originalContract.subtract(originalCost);
+            marginVsOriginal = margin.subtract(originalMargin).setScale(2, RoundingMode.HALF_UP);
+        }
+
+        String periodYm = YearMonth.from(range.from()).equals(YearMonth.from(range.to()))
+                ? YearMonth.from(range.from()).toString()
+                : range.from() + "…" + range.to();
+
+        return ProjectPnlResponse.builder()
+                .projectId(projectId)
+                .projectName(project.getName())
+                .periodYearMonth(periodYm)
+                .periodFrom(range.from().toString())
+                .periodTo(range.to().toString())
+                .contractValue(contractValue)
+                .materialCost(materialCost)
+                .labourCost(labourCost)
+                .scCertifiedCost(scCertifiedCost)
+                .variationCost(variationCost)
+                .overheadAllocated(overhead)
+                .totalCost(totalCost)
+                .margin(margin)
+                .marginPercent(marginPercent(contractValue, margin))
+                .originalContractValue(originalContract)
+                .originalEstimatedCost(originalCost)
+                .marginVsOriginalEstimate(marginVsOriginal)
+                .calculatedAt(OffsetDateTime.now())
+                .build();
+    }
+
+    private static boolean certificateInRange(ScPaymentCertificate c, LocalDate from, LocalDate to) {
+        LocalDate date = c.getCertificateDate();
+        if (date == null) {
+            date = c.getPaidDate();
+        }
+        if (date == null && c.getCreatedAt() != null) {
+            date = c.getCreatedAt().atZoneSameInstant(DUBAI).toLocalDate();
+        }
+        if (date == null) {
+            return false;
+        }
+        return !date.isBefore(from) && !date.isAfter(to);
+    }
+
+    private record LocalDateRange(LocalDate from, LocalDate to) {}
+
+    private static LocalDateRange parseOptionalDateRange(String from, String to) {
+        boolean hasFrom = from != null && !from.isBlank();
+        boolean hasTo = to != null && !to.isBlank();
+        if (!hasFrom && !hasTo) {
+            return null;
+        }
+        LocalDate fromDate = hasFrom ? parseIsoDate(from.trim(), "from") : null;
+        LocalDate toDate = hasTo ? parseIsoDate(to.trim(), "to") : null;
+        if (fromDate == null) {
+            fromDate = toDate;
+        }
+        if (toDate == null) {
+            toDate = fromDate;
+        }
+        if (toDate.isBefore(fromDate)) {
+            throw new BadRequestException("'to' must be on or after 'from'");
+        }
+        return new LocalDateRange(fromDate, toDate);
+    }
+
+    private static LocalDate parseIsoDate(String value, String field) {
+        try {
+            return LocalDate.parse(value);
+        } catch (DateTimeParseException e) {
+            throw new BadRequestException(field + " must be YYYY-MM-DD");
+        }
     }
 
     private CompanyPnlResponse aggregate(String period, List<ProjectPnlSnapshot> snapshots, List<Project> projects) {
