@@ -1,0 +1,100 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-fitouts
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ap-south-2
+  ECR_REGISTRY: 905694824089.dkr.ecr.ap-south-2.amazonaws.com
+  ECR_REPOSITORY: onepath
+  EC2_INSTANCE_ID: i-06323c523a85feaa9
+  COMPOSE_SERVICE: fitouts
+  IMAGE_NAME_PREFIX: fitouts-backend
+  DEPLOY_SCRIPT: /opt/onepath/apps/deploy.sh
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set image tag
+        run: echo "IMAGE_TAG=${IMAGE_NAME_PREFIX}-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy on EC2 via SSM
+        env:
+          SSM_TIMEOUT_SECONDS: 900
+        run: |
+          set -euo pipefail
+          CMD="sudo ${DEPLOY_SCRIPT} ${COMPOSE_SERVICE} ${IMAGE_TAG}"
+          echo "SSM command: ${CMD}"
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "${EC2_INSTANCE_ID}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "GitHub Actions deploy ${COMPOSE_SERVICE} ${IMAGE_TAG}" \
+            --parameters "$(jq -n --arg cmd "$CMD" '{commands: [$cmd]}')" \
+            --query 'Command.CommandId' \
+            --output text)
+
+          echo "CommandId=${COMMAND_ID}"
+          deadline=$((SECONDS + SSM_TIMEOUT_SECONDS))
+          STATUS="Pending"
+          while [[ "$STATUS" == "Pending" || "$STATUS" == "InProgress" || "$STATUS" == "Delayed" ]]; do
+            if (( SECONDS > deadline )); then
+              echo "SSM command timed out after ${SSM_TIMEOUT_SECONDS}s"
+              exit 1
+            fi
+            sleep 10
+            INVOCATION=$(aws ssm get-command-invocation \
+              --command-id "${COMMAND_ID}" \
+              --instance-id "${EC2_INSTANCE_ID}" \
+              --output json)
+            STATUS=$(echo "${INVOCATION}" | jq -r '.Status')
+            echo "SSM status: ${STATUS}"
+          done
+
+          echo "----- stdout -----"
+          echo "${INVOCATION}" | jq -r '.StandardOutputContent'
+          echo "----- stderr -----"
+          echo "${INVOCATION}" | jq -r '.StandardErrorContent' >&2
+
+          if [[ "${STATUS}" != "Success" ]]; then
+            echo "Deployment failed (SSM status: ${STATUS})"
+            exit 1
+          fi

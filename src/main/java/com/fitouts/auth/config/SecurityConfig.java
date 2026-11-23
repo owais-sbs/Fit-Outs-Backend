@@ -8,6 +8,7 @@ import java.util.Set;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -35,6 +36,7 @@ import com.fitouts.auth.security.SessionActivityFilter;
 public class SecurityConfig {
 
     @Bean
+    @Order(2)
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             SecurityContextRepository securityContextRepository,
@@ -71,6 +73,7 @@ public class SecurityConfig {
                                 "/actuator/health",
                                 "/actuator/health/**"
                         ).permitAll()
+                        .requestMatchers("/actuator/**").denyAll()
                         .anyRequest().authenticated())
                 .addFilterAfter(sessionActivityFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(companyContextFilter, SessionActivityFilter.class)

@@ -1,0 +1,12 @@
+.git
+.gitignore
+.idea
+.vscode
+target
+.env
+.env.*
+*.log
+README.md
+docs
+effective-pom.xml
+CICD_SETUP.md
